@@ -1,0 +1,2303 @@
+{
+  "schema_version": "1.0",
+  "meta": {
+    "doc_id": "HE-CAE-2026-000001",
+    "title": "iga_guide_test",
+    "source_format": "docx",
+    "source_file": "iga_guide_test.docx",
+    "doc_type": "manual",
+    "created": "2026-05-07",
+    "modified": "2026-05-07",
+    "author": "python-docx",
+    "department": "HE-CAE",
+    "version": "1.0",
+    "tags": [],
+    "summary": ""
+  },
+  "toc": [
+    {
+      "id": "1",
+      "level": 1,
+      "title": "본문"
+    },
+    {
+      "id": "1",
+      "level": 1,
+      "title": "개요"
+    },
+    {
+      "id": "1.1",
+      "level": 2,
+      "title": "IGA란 무엇인가"
+    },
+    {
+      "id": "1.2",
+      "level": 2,
+      "title": "LS-DYNA에서의 IGA"
+    },
+    {
+      "id": "1.3",
+      "level": 2,
+      "title": "KooRemapper가 자동화하는 것"
+    },
+    {
+      "id": "2",
+      "level": 1,
+      "title": "작동 원리"
+    },
+    {
+      "id": "2.1",
+      "level": 2,
+      "title": "Trimmed NURBS Volume 개념"
+    },
+    {
+      "id": "2.2",
+      "level": 2,
+      "title": "생성 흐름"
+    },
+    {
+      "id": "2.3",
+      "level": 2,
+      "title": "ID 할당 규칙"
+    },
+    {
+      "id": "3",
+      "level": 1,
+      "title": "YAML 문법"
+    },
+    {
+      "id": "3.1",
+      "level": 2,
+      "title": "독립 실행 모드 (standalone iga command)"
+    },
+    {
+      "id": "3.2",
+      "level": 2,
+      "title": "assemble 모드 (assemble 명령 내 operation)"
+    },
+    {
+      "id": "3.3",
+      "level": 2,
+      "title": "target 필드 전체 목록"
+    },
+    {
+      "id": "4",
+      "level": 1,
+      "title": "bbox 확장(offset) 계산 방법"
+    },
+    {
+      "id": "4.1",
+      "level": 2,
+      "title": "우선순위 (높은 순서)"
+    },
+    {
+      "id": "4.2",
+      "level": 2,
+      "title": "수식"
+    },
+    {
+      "id": "4.3",
+      "level": 2,
+      "title": "확장된 bbox 파라미터 (사전 계산)"
+    },
+    {
+      "id": "5",
+      "level": 1,
+      "title": "NURBS 파라미터 의미"
+    },
+    {
+      "id": "5.1",
+      "level": 2,
+      "title": "다항식 차수 (pr, ps, pt)"
+    },
+    {
+      "id": "5.2",
+      "level": 2,
+      "title": "k-refinement와 요소 크기 (rr, rs, rt)"
+    },
+    {
+      "id": "5.3",
+      "level": 2,
+      "title": "적분점 수 (nisr, niss, nist)"
+    },
+    {
+      "id": "5.4",
+      "level": 2,
+      "title": "적분 방식 (ir)"
+    },
+    {
+      "id": "5.5",
+      "level": 2,
+      "title": "LCP 안정화 (styp, tollg)"
+    },
+    {
+      "id": "6",
+      "level": 1,
+      "title": "생성 파일 구조"
+    },
+    {
+      "id": "6.1",
+      "level": 2,
+      "title": "메인 파일 (<output>.k)"
+    },
+    {
+      "id": "6.2",
+      "level": 2,
+      "title": "IGA 파일 (<output>_iga_pN.k)"
+    },
+    {
+      "id": "7",
+      "level": 1,
+      "title": "생성 카드 상세 해설"
+    },
+    {
+      "id": "7.1",
+      "level": 2,
+      "title": "*PARAMETER_LOCAL"
+    },
+    {
+      "id": "7.2",
+      "level": 2,
+      "title": "재질 카드 (*MAT_*)"
+    },
+    {
+      "id": "7.3",
+      "level": 2,
+      "title": "*IGA_DEV_STABILIZATION"
+    },
+    {
+      "id": "7.4",
+      "level": 2,
+      "title": "*PART"
+    },
+    {
+      "id": "7.5",
+      "level": 2,
+      "title": "*SECTION_IGA_SOLID"
+    },
+    {
+      "id": "7.6",
+      "level": 2,
+      "title": "*IGA_DEV_VOLUME_XYZ"
+    },
+    {
+      "id": "7.7",
+      "level": 2,
+      "title": "*IGA_SOLID"
+    },
+    {
+      "id": "7.8",
+      "level": 2,
+      "title": "*IGA_3D_NURBS_XYZ"
+    },
+    {
+      "id": "7.9",
+      "level": 2,
+      "title": "*IGA_REFINE_SOLID"
+    },
+    {
+      "id": "8",
+      "level": 1,
+      "title": "예제 파일"
+    },
+    {
+      "id": "8.1",
+      "level": 2,
+      "title": "block_2x2x1.k (기본 FE 베이스 모델)"
+    },
+    {
+      "id": "8.2",
+      "level": 2,
+      "title": "iga_single.yaml (최소 설정)"
+    },
+    {
+      "id": "8.3",
+      "level": 2,
+      "title": "iga_multipart.yaml (다중 파트 + 축별 복셀)"
+    },
+    {
+      "id": "8.4",
+      "level": 2,
+      "title": "iga_scale.yaml (bbox_scale 비율 확장)"
+    },
+    {
+      "id": "9",
+      "level": 1,
+      "title": "주요 파라미터 선택 가이드"
+    },
+    {
+      "id": "9.1",
+      "level": 2,
+      "title": "element_size 설정"
+    },
+    {
+      "id": "9.2",
+      "level": 2,
+      "title": "offset vs bbox_scale 선택"
+    },
+    {
+      "id": "9.3",
+      "level": 2,
+      "title": "다항식 차수 선택"
+    },
+    {
+      "id": "9.4",
+      "level": 2,
+      "title": "적분 방식 선택"
+    },
+    {
+      "id": "10",
+      "level": 1,
+      "title": "LS-DYNA 실행"
+    },
+    {
+      "id": "10.1",
+      "level": 2,
+      "title": "실행 방법"
+    },
+    {
+      "id": "10.2",
+      "level": 2,
+      "title": "예상 Warning 메시지 (정상)"
+    },
+    {
+      "id": "10.3",
+      "level": 2,
+      "title": "IGA 해석 결과 확인"
+    },
+    {
+      "id": "11",
+      "level": 1,
+      "title": "알려진 제약사항"
+    },
+    {
+      "id": "12",
+      "level": 1,
+      "title": "변경 이력"
+    }
+  ],
+  "sections": [
+    {
+      "id": "1",
+      "level": 1,
+      "title": "본문",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "IGA (Isogeometric Analysis) 가이드"
+        },
+        {
+          "type": "paragraph",
+          "text": "KooRemapper v1.3.0 기준  |  LS-DYNA R12+ 전용"
+        }
+      ],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": []
+    },
+    {
+      "id": "1",
+      "level": 1,
+      "title": "개요",
+      "blocks": [],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": [
+        {
+          "id": "1.1",
+          "level": 2,
+          "title": "IGA란 무엇인가",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "IGA(Isogeometric Analysis, 등기하해석)는 CAD와 CAE를 통합하는 수치해석 방법론이다. 기존 유한요소법(FEM)이 Lagrange 다항식 기반의 형상 함수를 사용하는 반면, IGA는 NURBS(Non-Uniform Rational B-Spline)를 형상 함수로 직접 사용한다."
+            },
+            {
+              "type": "paragraph",
+              "text": "FEM과 IGA의 주요 차이점:"
+            },
+            {
+              "type": "table",
+              "ref": "HE-CAE-2026-000001-T001"
+            },
+            {
+              "type": "paragraph",
+              "text": "IGA는 특히 얇은 쉘, 유체-구조 연성(FSI), 접촉 해석에서 FEM 대비 높은 정밀도를 보인다."
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "HE-CAE-2026-000001-T001"
+          ],
+          "children": []
+        },
+        {
+          "id": "1.2",
+          "level": 2,
+          "title": "LS-DYNA에서의 IGA",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "LS-DYNA는 R12 버전부터 IGA solid 해석을 지원한다. KooRemapper가 활용하는 핵심 방식은 Trimmed NURBS Volume으로, 다음과 같은 구조를 가진다:"
+            },
+            {
+              "type": "paragraph",
+              "text": "*IGA_DEV_VOLUME_XYZ + TETMSH=-1 옵션"
+            },
+            {
+              "type": "paragraph",
+              "text": "기존 FE tet/hex mesh를 내부 형상으로 사용 (trimming 경계)"
+            },
+            {
+              "type": "paragraph",
+              "text": "NURBS 직육면체 박스(trivariate B-spline patch)가 FE mesh를 완전히 감싸는 구조"
+            },
+            {
+              "type": "paragraph",
+              "text": "LS-DYNA가 FE mesh의 면을 trim 경계로 인식하여 NURBS 적분점을 내부에만 배치"
+            },
+            {
+              "type": "paragraph",
+              "text": "이 방식의 장점은 기존 FE mesh를 그대로 활용하면서 NURBS의 고차 연속성 및 수렴성을 얻을 수 있다는 점이다."
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "1.3",
+          "level": 2,
+          "title": "KooRemapper가 자동화하는 것",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "KooRemapper의 iga 명령은 다음 과정을 완전 자동화한다:"
+            },
+            {
+              "type": "paragraph",
+              "text": "1. Bounding Box 계산: 대상 FE 파트의 모든 절점 좌표에서 최소/최대값 탐색"
+            },
+            {
+              "type": "paragraph",
+              "text": "2. Offset 확장: YAML 설정에 따른 bbox 확장 (고정값 / 비율 스케일 / 자동)"
+            },
+            {
+              "type": "paragraph",
+              "text": "3. NURBS 제어점 생성: 2×2×2 직육면체 제어점 배치 (8개 코너)"
+            },
+            {
+              "type": "paragraph",
+              "text": "4. 파라미터 출력: *PARAMETER_LOCAL로 모든 값 기록 (LS-DYNA 참조 가능)"
+            },
+            {
+              "type": "paragraph",
+              "text": "5. 재질 복사: 원본 FE 파트의 MAT 카드를 새 MID로 복사"
+            },
+            {
+              "type": "paragraph",
+              "text": "6. IGA 키워드 생성: *IGA_DEV_STABILIZATION, *PART, *SECTION_IGA_SOLID, *IGA_DEV_VOLUME_XYZ, *IGA_SOLID, *IGA_3D_NURBS_XYZ, *IGA_REFINE_SOLID"
+            },
+            {
+              "type": "paragraph",
+              "text": "7. 파일 분리 출력: 파트별 _iga_pN.k 파일 생성"
+            },
+            {
+              "type": "paragraph",
+              "text": "8. 메인 파일에 *INCLUDE 삽입: FE mesh와 IGA 정의를 연결"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "2",
+      "level": 1,
+      "title": "작동 원리",
+      "blocks": [],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": [
+        {
+          "id": "2.1",
+          "level": 2,
+          "title": "Trimmed NURBS Volume 개념",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "FE mesh를 trim 경계로 사용하는 방식으로, NURBS 박스가 FE mesh를 감싸는 구조이다:"
+            },
+            {
+              "type": "code",
+              "text": "NURBS 박스 (IGA_3D_NURBS_XYZ)\n┌─────────────────────────────────┐\n│  offset                         │\n│  ┌─────────────────────────┐    │\n│  │  FE Solid Part          │    │\n│  │  (TET4/HEX8 mesh)       │    │\n│  │                         │    │\n│  └─────────────────────────┘    │\n│                  offset         │\n└─────────────────────────────────┘"
+            },
+            {
+              "type": "paragraph",
+              "text": "FE mesh: 원본 LS-DYNA FE solid 파트 (trim 경계 역할)"
+            },
+            {
+              "type": "paragraph",
+              "text": "NURBS 박스: FE mesh bbox를 offset만큼 확장한 직육면체"
+            },
+            {
+              "type": "paragraph",
+              "text": "TETMSH=-1: LS-DYNA에 FE mesh의 외면을 trim 경계로 사용하라는 지시"
+            },
+            {
+              "type": "paragraph",
+              "text": "적분점: NURBS 박스 내부 + FE mesh 내부 영역에만 배치됨"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "2.2",
+          "level": 2,
+          "title": "생성 흐름",
+          "blocks": [
+            {
+              "type": "code",
+              "text": "FE K-파일 로드\n↓\n대상 PID 절점 좌표 수집 (added elements 포함)\n↓\nBBox 계산: xmin/xmax/ymin/ymax/zmin/zmax\n↓\nOffset 계산 (bbox_scale or fixed offset or auto)\n↓\n새 ID 할당: newId = ++maxPartId_\n새 MID 할당: newMid = ++maxMaterialId_\n↓\n원본 MAT 블록 추출 + MID 교체\n↓\ngenerateIGAContent() → *PARAMETER_LOCAL + 카드 직렬화\n↓\nigaFiles_ 목록에 추가\n↓\nwriteOutput() 호출 시:\n- 메인 K파일: FE mesh 전체 + *INCLUDE _iga_pN.k\n- _iga_pN.k: IGA 정의 + *END"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "2.3",
+          "level": 2,
+          "title": "ID 할당 규칙",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "IGA 파트는 FE 파트와 다른 PID, SECID, MID를 사용해야 한다 (LS-DYNA 요건)."
+            },
+            {
+              "type": "paragraph",
+              "text": "PID = SECID = newId: 하나의 IGA 파트에 PID와 SECID를 동일하게 설정 (단일 NURBS 패치)"
+            },
+            {
+              "type": "paragraph",
+              "text": "newId: 현재 모델의 maxPartId_에 +1"
+            },
+            {
+              "type": "paragraph",
+              "text": "newMid: 현재 모델의 maxMaterialId_에 +1 (FE 파트 MID와 반드시 달라야 함)"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "level": 1,
+      "title": "YAML 문법",
+      "blocks": [],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": [
+        {
+          "id": "3.1",
+          "level": 2,
+          "title": "독립 실행 모드 (standalone iga command)",
+          "blocks": [
+            {
+              "type": "code",
+              "text": "KooRemapper iga config.yaml"
+            },
+            {
+              "type": "paragraph",
+              "text": "YAML 최상위 필드 구조:"
+            },
+            {
+              "type": "code",
+              "text": "base_model: block_2x2x1.k    # 입력 K-파일 (필수)\noutput: result                # 출력 prefix (필수, 확장자 없이)"
+            },
+            {
+              "type": "code",
+              "text": "targets:\n- target_pid: 1\nelement_size: 4.0\n# ... 추가 파라미터"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "3.2",
+          "level": 2,
+          "title": "assemble 모드 (assemble 명령 내 operation)",
+          "blocks": [
+            {
+              "type": "code",
+              "text": "base_model: model.k\noutput: result"
+            },
+            {
+              "type": "code",
+              "text": "operations:\n- type: iga\ntargets:\n- target_pid: 1\nelement_size: 4.0\n- target_pid: 2\nelement_size: 3.0\nelement_size_r: 2.0"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "3.3",
+          "level": 2,
+          "title": "target 필드 전체 목록",
+          "blocks": [
+            {
+              "type": "table",
+              "ref": "HE-CAE-2026-000001-T002"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "HE-CAE-2026-000001-T002"
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "4",
+      "level": 1,
+      "title": "bbox 확장(offset) 계산 방법",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "NURBS 박스는 FE 파트의 bounding box보다 반드시 커야 한다 (FE mesh가 박스 안에 완전히 포함되어야 함). Offset은 각 축 방향으로 bbox를 얼마나 확장할지를 결정한다."
+        }
+      ],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": [
+        {
+          "id": "4.1",
+          "level": 2,
+          "title": "우선순위 (높은 순서)",
+          "blocks": [
+            {
+              "type": "code",
+              "text": "1순위: bbox_scale_r/s/t (축별 스케일)\n2순위: bbox_scale (균일 스케일)\n3순위: offset >= 0 (고정 확장량)\n4순위: auto = element_size (기본, offset=-1일 때)"
+            },
+            {
+              "type": "paragraph",
+              "text": "각 축에 대해 독립적으로 계산된다."
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "4.2",
+          "level": 2,
+          "title": "수식",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "bbox_scale 또는 bbox_scale_r/s/t 사용 시:"
+            },
+            {
+              "type": "code",
+              "text": "off_axis = (scale - 1.0) / 2.0 × len_axis"
+            },
+            {
+              "type": "code",
+              "text": "예) bbox_scale=1.5, lenR=20.0:\noffR = (1.5 - 1.0) / 2.0 × 20.0 = 5.0\n결과: rxminn = xmin - 5.0, rxmaxx = xmax + 5.0"
+            },
+            {
+              "type": "paragraph",
+              "text": "고정 offset 사용 시 (offset >= 0):"
+            },
+            {
+              "type": "code",
+              "text": "offR = offS = offT = offset (지정값 그대로)"
+            },
+            {
+              "type": "paragraph",
+              "text": "자동(auto) 사용 시 (offset = -1, 기본값):"
+            },
+            {
+              "type": "code",
+              "text": "offR = rr (element_size_r 또는 element_size)\noffS = rs (element_size_s 또는 element_size)\noffT = rt (element_size_t 또는 element_size)"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "4.3",
+          "level": 2,
+          "title": "확장된 bbox 파라미터 (사전 계산)",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "계산된 확장 bbox는 *PARAMETER_LOCAL에 사전 계산된 값으로 저장된다. 이는 LS-DYNA의 *PARAMETER_EXPRESSION_LOCAL 호환성 문제를 피하기 위한 설계이다."
+            },
+            {
+              "type": "table",
+              "ref": "HE-CAE-2026-000001-T003"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "HE-CAE-2026-000001-T003"
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "5",
+      "level": 1,
+      "title": "NURBS 파라미터 의미",
+      "blocks": [],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": [
+        {
+          "id": "5.1",
+          "level": 2,
+          "title": "다항식 차수 (pr, ps, pt)",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "NURBS B-spline의 차수(degree)를 각 방향별로 지정한다."
+            },
+            {
+              "type": "table",
+              "ref": "HE-CAE-2026-000001-T004"
+            },
+            {
+              "type": "paragraph",
+              "text": "실용 가이드:"
+            },
+            {
+              "type": "paragraph",
+              "text": "얇은 평판 (두께 방향): pt=1 또는 pt=2로 시작"
+            },
+            {
+              "type": "paragraph",
+              "text": "평면 방향: pr=2, ps=2로 수렴성 향상"
+            },
+            {
+              "type": "paragraph",
+              "text": "계산 비용: 차수가 높을수록 비례하여 증가"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "HE-CAE-2026-000001-T004"
+          ],
+          "children": []
+        },
+        {
+          "id": "5.2",
+          "level": 2,
+          "title": "k-refinement와 요소 크기 (rr, rs, rt)",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "rr/rs/rt는 *IGA_REFINE_SOLID에서 사용하는 목표 요소 크기이다. k-refinement는 차수를 높이면서 동시에 knot을 삽입하는 IGA 고유의 세분화 방식이다."
+            },
+            {
+              "type": "code",
+              "text": "*IGA_REFINE_SOLID\nrid    rtyp=2      ← 균일 refinement\nhrtyp=2  rr  rs  rt  ← h-refinement 요소 크기 목표\nitr=2  its=2  itt=2  ← 각 방향 minimum 분할 수"
+            },
+            {
+              "type": "paragraph",
+              "text": "rtyp=2: 균일(uniform) refinement / hrtyp=2: h-type (요소 크기 기반) refinement"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "5.3",
+          "level": 2,
+          "title": "적분점 수 (nisr, niss, nist)",
+          "blocks": [
+            {
+              "type": "table",
+              "ref": "HE-CAE-2026-000001-T005"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "HE-CAE-2026-000001-T005"
+          ],
+          "children": []
+        },
+        {
+          "id": "5.4",
+          "level": 2,
+          "title": "적분 방식 (ir)",
+          "blocks": [
+            {
+              "type": "table",
+              "ref": "HE-CAE-2026-000001-T006"
+            },
+            {
+              "type": "paragraph",
+              "text": "ir=0이 기본이며, 대부분의 고체 해석에 적합하다. 비압축성 재료(고무 등)나 높은 포아송비에서는 ir=1 권장."
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "HE-CAE-2026-000001-T006"
+          ],
+          "children": []
+        },
+        {
+          "id": "5.5",
+          "level": 2,
+          "title": "LCP 안정화 (styp, tollg)",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "*IGA_DEV_STABILIZATION은 IGA trimmed volume 경계에서의 LCP(Linear Complementarity Problem) 안정화를 제어한다."
+            },
+            {
+              "type": "table",
+              "ref": "HE-CAE-2026-000001-T007"
+            },
+            {
+              "type": "paragraph",
+              "text": "tollg를 너무 크게 하면 필요한 적분점이 제거되어 정밀도 저하, 너무 작으면 경계 불안정 발생 가능."
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "HE-CAE-2026-000001-T007"
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "6",
+      "level": 1,
+      "title": "생성 파일 구조",
+      "blocks": [],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": [
+        {
+          "id": "6.1",
+          "level": 2,
+          "title": "메인 파일 (<output>.k)",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "원본 FE mesh를 완전히 보존하며, IGA 파트는 파트 정의 자체는 그대로 둔다 (FE tetmesh로 사용). 파일 끝에 *INCLUDE로 IGA 파일을 참조한다."
+            },
+            {
+              "type": "code",
+              "text": "*KEYWORD\n*TITLE\n(원본 제목)\n*NODE\n(원본 절점 전체)\n*ELEMENT_SOLID\n(원본 요소 전체 - IGA의 fepid로 사용됨)\n*PART\n(원본 FE 파트 정의들)\n*SECTION_SOLID\n(원본 섹션)\n*MAT_ELASTIC (또는 원본 재질)\n(원본 재질 - MID 1)\n*INCLUDE\n<output>_iga_p1.k\n*INCLUDE\n<output>_iga_p2.k    (다중 파트의 경우)\n*END"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "6.2",
+          "level": 2,
+          "title": "IGA 파일 (<output>_iga_pN.k)",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "파트별로 별도 파일이 생성된다. 파일명 형식: <output_basename>_iga_p<PID>.k"
+            },
+            {
+              "type": "code",
+              "text": "*KEYWORD\n$ IGA solid wrapper for FE part N\n$ Generated by KooRemapper\n$---+----1----+----2----+----3----+----4----+----5----+----6----+----7----+----8\n*PARAMETER_LOCAL\n(모든 파라미터)\n*MAT_ELASTIC (또는 원본 재질 타입)\n(MID = newMid로 복사)\n*IGA_DEV_STABILIZATION\n*PART\n*SECTION_IGA_SOLID\n*IGA_DEV_VOLUME_XYZ\n*IGA_SOLID\n*IGA_3D_NURBS_XYZ\n*IGA_REFINE_SOLID\n*END"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "7",
+      "level": 1,
+      "title": "생성 카드 상세 해설",
+      "blocks": [],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": [
+        {
+          "id": "7.1",
+          "level": 2,
+          "title": "*PARAMETER_LOCAL",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "IGA 파일의 모든 수치값을 파라미터로 선언한다. 파라미터명 앞의 'I'는 정수(Integer), 'R'은 실수(Real)를 의미한다."
+            },
+            {
+              "type": "paragraph",
+              "text": "전체 파라미터 목록:"
+            },
+            {
+              "type": "table",
+              "ref": "HE-CAE-2026-000001-T008"
+            },
+            {
+              "type": "paragraph",
+              "text": "파라미터 참조 방식: LS-DYNA 카드에서 &id, &mid, &rxminn 등으로 참조."
+            },
+            {
+              "type": "paragraph",
+              "text": "형식 예시 (10-char 고정폭 필드):"
+            },
+            {
+              "type": "code",
+              "text": "Iid                3     ← 타입(I/R)+이름을 10자로 패딩, 값 10자 우측정렬\nRxmin              0\nRrxminn           -4"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "HE-CAE-2026-000001-T008"
+          ],
+          "children": []
+        },
+        {
+          "id": "7.2",
+          "level": 2,
+          "title": "재질 카드 (*MAT_*)",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "원본 FE 파트의 MAT 카드를 그대로 복사하되, MID 필드를 newMid로 교체한다. 원본 MAT를 찾지 못한 경우 경고 주석 + 더미 *MAT_ELASTIC (모든 값 0.0) 삽입."
+            },
+            {
+              "type": "code",
+              "text": "*MAT_ELASTIC\n$#     mid        ro         e        pr        da        db  not used\n2  7.85E-09    210000       0.3"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "7.3",
+          "level": 2,
+          "title": "*IGA_DEV_STABILIZATION",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "LCP 안정화 설정. Trimmed volume의 경계 처리를 위한 개발자 옵션."
+            },
+            {
+              "type": "code",
+              "text": "*IGA_DEV_STABILIZATION\n$#      sid      styp                                   tollg\n&id     &styp                                  &tollg"
+            },
+            {
+              "type": "table",
+              "ref": "HE-CAE-2026-000001-T009"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "HE-CAE-2026-000001-T009"
+          ],
+          "children": []
+        },
+        {
+          "id": "7.4",
+          "level": 2,
+          "title": "*PART",
+          "blocks": [
+            {
+              "type": "code",
+              "text": "*PART\n$#\nIGA_Part_1\n$#     pid     secid       mid     eosid      hgid      grav    adpopt      tmid\n&id      &id     &mid"
+            },
+            {
+              "type": "paragraph",
+              "text": "제목 행: IGA_Part_<fepid> (원본 FE PID 번호 포함)"
+            },
+            {
+              "type": "paragraph",
+              "text": "pid = secid = &id: 동일한 ID 공유 (NURBS patch 1개이므로)"
+            },
+            {
+              "type": "paragraph",
+              "text": "mid = &mid: IGA 전용 재질 ID (FE와 반드시 다름)"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "7.5",
+          "level": 2,
+          "title": "*SECTION_IGA_SOLID",
+          "blocks": [
+            {
+              "type": "code",
+              "text": "*SECTION_IGA_SOLID\n$#   secid    elform        ir\n&id        0      &ir"
+            },
+            {
+              "type": "table",
+              "ref": "HE-CAE-2026-000001-T010"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "HE-CAE-2026-000001-T010"
+          ],
+          "children": []
+        },
+        {
+          "id": "7.6",
+          "level": 2,
+          "title": "*IGA_DEV_VOLUME_XYZ",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "Trimmed NURBS volume 정의 (핵심 카드). TETMSH=-1이 FE mesh를 trim 경계로 사용하게 한다."
+            },
+            {
+              "type": "code",
+              "text": "*IGA_DEV_VOLUME_XYZ\n$#     vid   patchid       pid      esid      fsid    TETMSH      MYTP\n&id      &id                                  -1\n$#     PID of existing FEA solid with tetmesh\n&fepid\n$#   brid1     brid2     brid3     brid4     brid5     brid6     brid7     brid8\n(빈 행)"
+            },
+            {
+              "type": "table",
+              "ref": "HE-CAE-2026-000001-T011"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "HE-CAE-2026-000001-T011"
+          ],
+          "children": []
+        },
+        {
+          "id": "7.7",
+          "level": 2,
+          "title": "*IGA_SOLID",
+          "blocks": [
+            {
+              "type": "code",
+              "text": "*IGA_SOLID\n$#     sid       pid      nisr      niss      nist       rid\n&id      &id        1        1        1      &id"
+            },
+            {
+              "type": "table",
+              "ref": "HE-CAE-2026-000001-T012"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "HE-CAE-2026-000001-T012"
+          ],
+          "children": []
+        },
+        {
+          "id": "7.8",
+          "level": 2,
+          "title": "*IGA_3D_NURBS_XYZ",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "NURBS 볼륨 패치 정의 (B-spline 제어점, knot 벡터)."
+            },
+            {
+              "type": "code",
+              "text": "*IGA_3D_NURBS_XYZ\n$# patchid        nr        ns        nt        pr        ps        pt\n&id        2        2        2        1        1        1\n$#    unir      unis      unit\n1        1        1\n$#            rfirst               rlast\n&rxminn             &rxmaxx\n$#            sfirst               slast\n&ryminn             &rymaxx\n$#            tfirst               tlast\n&rzminn             &rzmaxx\n$#                 x                   y                   z                 wgt\n&rxminn             &ryminn             &rzminn                 1.0\n&rxmaxx             &ryminn             &rzminn                 1.0\n&rxminn             &rymaxx             &rzminn                 1.0\n&rxmaxx             &rymaxx             &rzminn                 1.0\n&rxminn             &ryminn             &rzmaxx                 1.0\n&rxmaxx             &ryminn             &rzmaxx                 1.0\n&rxminn             &rymaxx             &rzmaxx                 1.0\n&rxmaxx             &rymaxx             &rzmaxx                 1.0"
+            },
+            {
+              "type": "paragraph",
+              "text": "Card 1 필드 설명:"
+            },
+            {
+              "type": "table",
+              "ref": "HE-CAE-2026-000001-T013"
+            },
+            {
+              "type": "code",
+              "text": "unir=unis=unit=1: 균일(uniform) knot 분포 지시자. rfirst/rlast ~ tfirst/tlast: 각 방향 knot 범위 (= NURBS 박스 좌표 범위). 제어점 8개: 2×2×2 코너점, 루프 순서 k(z) → j(y) → i(x), 가중치 wgt=1.0."
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "HE-CAE-2026-000001-T013"
+          ],
+          "children": []
+        },
+        {
+          "id": "7.9",
+          "level": 2,
+          "title": "*IGA_REFINE_SOLID",
+          "blocks": [
+            {
+              "type": "code",
+              "text": "*IGA_REFINE_SOLID\n$      rid      rtyp\n&id        2\n$    hrtyp        rr        rs        rt\n2      &rr      &rs      &rt\n$      itr       its       itt\n2        2        2"
+            },
+            {
+              "type": "table",
+              "ref": "HE-CAE-2026-000001-T014"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "HE-CAE-2026-000001-T014"
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "8",
+      "level": 1,
+      "title": "예제 파일",
+      "blocks": [],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": [
+        {
+          "id": "8.1",
+          "level": 2,
+          "title": "block_2x2x1.k (기본 FE 베이스 모델)",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "20×10mm 평면 2×2 HEX8 메시, z방향 두 층(각 5mm 높이):"
+            },
+            {
+              "type": "table",
+              "ref": "HE-CAE-2026-000001-T015"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "HE-CAE-2026-000001-T015"
+          ],
+          "children": []
+        },
+        {
+          "id": "8.2",
+          "level": 2,
+          "title": "iga_single.yaml (최소 설정)",
+          "blocks": [
+            {
+              "type": "code",
+              "text": "# 단일 파트 IGA - 최소 설정\nbase_model: block_2x2x1.k\noutput: iga_single_result"
+            },
+            {
+              "type": "code",
+              "text": "targets:\n- target_pid: 1\nelement_size: 4.0"
+            },
+            {
+              "type": "paragraph",
+              "text": "결과 해석:"
+            },
+            {
+              "type": "table",
+              "ref": "HE-CAE-2026-000001-T016"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "HE-CAE-2026-000001-T016"
+          ],
+          "children": []
+        },
+        {
+          "id": "8.3",
+          "level": 2,
+          "title": "iga_multipart.yaml (다중 파트 + 축별 복셀)",
+          "blocks": [
+            {
+              "type": "code",
+              "text": "base_model: block_2x2x1.k\noutput: iga_multipart_result"
+            },
+            {
+              "type": "code",
+              "text": "targets:\n- target_pid: 1\nelement_size: 4.0     # 균일 복셀 4mm\nir: 0                 # reduced Gauss\nstyp: 4\ntollg: 1.0e-3\n- target_pid: 2\nelement_size: 3.0     # t방향 기본값\nelement_size_r: 2.0   # r방향 더 촘촘\nelement_size_s: 2.0   # s방향 더 촘촘\nir: 1                 # full Gauss (정밀)\npr: 2                 # r방향 2차\nps: 2                 # s방향 2차\npt: 1                 # t방향 1차 유지"
+            },
+            {
+              "type": "paragraph",
+              "text": "PID 2 결과: rr=2.0, rs=2.0, rt=3.0 / NURBS 박스: x[-2,22], y[-2,12], z[2,13]"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "8.4",
+          "level": 2,
+          "title": "iga_scale.yaml (bbox_scale 비율 확장)",
+          "blocks": [
+            {
+              "type": "code",
+              "text": "base_model: block_2x2x1.k\noutput: iga_scale_result"
+            },
+            {
+              "type": "code",
+              "text": "targets:\n- target_pid: 1\nelement_size: 4.0\nbbox_scale: 1.5         # 각 변 × 1.5 (양측 +25%)"
+            },
+            {
+              "type": "code",
+              "text": "- target_pid: 2\nelement_size: 3.0\nbbox_scale_r: 2.0       # r: +50% 양측\nbbox_scale_s: 1.3       # s: +15% 양측\nbbox_scale_t: 3.0       # t: +100% 양측\nir: 1"
+            },
+            {
+              "type": "code",
+              "text": "PID 1 계산: lenR=20→offR=5.0, lenS=10→offS=2.5, lenT=5→offT=1.25"
+            },
+            {
+              "type": "paragraph",
+              "text": "PID 2 계산: offR=10.0, offS=1.5, offT=5.0 (축별 scale 독립 적용)"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "9",
+      "level": 1,
+      "title": "주요 파라미터 선택 가이드",
+      "blocks": [],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": [
+        {
+          "id": "9.1",
+          "level": 2,
+          "title": "element_size 설정",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "권장: FE mesh 평균 요소 크기의 1~4배"
+            },
+            {
+              "type": "code",
+              "text": "얇은 판재 (두께 방향 HEX8 1층):\nelement_size_t: 두께/2 ~ 두께×2 (두께 방향 NURBS 간격)\nelement_size_r/s: 면내 HEX 크기의 2~4배"
+            },
+            {
+              "type": "code",
+              "text": "3D 솔리드:\nelement_size: FE 요소 크기의 2~3배 (균일)"
+            },
+            {
+              "type": "code",
+              "text": "너무 작은 element_size → 과도한 NURBS refinement → 계산 비용 급증. 너무 큰 element_size → 해상도 부족 → 응력 분포 불량."
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "9.2",
+          "level": 2,
+          "title": "offset vs bbox_scale 선택",
+          "blocks": [
+            {
+              "type": "table",
+              "ref": "HE-CAE-2026-000001-T017"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "HE-CAE-2026-000001-T017"
+          ],
+          "children": []
+        },
+        {
+          "id": "9.3",
+          "level": 2,
+          "title": "다항식 차수 선택",
+          "blocks": [
+            {
+              "type": "code",
+              "text": "평판/쉘 유사 파트:     pr: 2, ps: 2, pt: 1    (두께 방향은 선형)\n3D 볼륨 고정밀:        pr: 2, ps: 2, pt: 2    (전 방향 2차)\n빠른 초기 계산:        pr: 1, ps: 1, pt: 1    (선형, 기본값)"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "9.4",
+          "level": 2,
+          "title": "적분 방식 선택",
+          "blocks": [
+            {
+              "type": "code",
+              "text": "일반 구조 해석:     ir: 0  (reduced, 기본)\n비압축성 재료:      ir: 1  (full)\n고차 NURBS (p≥3): ir: 1  권장"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "10",
+      "level": 1,
+      "title": "LS-DYNA 실행",
+      "blocks": [],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": [
+        {
+          "id": "10.1",
+          "level": 2,
+          "title": "실행 방법",
+          "blocks": [
+            {
+              "type": "code",
+              "text": "IGA 파일은 단독 실행 불가 → 반드시 메인 K 파일로 실행:\n# 단일 CPU\nls-dyna i=iga_single_result.k"
+            },
+            {
+              "type": "code",
+              "text": "# 병렬 (4 CPU)\nls-dyna i=iga_single_result.k ncpu=4"
+            },
+            {
+              "type": "code",
+              "text": "# MPP 버전\nmpirun -np 4 ls-dyna_mpp i=iga_single_result.k"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "10.2",
+          "level": 2,
+          "title": "예상 Warning 메시지 (정상)",
+          "blocks": [
+            {
+              "type": "table",
+              "ref": "HE-CAE-2026-000001-T018"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "HE-CAE-2026-000001-T018"
+          ],
+          "children": []
+        },
+        {
+          "id": "10.3",
+          "level": 2,
+          "title": "IGA 해석 결과 확인",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "FE mesh 부분은 기존과 동일하게 d3plot에서 확인 가능"
+            },
+            {
+              "type": "paragraph",
+              "text": "IGA 파트 응력은 별도 IGA 결과 데이터베이스에 저장됨"
+            },
+            {
+              "type": "code",
+              "text": "LS-PrePost에서 IGA 결과 확인: Results → IGA → ..."
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "11",
+      "level": 1,
+      "title": "알려진 제약사항",
+      "blocks": [
+        {
+          "type": "table",
+          "ref": "HE-CAE-2026-000001-T019"
+        }
+      ],
+      "figure_refs": [],
+      "table_refs": [
+        "HE-CAE-2026-000001-T019"
+      ],
+      "children": []
+    },
+    {
+      "id": "12",
+      "level": 1,
+      "title": "변경 이력",
+      "blocks": [
+        {
+          "type": "table",
+          "ref": "HE-CAE-2026-000001-T020"
+        },
+        {
+          "type": "paragraph",
+          "text": "부록 A. 전체 IGA 파일 예시 (iga_single_result_iga_p1.k)"
+        },
+        {
+          "type": "code",
+          "text": "*KEYWORD\n$ IGA solid wrapper for FE part 1\n$ Generated by KooRemapper\n$---+----1----+----2----+----3----+----4----+----5----+----6----+----7----+----8\n*PARAMETER_LOCAL\n$    PRMR1      VAL1\nIid                3\nImid               2\nIfepid             1\nRxmin              0\nRxmax             20\nRymin              0\nRymax             10\nRzmin              0\nRzmax              5\nRrr                4\nRrs                4\nRrt                4\nRofr               4\nRofs               4\nRoft               4\nIir                0\nIstyp              4\nRtollg         0.001\nRrxminn           -4\nRrxmaxx           24\nRryminn           -4\nRrymaxx           14\nRrzminn           -4\nRrzmaxx            9\n*MAT_ELASTIC\n$#     mid        ro         e        pr        da        db  not used\n2  7.85E-09    210000       0.3\n*IGA_DEV_STABILIZATION\n$#      sid      styp                                   tollg\n&id     &styp                                  &tollg\n*PART\n$#\nIGA_Part_1\n$#     pid     secid       mid     eosid      hgid      grav    adpopt      tmid\n&id      &id     &mid\n*SECTION_IGA_SOLID\n$#   secid    elform        ir\n&id        0      &ir\n*IGA_DEV_VOLUME_XYZ\n$#     vid   patchid       pid      esid      fsid    TETMSH      MYTP\n&id      &id                                  -1\n$#     PID of existing FEA solid with tetmesh\n&fepid\n$#   brid1     brid2     brid3     brid4     brid5     brid6     brid7     brid8"
+        },
+        {
+          "type": "code",
+          "text": "*IGA_SOLID\n$#     sid       pid      nisr      niss      nist       rid\n&id      &id        1        1        1      &id\n*IGA_3D_NURBS_XYZ\n$# patchid        nr        ns        nt        pr        ps        pt\n&id        2        2        2        1        1        1\n$#    unir      unis      unit\n1        1        1\n$#            rfirst               rlast\n&rxminn             &rxmaxx\n$#            sfirst               slast\n&ryminn             &rymaxx\n$#            tfirst               tlast\n&rzminn             &rzmaxx\n$#                 x                   y                   z                 wgt\n&rxminn             &ryminn             &rzminn                 1.0\n&rxmaxx             &ryminn             &rzminn                 1.0\n&rxminn             &rymaxx             &rzminn                 1.0\n&rxmaxx             &rymaxx             &rzminn                 1.0\n&rxminn             &ryminn             &rzmaxx                 1.0\n&rxmaxx             &ryminn             &rzmaxx                 1.0\n&rxminn             &rymaxx             &rzmaxx                 1.0\n&rxmaxx             &rymaxx             &rzmaxx                 1.0\n*IGA_REFINE_SOLID\n$      rid      rtyp\n&id        2\n$    hrtyp        rr        rs        rt\n2      &rr      &rs      &rt\n$      itr       its       itt\n2        2        2\n*END"
+        },
+        {
+          "type": "paragraph",
+          "text": "부록 B. 자주 묻는 질문"
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: IGA 파트와 FE 파트가 같은 공간을 공유해도 되나요?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: 네. IGA 파트(NURBS 박스)는 FE 파트와 물리적으로 겹칩니다. LS-DYNA가 TETMSH=-1과 fepid를 통해 FE mesh를 trim 경계로 사용하기 때문에, IGA와 FE 해석 영역은 동일한 형상을 공유합니다."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: FE와 IGA 파트 간 접촉/구속은 어떻게 처리하나요?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: TETMSH=-1 방식에서 LS-DYNA가 내부적으로 coupling을 처리합니다. 별도 *CONSTRAINED_* 카드가 필요하지 않습니다."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: 여러 번 assemble op를 거친 후 IGA를 적용해도 되나요?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: 네. applyIGA()는 addedElements_와 modifiedNodePositions_도 포함하여 bbox를 계산하므로, replace/restack 이후에 적용해도 정상 동작합니다."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: offset을 0으로 설정하면 어떻게 되나요?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: offset: 0.0으로 설정하면 NURBS 박스 = FE bbox (확장 없음). FE mesh 표면이 NURBS 박스와 정확히 일치하게 되어 경계 처리 문제가 발생할 수 있습니다. 최소 요소 크기의 10% 이상 offset을 권장합니다."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: *MAT_024 같은 탄소성 재질도 지원하나요?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: 네. extractMaterialBlock()이 *MAT_* 키워드 종류와 무관하게 원본 카드를 복사합니다. MAT_ELASTIC, MAT_024, MAT_RIGID 등 모두 지원됩니다."
+        },
+        {
+          "type": "paragraph",
+          "text": "Q: 생성된 IGA 파일을 수동으로 편집해도 되나요?"
+        },
+        {
+          "type": "paragraph",
+          "text": "A: *PARAMETER_LOCAL의 값을 수정하면 연결된 모든 카드에 자동 반영됩니다. 단, 파라미터명 형식(Iname, Rname, 10자 필드)을 유지해야 합니다."
+        }
+      ],
+      "figure_refs": [],
+      "table_refs": [
+        "HE-CAE-2026-000001-T020"
+      ],
+      "children": []
+    }
+  ],
+  "figures": [],
+  "tables": [
+    {
+      "id": "HE-CAE-2026-000001-T001",
+      "number": 1,
+      "caption": "Table 1: (캡션 누락 — 검수 필요)",
+      "section_ref": "1.1",
+      "headers": [
+        "항목",
+        "FEM (HEX8/TET4)",
+        "IGA (NURBS)"
+      ],
+      "rows": [
+        [
+          "형상 함수",
+          "Lagrange 다항식",
+          "NURBS 기저함수"
+        ],
+        [
+          "형상 표현",
+          "근사 (절점 보간)",
+          "정확 (CAD와 동일)"
+        ],
+        [
+          "연속성",
+          "C0 (요소 경계)",
+          "Cp-1 (p차 기준)"
+        ],
+        [
+          "제어점",
+          "해석 자유도와 일치",
+          "CAD 제어점 역할"
+        ],
+        [
+          "메시 세분화",
+          "h-refinement (분할)",
+          "k-refinement (차수+세분화 동시)"
+        ],
+        [
+          "곡면 품질",
+          "메시에 의존",
+          "NURBS로 항상 보장"
+        ]
+      ]
+    },
+    {
+      "id": "HE-CAE-2026-000001-T002",
+      "number": 2,
+      "caption": "Table 2: (캡션 누락 — 검수 필요)",
+      "section_ref": "3.3",
+      "headers": [
+        "필드",
+        "타입",
+        "기본값",
+        "설명"
+      ],
+      "rows": [
+        [
+          "target_pid",
+          "int",
+          "필수",
+          "대상 FE 파트 PID"
+        ],
+        [
+          "element_size",
+          "float",
+          1.0,
+          "NURBS 박스의 균일 복셀 크기 (rr=rs=rt)"
+        ],
+        [
+          "element_size_r",
+          "float",
+          0.0,
+          "r(x)방향 복셀 크기 (0이면 element_size 사용)"
+        ],
+        [
+          "element_size_s",
+          "float",
+          0.0,
+          "s(y)방향 복셀 크기 (0이면 element_size 사용)"
+        ],
+        [
+          "element_size_t",
+          "float",
+          0.0,
+          "t(z)방향 복셀 크기 (0이면 element_size 사용)"
+        ],
+        [
+          "offset",
+          "float",
+          -1.0,
+          "bbox 고정 확장량 (-1이면 auto = element_size 사용)"
+        ],
+        [
+          "bbox_scale",
+          "float",
+          0.0,
+          "균일 bbox 스케일 (0=비활성; 1.5 = 각 측면 +25% 확장)"
+        ],
+        [
+          "bbox_scale_r",
+          "float",
+          0.0,
+          "r(x)방향 bbox 스케일 (0이면 bbox_scale 사용)"
+        ],
+        [
+          "bbox_scale_s",
+          "float",
+          0.0,
+          "s(y)방향 bbox 스케일"
+        ],
+        [
+          "bbox_scale_t",
+          "float",
+          0.0,
+          "t(z)방향 bbox 스케일"
+        ],
+        [
+          "ir",
+          "int",
+          0,
+          "적분 방식 (0=reduced Gauss, 1=full Gauss)"
+        ],
+        [
+          "styp",
+          "int",
+          4,
+          "IGA_DEV_STABILIZATION의 LCP 안정화 타입"
+        ],
+        [
+          "tollg",
+          "float",
+          "1.0e-3",
+          "LCP 안정화 임계값"
+        ],
+        [
+          "pr",
+          "int",
+          1,
+          "r(x)방향 NURBS 다항식 차수 (1=선형, 2=2차, 3=3차)"
+        ],
+        [
+          "ps",
+          "int",
+          1,
+          "s(y)방향 NURBS 다항식 차수"
+        ],
+        [
+          "pt",
+          "int",
+          1,
+          "t(z)방향 NURBS 다항식 차수"
+        ],
+        [
+          "nisr",
+          "int",
+          1,
+          "r방향 적분점 수"
+        ],
+        [
+          "niss",
+          "int",
+          1,
+          "s방향 적분점 수"
+        ],
+        [
+          "nist",
+          "int",
+          1,
+          "t방향 적분점 수"
+        ]
+      ]
+    },
+    {
+      "id": "HE-CAE-2026-000001-T003",
+      "number": 3,
+      "caption": "Table 3: (캡션 누락 — 검수 필요)",
+      "section_ref": "4.3",
+      "headers": [
+        "파라미터",
+        "값 (수식)"
+      ],
+      "rows": [
+        [
+          "Rrxminn",
+          "xmin - offR    (NURBS 박스 X 최솟값)"
+        ],
+        [
+          "Rrxmaxx",
+          "xmax + offR    (NURBS 박스 X 최댓값)"
+        ],
+        [
+          "Rryminn",
+          "ymin - offS    (NURBS 박스 Y 최솟값)"
+        ],
+        [
+          "Rrymaxx",
+          "ymax + offS    (NURBS 박스 Y 최댓값)"
+        ],
+        [
+          "Rrzminn",
+          "zmin - offT    (NURBS 박스 Z 최솟값)"
+        ],
+        [
+          "Rrzmaxx",
+          "zmax + offT    (NURBS 박스 Z 최댓값)"
+        ]
+      ]
+    },
+    {
+      "id": "HE-CAE-2026-000001-T004",
+      "number": 4,
+      "caption": "Table 4: (캡션 누락 — 검수 필요)",
+      "section_ref": "5.1",
+      "headers": [
+        "값",
+        "의미",
+        "연속성",
+        "용도"
+      ],
+      "rows": [
+        [
+          1,
+          "선형",
+          "C0",
+          "단순 형상, 빠른 계산"
+        ],
+        [
+          2,
+          "2차",
+          "C1",
+          "응력 구배 표현, 얇은 부품"
+        ],
+        [
+          3,
+          "3차",
+          "C2",
+          "고정밀 해석, 복잡한 응력분포"
+        ]
+      ]
+    },
+    {
+      "id": "HE-CAE-2026-000001-T005",
+      "number": 5,
+      "caption": "Table 5: (캡션 누락 — 검수 필요)",
+      "section_ref": "5.3",
+      "headers": [
+        "값",
+        "의미"
+      ],
+      "rows": [
+        [
+          1,
+          "기본 (reduced integration에서 충분)"
+        ],
+        [
+          2,
+          "정밀 (고차 NURBS에서 권장)"
+        ]
+      ]
+    },
+    {
+      "id": "HE-CAE-2026-000001-T006",
+      "number": 6,
+      "caption": "Table 6: (캡션 누락 — 검수 필요)",
+      "section_ref": "5.4",
+      "headers": [
+        "값",
+        "명칭",
+        "특성"
+      ],
+      "rows": [
+        [
+          0,
+          "Reduced Gauss",
+          "빠름, 대부분의 경우 충분, 기본값"
+        ],
+        [
+          1,
+          "Full Gauss",
+          "정밀, volumetric locking 억제에 유리"
+        ]
+      ]
+    },
+    {
+      "id": "HE-CAE-2026-000001-T007",
+      "number": 7,
+      "caption": "Table 7: (캡션 누락 — 검수 필요)",
+      "section_ref": "5.5",
+      "headers": [
+        "파라미터",
+        "기본값",
+        "의미"
+      ],
+      "rows": [
+        [
+          "styp=4",
+          4,
+          "안정화 타입 (LS-DYNA 내부 정의)"
+        ],
+        [
+          "tollg=1e-3",
+          "1.0e-3",
+          "적분점 제거 임계값 (NURBS 박스 경계 근처 처리)"
+        ]
+      ]
+    },
+    {
+      "id": "HE-CAE-2026-000001-T008",
+      "number": 8,
+      "caption": "Table 8: (캡션 누락 — 검수 필요)",
+      "section_ref": "7.1",
+      "headers": [
+        "파라미터명",
+        "타입",
+        "의미"
+      ],
+      "rows": [
+        [
+          "Iid",
+          "int",
+          "이 IGA 파트의 PID = SECID"
+        ],
+        [
+          "Imid",
+          "int",
+          "IGA 파트용 새 MID (FE와 다름)"
+        ],
+        [
+          "Ifepid",
+          "int",
+          "원본 FE 파트 PID (trim 경계)"
+        ],
+        [
+          "Rxmin",
+          "real",
+          "FE bbox X 최솟값"
+        ],
+        [
+          "Rxmax",
+          "real",
+          "FE bbox X 최댓값"
+        ],
+        [
+          "Rymin",
+          "real",
+          "FE bbox Y 최솟값"
+        ],
+        [
+          "Rymax",
+          "real",
+          "FE bbox Y 최댓값"
+        ],
+        [
+          "Rzmin",
+          "real",
+          "FE bbox Z 최솟값"
+        ],
+        [
+          "Rzmax",
+          "real",
+          "FE bbox Z 최댓값"
+        ],
+        [
+          "Rrr",
+          "real",
+          "r방향 NURBS refinement 요소 크기"
+        ],
+        [
+          "Rrs",
+          "real",
+          "s방향 NURBS refinement 요소 크기"
+        ],
+        [
+          "Rrt",
+          "real",
+          "t방향 NURBS refinement 요소 크기"
+        ],
+        [
+          "Rofr",
+          "real",
+          "r방향 bbox 확장량 (offset)"
+        ],
+        [
+          "Rofs",
+          "real",
+          "s방향 bbox 확장량"
+        ],
+        [
+          "Roft",
+          "real",
+          "t방향 bbox 확장량"
+        ],
+        [
+          "Iir",
+          "int",
+          "적분 방식 (0=reduced, 1=full)"
+        ],
+        [
+          "Istyp",
+          "int",
+          "LCP 안정화 타입"
+        ],
+        [
+          "Rtollg",
+          "real",
+          "LCP 임계값"
+        ],
+        [
+          "Rrxminn",
+          "real",
+          "NURBS 박스 X 최솟값 (= Rxmin - Rofr)"
+        ],
+        [
+          "Rrxmaxx",
+          "real",
+          "NURBS 박스 X 최댓값 (= Rxmax + Rofr)"
+        ],
+        [
+          "Rryminn",
+          "real",
+          "NURBS 박스 Y 최솟값 (= Rymin - Rofs)"
+        ],
+        [
+          "Rrymaxx",
+          "real",
+          "NURBS 박스 Y 최댓값 (= Rymax + Rofs)"
+        ],
+        [
+          "Rrzminn",
+          "real",
+          "NURBS 박스 Z 최솟값 (= Rzmin - Roft)"
+        ],
+        [
+          "Rrzmaxx",
+          "real",
+          "NURBS 박스 Z 최댓값 (= Rzmax + Roft)"
+        ]
+      ]
+    },
+    {
+      "id": "HE-CAE-2026-000001-T009",
+      "number": 9,
+      "caption": "Table 9: (캡션 누락 — 검수 필요)",
+      "section_ref": "7.3",
+      "headers": [
+        "필드",
+        "파라미터",
+        "의미"
+      ],
+      "rows": [
+        [
+          "SID",
+          "&id",
+          "Set ID (이 IGA 파트 ID와 동일)"
+        ],
+        [
+          "STYP",
+          "&styp",
+          "안정화 타입 (기본: 4)"
+        ],
+        [
+          "TOLLG",
+          "&tollg",
+          "적분점 제거 임계값 (기본: 1.0e-3)"
+        ]
+      ]
+    },
+    {
+      "id": "HE-CAE-2026-000001-T010",
+      "number": 10,
+      "caption": "Table 10: (캡션 누락 — 검수 필요)",
+      "section_ref": "7.5",
+      "headers": [
+        "필드",
+        "값",
+        "의미"
+      ],
+      "rows": [
+        [
+          "SECID",
+          "&id",
+          "섹션 ID (PID와 동일)"
+        ],
+        [
+          "ELFORM",
+          0,
+          "요소 정식화 자동 (LS-DYNA가 선택)"
+        ],
+        [
+          "IR",
+          "&ir",
+          "적분 방식 (0=reduced, 1=full)"
+        ]
+      ]
+    },
+    {
+      "id": "HE-CAE-2026-000001-T011",
+      "number": 11,
+      "caption": "Table 11: (캡션 누락 — 검수 필요)",
+      "section_ref": "7.6",
+      "headers": [
+        "필드",
+        "값",
+        "의미"
+      ],
+      "rows": [
+        [
+          "VID",
+          "&id",
+          "Volume ID"
+        ],
+        [
+          "PATCHID",
+          "&id",
+          "NURBS patch ID (*IGA_3D_NURBS_XYZ의 patchid)"
+        ],
+        [
+          "PID",
+          "(빈칸)",
+          "이 볼륨이 속할 IGA 파트 PID"
+        ],
+        [
+          "TETMSH",
+          -1,
+          "FE mesh를 trim 경계로 사용 (핵심!)"
+        ],
+        [
+          "FE PID",
+          "&fepid",
+          "trim 경계로 사용할 FE 파트 PID (Card 2)"
+        ]
+      ]
+    },
+    {
+      "id": "HE-CAE-2026-000001-T012",
+      "number": 12,
+      "caption": "Table 12: (캡션 누락 — 검수 필요)",
+      "section_ref": "7.7",
+      "headers": [
+        "필드",
+        "값",
+        "의미"
+      ],
+      "rows": [
+        [
+          "SID",
+          "&id",
+          "Solid set ID"
+        ],
+        [
+          "PID",
+          "&id",
+          "연결할 IGA 파트 PID"
+        ],
+        [
+          "NISR",
+          "nisr",
+          "r방향 적분점 수"
+        ],
+        [
+          "NISS",
+          "niss",
+          "s방향 적분점 수"
+        ],
+        [
+          "NIST",
+          "nist",
+          "t방향 적분점 수"
+        ],
+        [
+          "RID",
+          "&id",
+          "*IGA_REFINE_SOLID의 RID 참조"
+        ]
+      ]
+    },
+    {
+      "id": "HE-CAE-2026-000001-T013",
+      "number": 13,
+      "caption": "Table 13: (캡션 누락 — 검수 필요)",
+      "section_ref": "7.8",
+      "headers": [
+        "필드",
+        "값",
+        "의미"
+      ],
+      "rows": [
+        [
+          "PATCHID",
+          "&id",
+          "이 패치의 ID (IGA_DEV_VOLUME_XYZ와 일치)"
+        ],
+        [
+          "NR",
+          2,
+          "r방향 제어점 수"
+        ],
+        [
+          "NS",
+          2,
+          "s방향 제어점 수"
+        ],
+        [
+          "NT",
+          2,
+          "t방향 제어점 수"
+        ],
+        [
+          "PR",
+          "pr",
+          "r방향 다항식 차수"
+        ],
+        [
+          "PS",
+          "ps",
+          "s방향 다항식 차수"
+        ],
+        [
+          "PT",
+          "pt",
+          "t방향 다항식 차수"
+        ]
+      ]
+    },
+    {
+      "id": "HE-CAE-2026-000001-T014",
+      "number": 14,
+      "caption": "Table 14: (캡션 누락 — 검수 필요)",
+      "section_ref": "7.9",
+      "headers": [
+        "필드",
+        "값",
+        "의미"
+      ],
+      "rows": [
+        [
+          "RID",
+          "&id",
+          "Refinement ID (*IGA_SOLID에서 참조)"
+        ],
+        [
+          "RTYP",
+          2,
+          "Refinement 타입: 2=균일(uniform)"
+        ],
+        [
+          "HRTYP",
+          2,
+          "h-refinement 타입: 2=요소 크기 기반"
+        ],
+        [
+          "RR",
+          "&rr",
+          "r방향 목표 요소 크기"
+        ],
+        [
+          "RS",
+          "&rs",
+          "s방향 목표 요소 크기"
+        ],
+        [
+          "RT",
+          "&rt",
+          "t방향 목표 요소 크기"
+        ],
+        [
+          "ITR",
+          2,
+          "r방향 최소 refinement 반복 횟수"
+        ],
+        [
+          "ITS",
+          2,
+          "s방향 최소 refinement 반복 횟수"
+        ],
+        [
+          "ITT",
+          2,
+          "t방향 최소 refinement 반복 횟수"
+        ]
+      ]
+    },
+    {
+      "id": "HE-CAE-2026-000001-T015",
+      "number": 15,
+      "caption": "Table 15: (캡션 누락 — 검수 필요)",
+      "section_ref": "8.1",
+      "headers": [
+        "항목",
+        "내용"
+      ],
+      "rows": [
+        [
+          "전체 크기",
+          "x=0~20, y=0~10, z=0~10 (mm)"
+        ],
+        [
+          "절점 수",
+          "18개 (6×3 그리드)"
+        ],
+        [
+          "요소 수",
+          "4개 HEX8 (2×2 패턴)"
+        ],
+        [
+          "PID 1 (하부)",
+          "Lower layer, z=0~5, eid=1,2"
+        ],
+        [
+          "PID 2 (상부)",
+          "Upper layer, z=5~10, eid=3,4"
+        ],
+        [
+          "재질",
+          "MAT_ELASTIC: ro=7.85e-9 (t/mm/s), E=210000 MPa, nu=0.3"
+        ],
+        [
+          "섹션",
+          "SECTION_SOLID: secid=1, elform=1 (constant stress)"
+        ]
+      ]
+    },
+    {
+      "id": "HE-CAE-2026-000001-T016",
+      "number": 16,
+      "caption": "Table 16: (캡션 누락 — 검수 필요)",
+      "section_ref": "8.2",
+      "headers": [
+        "항목",
+        "값"
+      ],
+      "rows": [
+        [
+          "PID 1 bbox",
+          "x[0,20], y[0,10], z[0,5]"
+        ],
+        [
+          "auto offset",
+          "4.0 (= element_size)"
+        ],
+        [
+          "NURBS 박스",
+          "x[-4,24], y[-4,14], z[-4,9]"
+        ],
+        [
+          "rr=rs=rt",
+          "4.0 (균일 복셀)"
+        ],
+        [
+          "ir/styp/tollg",
+          "0 / 4 / 1.0e-3 (기본값)"
+        ],
+        [
+          "pr/ps/pt",
+          "1/1/1 (선형, 기본값)"
+        ],
+        [
+          "신규 IGA id",
+          "3 (maxPartId+1)"
+        ],
+        [
+          "신규 IGA mid",
+          "2 (maxMaterialId+1)"
+        ]
+      ]
+    },
+    {
+      "id": "HE-CAE-2026-000001-T017",
+      "number": 17,
+      "caption": "Table 17: (캡션 누락 — 검수 필요)",
+      "section_ref": "9.2",
+      "headers": [
+        "방식",
+        "YAML",
+        "용도"
+      ],
+      "rows": [
+        [
+          "고정 offset",
+          "offset: 2.0",
+          "파트 크기와 무관하게 일정한 여유 확보"
+        ],
+        [
+          "비율 scale",
+          "bbox_scale: 1.2",
+          "파트 크기 대비 일정 비율(20%) 여유"
+        ],
+        [
+          "auto (기본)",
+          "(offset 미지정)",
+          "element_size를 자동으로 offset 적용"
+        ]
+      ]
+    },
+    {
+      "id": "HE-CAE-2026-000001-T018",
+      "number": 18,
+      "caption": "Table 18: (캡션 누락 — 검수 필요)",
+      "section_ref": "10.2",
+      "headers": [
+        "Warning 번호",
+        "내용",
+        "원인"
+      ],
+      "rows": [
+        [
+          11541,
+          "Structured deck disabled",
+          "IGA 개발자 키워드 사용 시 정상"
+        ],
+        [
+          30128,
+          "Massless node detected",
+          "NURBS 제어점은 질량 없음 (정상)"
+        ],
+        [
+          30131,
+          "Node not attached",
+          "NURBS 박스 내 미사용 절점"
+        ]
+      ]
+    },
+    {
+      "id": "HE-CAE-2026-000001-T019",
+      "number": 19,
+      "caption": "Table 19: (캡션 누락 — 검수 필요)",
+      "section_ref": "11",
+      "headers": [
+        "제약",
+        "내용"
+      ],
+      "rows": [
+        [
+          "Shell 파트 불가",
+          "Solid 파트만 지원 (ELEMENT_SOLID)"
+        ],
+        [
+          "단일 NURBS 박스",
+          "L형/C형/복잡한 형상은 단일 직육면체로 표현 불가"
+        ],
+        [
+          "FE mesh 포함 필수",
+          "FE mesh가 NURBS 박스 안에 완전히 포함되어야 함"
+        ],
+        [
+          "LS-DYNA R12+ 필요",
+          "*IGA_DEV_* 키워드는 R12 이상에서만 지원"
+        ],
+        [
+          "MID 공유 불가",
+          "IGA 파트와 FE 파트는 반드시 다른 MID 사용"
+        ],
+        [
+          "offset > 0 권장",
+          "NURBS 박스가 FE mesh와 정확히 일치하면 경계 문제 발생 가능"
+        ]
+      ]
+    },
+    {
+      "id": "HE-CAE-2026-000001-T020",
+      "number": 20,
+      "caption": "Table 20: (캡션 누락 — 검수 필요)",
+      "section_ref": "12",
+      "headers": [
+        "버전",
+        "내용"
+      ],
+      "rows": [
+        [
+          "v1.2.x",
+          "초기 IGA 기능 구현 (단일 파트, assemble op 내 지원)"
+        ],
+        [
+          "v1.3.0",
+          "다중 파트 지원, bbox_scale (균일/축별), 축별 element_size, standalone iga 명령 추가, *PARAMETER_EXPRESSION_LOCAL 호환성 문제 해결"
+        ]
+      ]
+    }
+  ],
+  "sources": []
+}

@@ -1,0 +1,35 @@
+# API server core
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.9.0
+pydantic-settings>=2.6.0
+
+# PostgreSQL (async)
+asyncpg>=0.30.0
+sqlalchemy[asyncio]>=2.0.36
+alembic>=1.14.0
+pgvector>=0.3.0
+
+# Optional embedding providers (install on demand):
+#   pip install "openai>=1.0"   # for OpenAIEmbedder (set OPENAI_API_KEY)
+
+# Utilities
+python-dotenv>=1.0.1
+python-multipart>=0.0.12
+
+# Document converter
+python-docx>=1.1.0
+lxml>=5.3.0
+openpyxl>=3.1.0
+
+# MCP server (Model Context Protocol)
+mcp>=1.2.0
+
+# Observability (pure Python — cross-platform)
+prometheus-client>=0.20.0
+
+# Dev tools
+pytest>=8.3.0
+pytest-asyncio>=0.24.0
+httpx>=0.28.0
+ruff>=0.7.0
