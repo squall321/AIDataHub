@@ -123,17 +123,19 @@ ID 포맷, 스키마 디테일: [`docs/data_model.md`](docs/data_model.md).
 실제 파일은 `ATTACHMENTS_DIR` 하위에 `{record_id}/A001.{ext}` 로 저장,
 `/attachments/{...}` 정적 마운트 또는 `GET /api/records/{id}/attachments` 메타 조회.
 
-| kind | 예시 |
-|------|------|
-| figure | png, jpg, gif, wmf, emf |
-| document | pdf, docx, hwp |
-| spreadsheet | xlsx, csv |
-| media | mp3, mp4 |
-| archive | zip, 7z |
-| cad | step, catpart, sldprt |
-| drawing | dwg, dxf |
-| data | json, xml, yaml |
-| other | (그 외) |
+| kind | 예시 | 변환기 (소스 → DOC/DATA JSON) |
+|------|------|------------------------------|
+| figure | png, jpg, gif, wmf, emf | (첨부로만) |
+| document | docx, **pdf**, hwp | docx → `converter`, **pdf → `pdf_converter`** |
+| spreadsheet | xlsx, csv | xlsx → `excel_converter` |
+| slide | pptx | pptx → `ppt_converter` |
+| markup | md, markdown | md → `md_converter` |
+| media | mp3, mp4 | (첨부로만) |
+| archive | zip, 7z | (첨부로만) |
+| cad | step, catpart, sldprt | (첨부로만) |
+| drawing | dwg, dxf | (첨부로만) |
+| data | json, xml, yaml | (첨부로만) |
+| other | (그 외) | — |
 
 ## 분류 API (views)
 
@@ -179,6 +181,44 @@ JSON 구조화 로그(`request_id` 추적), 통일 에러 envelope:
 ```json
 { "error": { "code": "NOT_FOUND", "message": "...", "request_id": "..." } }
 ```
+
+## 서버사이드 변환
+
+`/api/convert` 엔드포인트로 **변환과 적재를 서버에서 한 번에** 처리할 수 있다.
+이전에는 사용자가 자신의 머신에서 CLI(`python -m converter ...`)를 돌려 JSON 을
+만든 뒤 별도로 적재해야 했지만, 이제는 원본 파일을 그대로 업로드하면 끝난다.
+
+지원 확장자: `.docx`, `.xlsx`, `.pptx`, `.md`, `.markdown`, `.pdf`. 업로드 크기 상한은 환경변수
+`MAX_UPLOAD_MB`(기본 50MB) 로 조정한다.
+
+> PDF 는 정보 손실이 가장 큰 포맷이다 — 변환 품질이 작성자의 PDF 작성 표준 준수 여부에
+> 강하게 의존한다. 자세한 가이드는 [`pdf_to_json_conversion_rules.md`](../pdf_to_json_conversion_rules.md) 참조.
+
+엔드포인트:
+
+- `POST /api/convert/`        : 변환만 — 결과 JSON 을 그대로 돌려준다.
+- `POST /api/convert/ingest`  : 변환 + DB INSERT/UPDATE — 멱등(content_hash 동일 시 skip).
+
+curl 예시:
+
+```bash
+# 변환만
+curl -X POST http://localhost:8000/api/convert/ \
+  -H "X-API-Key: $KEY" \
+  -F "file=@iga_guide.docx" \
+  -F "division=HE" -F "team=CAE" -F "year=2026" -F "seq=1" \
+  -F "tags=IGA,LS-DYNA" -F "agents=iga-analyst"
+
+# 변환 + 적재 (record_id / status / record 요약 반환)
+curl -X POST http://localhost:8000/api/convert/ingest \
+  -H "X-API-Key: $KEY" \
+  -F "file=@iga_guide.docx" \
+  -F "division=HE" -F "team=CAE" -F "year=2026" -F "seq=1" \
+  -F "tags=IGA,LS-DYNA" -F "agents=iga-analyst"
+```
+
+자세한 폼 필드/응답/에러 코드는 [docs/api_reference.md](docs/api_reference.md)
+의 `POST /api/convert` / `POST /api/convert/ingest` 섹션 참조.
 
 ## 테스트
 

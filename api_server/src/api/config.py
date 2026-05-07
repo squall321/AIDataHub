@@ -1,4 +1,5 @@
 """환경변수 기반 설정."""
+import tempfile
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -35,6 +36,12 @@ class Settings(BaseSettings):
     # 환경변수 ``ATTACHMENTS_DIR`` 로 오버라이드 가능. ``Path`` 타입이라
     # Windows / Linux 모두에서 분리자(`\\` vs ``/``) 가 자동 처리된다.
     attachments_dir: Path = Path("attachments")
+
+    # ------------------------------------------------------- /api/convert
+    # 업로드 가능한 최대 파일 크기 (MB). ``MAX_UPLOAD_MB`` 로 오버라이드.
+    max_upload_mb: int = 50
+    # 업로드 임시 저장소. ``UPLOAD_TEMP_DIR`` 로 오버라이드.
+    upload_temp_dir: Path = Path(tempfile.gettempdir()) / "ai_data_uploads"
 
 
 settings = Settings()

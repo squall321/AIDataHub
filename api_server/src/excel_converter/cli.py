@@ -6,6 +6,20 @@
         --division HE --team CAE --year 2026 \\
         --start-seq 100 --output-dir output \\
         --mode per_sheet --skip-empty --infer-units --header-row 1
+
+불규칙 시트 변환 예::
+
+    # 표가 B5 부터 시작하는 시트
+    python -m excel_converter messy.xlsx \\
+        --division HE --team CAE --year 2026 \\
+        --start-cell B5 --skip-blank-rows --infer-units
+
+데이터 의미 명시 (원칙 6) — _META + _GLOSSARY 시트 사용 예::
+
+    python -m excel_converter battery_test.xlsx \\
+        --division HE --team CAE --year 2026 \\
+        --infer-units \\
+        --meta-sheet _META --glossary-sheet _GLOSSARY
 """
 from __future__ import annotations
 
@@ -63,10 +77,48 @@ def build_parser() -> argparse.ArgumentParser:
         help="헤더가 위치한 1-based 행 번호 (기본 1)",
     )
     p.add_argument(
+        "--start-cell",
+        "--header-cell",
+        dest="start_cell",
+        type=str,
+        default=None,
+        help=(
+            "표 좌상단 셀 주소 (예: A5). 지정하면 --header-row 와 column 1 무시. "
+            "불규칙 시트(표가 시트 중간에 있을 때) 보정용."
+        ),
+    )
+    p.add_argument(
+        "--skip-blank-rows",
+        action="store_true",
+        help="데이터 사이의 빈 행을 제거 (skip-empty 와 달리 빈 시트는 유지)",
+    )
+    p.add_argument(
         "--notes",
         type=str,
         default="",
         help="모든 출력 JSON 에 첨부할 메모",
+    )
+    p.add_argument(
+        "--meta-sheet",
+        dest="meta_sheet",
+        type=str,
+        default="_META",
+        help=(
+            "워크북/시트 컨텍스트가 들어있는 예약 시트 이름 (기본 _META). "
+            "이 시트는 데이터로 변환되지 않고 RecordIn 메타로 머지된다. "
+            "규칙서 10장 참조."
+        ),
+    )
+    p.add_argument(
+        "--glossary-sheet",
+        dest="glossary_sheet",
+        type=str,
+        default="_GLOSSARY",
+        help=(
+            "컬럼 의미·단위·자료형 정의 시트 이름 (기본 _GLOSSARY). "
+            "이 시트도 데이터로 변환되지 않으며, 정의는 모든 데이터 시트에 적용된다. "
+            "규칙서 11장 참조."
+        ),
     )
     p.add_argument("--verbose", "-v", action="store_true", help="상세 로그")
     return p
@@ -96,9 +148,13 @@ def main(argv: list[str] | None = None) -> int:
         output_dir=Path(args.output_dir),
         mode=args.mode,
         skip_empty=args.skip_empty,
+        skip_blank_rows=args.skip_blank_rows,
         infer_units=args.infer_units,
         header_row=args.header_row,
+        start_cell=args.start_cell,
         notes=args.notes,
+        meta_sheet=args.meta_sheet,
+        glossary_sheet=args.glossary_sheet,
     )
 
     converter = XlsxConverter(opts)

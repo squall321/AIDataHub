@@ -20,7 +20,7 @@ from ..errors import register_exception_handlers
 from ..logging_config import configure_logging
 from ..middleware.metrics import MetricsMiddleware
 from ..middleware.request_logging import RequestLoggingMiddleware
-from . import agents, analytics, auth, data, metrics, records, search
+from . import agents, analytics, auth, convert, data, metrics, records, search
 
 
 def register_routers(app: FastAPI) -> None:
@@ -47,6 +47,7 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(agents.router)
     app.include_router(analytics.router)
     app.include_router(auth.router)
+    app.include_router(convert.router)
     if settings.enable_metrics:
         app.include_router(metrics.router)
 
@@ -63,6 +64,7 @@ __all__ = [
     "agents",
     "analytics",
     "auth",
+    "convert",
     "data",
     "metrics",
     "records",

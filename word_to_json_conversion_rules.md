@@ -1,9 +1,14 @@
 # Word → JSON 변환 규칙서
 ## 자동화 프로그램 구현 가이드 v1.0
 
-> 작성일: 2026-05-07  
-> 적용 대상: 표준 Word 문서를 [json_schema_rules.md](./json_schema_rules.md) 스키마로 변환하는 자동화 프로그램  
-> 자매 문서: [json_schema_rules.md](./json_schema_rules.md) (출력 JSON 규격)
+> 작성일: 2026-05-07
+> 적용 대상: 표준 Word 문서를 [json_schema_rules.md](./json_schema_rules.md) 스키마로 변환하는 자동화 프로그램
+> 자매 문서:
+>
+> - [json_schema_rules.md](./json_schema_rules.md) — JSON 스키마 전반 (모든 변환기 공통)
+> - [excel_to_json_conversion_rules.md](./excel_to_json_conversion_rules.md) — Excel 변환 규칙 (별도 파일)
+> - `ppt_to_json_conversion_rules.md` — PPT 변환 규칙 (별도 파일)
+> - `md_to_json_conversion_rules.md` — Markdown 변환 규칙 (별도 파일)
 
 ---
 
@@ -25,6 +30,10 @@
 14. [사전 검증 — Word 품질 체크](#14-사전-검증)
 15. [사후 검증 — JSON 유효성](#15-사후-검증)
 16. [알려진 한계와 처리 방침](#16-알려진-한계)
+17. [Excel 변환 (별도 문서)](#17-excel-변환-별도-문서)
+18. [변환기별 매핑 표](#18-변환기별-매핑-표)
+19. [휴리스틱 헤딩 감지 알고리즘](#19-휴리스틱-헤딩-감지-알고리즘)
+20. [검증 후 DB 적재 체크리스트](#20-검증-후-db-적재-체크리스트)
 
 ---
 
@@ -42,8 +51,16 @@
 
 ### 1.2 출력
 
-- 단일 JSON 파일 (스키마 v1.0)
-- 추출된 이미지는 별도 폴더 (경로는 `images/` 하위)
+- 단일 JSON 파일 (스키마 v1.0, `data_type = "DOC"`).
+- 추출된 그림·첨부 바이너리는 별도 폴더(`{doc_id}/` 하위)에 저장하고 JSON 에는 POSIX 형식의 상대 경로만 기록한다.
+- 출력 JSON 은 [json_schema_rules.md](./json_schema_rules.md) 의 7-키 구조를 따르며, `api.ingest.normalizer` 가 이를 `records / record_sections` 테이블로 적재한다.
+  - `meta.title` → `records.title`
+  - `meta.summary` → `records.summary`
+  - `meta.tags` → `records.tags`
+  - `sections[].id / level / title / content` → `record_sections.section_id / level / title / content_text`
+  - `sections[].figure_refs / table_refs` → `record_sections.figure_refs / table_refs`
+  - 본문 전체 JSON → `records.content` (JSONB)
+  - 정규화 시 `records.content_hash = sha256(canonical_json)` 자동 계산
 
 ### 1.3 처리하지 않는 것 (범위 밖)
 
@@ -130,6 +147,9 @@ Word는 Heading을 다음 스타일 ID로 표시한다.
 | 1 | Heading 1 | 제목 1 | `Heading1` |
 | 2 | Heading 2 | 제목 2 | `Heading2` |
 | 3 | Heading 3 | 제목 3 | `Heading3` |
+
+JSON 매핑: `Heading{N}` → `sections[].level = N` (N ∈ {1,2,3}).
+각 Heading 단락의 텍스트는 `sections[].title` 로 보존되며, 최상위(level=1) 첫 번째 헤딩의 텍스트는 `docProps/core.xml` 의 `title` 이 비어 있을 때 `meta.title` 후보가 된다.
 
 ### 4.2 감지 알고리즘
 
@@ -284,13 +304,17 @@ if paragraph.style.style_id == "Caption":
 Caption 스타일이 없는 경우, 텍스트 패턴으로 추정한다.
 
 ```
-정규식: ^(Figure|Fig\.?|그림|Table|Tbl\.?|표)\s*(\d+)\s*[:\.\-]\s*(.+)$
+정규식 (정식): ^(Figure|Fig\.|그림|Table|Tbl\.|표)\s*\d+\s*[:\.\-]\s*.+$
+구현용 그룹화: ^(Figure|Fig\.?|그림|Table|Tbl\.?|표)\s*(\d+)\s*[:\.\-]\s*(.+)$
 ```
 
 매칭되면:
-- group 1: 종류 ("Figure"/"그림" → 그림, "Table"/"표" → 표)
-- group 2: 번호
-- group 3: 설명
+
+- group 1: 종류 ("Figure"/"Fig."/"그림" → 그림, "Table"/"Tbl."/"표" → 표)
+- group 2: 번호 (정수)
+- group 3: 캡션 본문 (필수, 빈 문자열 불허)
+
+캡션 본문이 비면 6.4절의 "캡션 누락" 처리 규칙을 따른다.
 
 ### 6.3 캡션-그림 연결 규칙
 
@@ -388,6 +412,42 @@ Word가 그래프나 SmartArt를 EMF/WMF 벡터로 저장한 경우:
 ### 7.5 그림 순번
 
 문서 본문 등장 순서대로 1부터 부여 (섹션별로 초기화하지 않음).
+
+### 7.6 첨부(attachments) 추출 — kind/mime/caption/file_path
+
+`.docx` 안의 비텍스트 자원은 모두 `attachments[]` 로 추출하며, 본문 흐름 안에서는 `sections[].blocks[]` 의 ref 블록으로 위치를 보존한다. `kind` 는 다음 9종 중 하나로 결정한다.
+
+- `figure` — XML 단서: `a:blip` (`<w:drawing>` 안). 대상: `image/png`, `image/jpeg`, `image/gif`, `.emf`, `.wmf`.
+- `document` — XML 단서: `o:OLEObject` 임베디드 파트. 대상: `.pdf` (`application/pdf`), `.doc(x)`.
+- `spreadsheet` — XML 단서: `o:OLEObject` 임베디드 파트. 대상: `.xls(x)`, `.csv`.
+- `presentation` — XML 단서: `o:OLEObject` 임베디드 파트. 대상: `.ppt(x)`.
+- `media` — XML 단서: `<w:object>` 의 audio/video `r:embed`. 대상: `.mp3`, `.mp4`, `.wav`, `.avi`.
+- `archive` — XML 단서: `package` 관계 `r:embed`. 대상: `.zip`, `.7z`, `.tar.gz`.
+- `cad` — XML 단서: `o:OLEObject` 외부 CAD. 대상: `.step`, `.stp`, `.iges`, `.igs`, `.x_t`, `.CATPart`, `.sldprt`.
+- `code` — XML 단서: `o:OLEObject` 텍스트형 소스. 대상: `.py`, `.c`, `.cpp`, `.k`, `.inp`.
+- `other` — 위 어디에도 매핑되지 않음.
+
+분류 함수는 `converter/docx_parser.py:infer_attachment_kind(filename, mime)` 가 권위 있는 구현이다 (서버 측 `api.schemas.attachment.infer_attachment_kind` 의 거울).
+
+각 첨부에 대해 다음 4개 필드를 **필수**로 채운다.
+
+```json
+{
+  "id":         "HE-CAE-2026-000001-A001",
+  "kind":       "spreadsheet",
+  "mime_type":  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "caption":    "Table 3: 시험 결과 원시 데이터 (.xlsx)",
+  "file_path":  "HE-CAE-2026-000001/A001.xlsx"
+}
+```
+
+규칙:
+
+- `kind`, `mime_type`, `caption`, `file_path` 4개 모두 비어 있어선 안 된다 (검증 단계에서 거부).
+- `caption` 누락 시 6.4절의 자동 캡션 규칙을 적용 (`"<Kind> N: (캡션 누락 — 검수 필요)"`).
+- `file_path` 는 **POSIX 슬래시** (`/`) 만 사용. 백슬래시(`\\`) 절대 금지.
+- 경로 형식: `"{doc_id}/A{nnn}.{ext}"` (선행 슬래시 없음, 정적 마운트 `/attachments` 직하).
+- `mime_type` 결정 우선순위: `[Content_Types].xml` 의 override → 파일 확장자 → `application/octet-stream` (fallback).
 
 ---
 
@@ -828,6 +888,107 @@ def validate_output(json_obj):
 | 같은 외부 CAD 파일을 두 문서가 참조해도 sources의 id는 서로 다름 | hash_sha256 기준으로 동일성 사후 판정 |
 | LLM 기반 summary·tags 생성은 LLM 호출 비용 발생 | 작성자가 [SUMMARY]/[TAGS] 마커로 직접 작성 권장 |
 | 한글 Word의 일부 사용자 지정 스타일은 자동 인식 어려움 | base_style 추적으로 우회, 안 되면 경고 |
+
+---
+
+## 17. Excel 변환 (별도 문서)
+
+Excel→JSON 변환 규칙은 [excel_to_json_conversion_rules.md](./excel_to_json_conversion_rules.md) 에 분리되어 있다.
+
+해당 문서는 다음을 다룬다.
+
+- 표 데이터(`type=DATA`) 로의 직접 변환 규칙
+- Excel 작성 5원칙 (시트 상단 고정, 헤더 단위 명시, 셀 병합 금지, 색상 별도 컬럼화, 1시트 1주제)
+- CLI 옵션 (`--mode`, `--header-row`, `--start-cell`, `--skip-blank-rows`, `--skip-empty`, `--infer-units`)
+- 불규칙 Excel 처리 절차 (자동 탐지 + `--start-cell` 보정)
+- 변환기별 매핑 표 및 알려진 한계
+
+변환기 구현은 `src/excel_converter/` 의 openpyxl 기반 모듈을 따른다.
+
+---
+
+## 18. 변환기별 매핑 표
+
+각 Word 요소가 어느 XML 위치에서 발견되어 어느 JSON 출력으로 매핑되는지 한눈에 정리한다. 이 표는 [json_schema_rules.md](./json_schema_rules.md) 의 7-키 구조 및 `record_sections` 컬럼과 직접 대응된다.
+
+| Word 요소 | XML 위치 | JSON 출력 위치 |
+| --------- | -------- | -------------- |
+| Heading 1 | `w:pStyle="Heading1"` | `sections[].level=1` |
+| Heading 2 | `w:pStyle="Heading2"` | `sections[].level=2` |
+| Heading 3 | `w:pStyle="Heading3"` | `sections[].level=3` |
+| 단락 | `w:p` (no special style) | `sections[].blocks[type=paragraph]` |
+| 표 | `w:tbl` | `tables[]` + `sections[].table_refs[]` |
+| 인라인 그림 | `a:blip` | `attachments[kind=figure]` + `sections[].blocks[type=figure]` |
+| OLE 객체 | `w:object/o:OLEObject` | `attachments[kind=document/spreadsheet/...]` |
+| 캡션 | next paragraph `w:pStyle="Caption"` | `tables[].caption` 또는 `attachments[].caption` |
+| 자동 번호 매겨진 헤딩 | `numbering.xml` + Heading style | `section_id` (sequential `1`, `1.1`, `2`, ...) |
+| 리스트(불릿/번호) | `w:p` + `w:numPr` | `sections[].blocks[type=list]` |
+| 코드/등폭 단락 | `w:p` (style `Code`/`Source` 또는 등폭 폰트) | `sections[].blocks[type=code]` |
+| 하이퍼링크 | `w:hyperlink` | 본문 `[text](url)` 인라인 |
+
+표 행 수: 12.
+
+---
+
+## 19. 휴리스틱 헤딩 감지 알고리즘
+
+Heading 스타일이 누락된 단락을 텍스트 패턴으로 복구하는 알고리즘이다. `converter/docx_parser.py` 가 이 사양의 권위 있는 구현이다.
+
+### 19.1 Pre-scan (1차 통과)
+
+```text
+for each paragraph p in document:
+    if p has Heading{1,2,3} style:
+        confirmed[p] = level
+        continue
+    if regex_match(p.text, r"^(\d+(?:\.\d+){0,2})\.?\s+(.+)$"):
+        candidates.append((p, parsed_number, parsed_title))
+```
+
+### 19.2 Confirm (2차 통과 — 등급별 규칙)
+
+- **level-2/3 candidates** (`N.M` 또는 `N.M.K` 형식)는 **항상 확정**한다.
+- **level-1 candidates** (`N` 단독)는 다음 중 하나일 때만 확정한다:
+  - 같은 prefix 의 sub-heading (`N.1`, `N.2`, ...) 이 문서 뒷부분에 존재.
+  - 또는 19.3 의 sequence rule 에 의해 보조 확정.
+
+### 19.3 Sequence rule (확장 확정)
+
+- 마지막으로 확정된 level-1 번호를 `last_l1` 이라 하자.
+- 이후 등장하는 후보 중 번호가 정확히 `last_l1+1`, `last_l1+2`, ... 처럼 **연속**이면 추가로 확정한다.
+- 비연속(예: `last_l1=3` 인데 `7` 등장)은 본문 단락으로 폐기.
+
+### 19.4 결과 적용
+
+확정된 후보는 `level` 과 `section_id` 를 부여받고 4.6 의 자동 부여와 동일한 트리에 삽입된다. 확정 실패한 후보는 일반 본문 단락으로 처리되며 경고 로그를 남기지 않는다 (오탐 방지).
+
+### 19.5 한계
+
+- 형식이 일정하지 않은 문서(예: 같은 레벨에 `1)`, `1.`, `Chapter 1` 혼재)는 부분 복구만 가능. 12장 비표준 처리 정책 적용.
+- 휴리스틱이 동작한 문서는 출력 JSON 의 `meta.heading_source = "heuristic"` 으로 표시.
+
+---
+
+## 20. 검증 후 DB 적재 체크리스트
+
+`api.ingest.normalizer` 가 변환된 JSON 을 DB 에 삽입하기 직전에 수행하는 최종 검증이다. 한 항목이라도 실패하면 적재 거부 후 `output/invalid/` 로 격리한다.
+
+1. **id 형식 유효성** — `^DOC-[A-Z]{2,4}-[A-Z]{2,6}-\d{4}-\d{6}$` 정규식 통과.
+2. **data_type='DOC'** — 정규화 후 최종 `Record.data_type` 이 `"DOC"` 인지 확인.
+3. **meta.title non-empty** — 공백 제거 후 길이 ≥ 1.
+4. **sections recursion depth ≤ 3** — `sections[].sections[].sections[]` 까지만 허용 (level=4 이상 거부).
+5. **figure_refs 해소** — 모든 `sections[].figure_refs[]` 의 id 가 `figures[].id` 또는 `attachments[kind=figure].id` 에 존재.
+6. **table_refs 해소** — 모든 `sections[].table_refs[]` 의 id 가 `tables[].id` 에 존재.
+7. **첨부 캡션 비어 있지 않음** — `attachments[].caption` 의 trim 길이 ≥ 1 (자동 캡션 허용).
+8. **첨부 file_path POSIX** — 백슬래시 미포함 + 선행 슬래시 미포함 + `{doc_id}/` 로 시작.
+9. **content_hash 계산됨** — `records.content_hash` 가 `sha256(canonical_json(records.content))` 와 일치.
+10. **schema_version 일치** — 출력의 `schema_version` 이 정규화기가 기대하는 값(`"1.0"`)과 일치.
+11. **tags 최소 2개** — `meta.tags` 길이 ≥ 2 (LLM 태깅 실패 시 기본 태그 보강).
+12. **summary 최소 길이** — `meta.summary` 길이 ≥ 30자.
+
+검증 항목 수: 12.
+
+실패 시 동작은 `json_schema_rules.md` 13장 검증 체크리스트와 일관되게 처리한다.
 
 ---
 

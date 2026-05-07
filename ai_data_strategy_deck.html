@@ -242,17 +242,18 @@ tr:hover td{background:var(--light);}
   <button onclick="location.href='#pipeline'">03</button>
   <button onclick="location.href='#word-rules'">04</button>
   <button onclick="location.href='#ppt-rules'">05</button>
-  <button onclick="location.href='#json-schema'">06</button>
-  <button onclick="location.href='#postgres'">07</button>
-  <button onclick="location.href='#json-detail'">08</button>
-  <button onclick="location.href='#metadata-views'">09</button>
-  <button onclick="location.href='#blocks'">10</button>
-  <button onclick="location.href='#converter'">11</button>
-  <button onclick="location.href='#multi-format-embed'">12</button>
-  <button onclick="location.href='#example'">13</button>
-  <button onclick="location.href='#heuristic'">14</button>
-  <button onclick="location.href='#ai-qa'">15</button>
-  <button onclick="location.href='#next-phase'">16</button>
+  <button onclick="location.href='#excel-rules'">06</button>
+  <button onclick="location.href='#json-schema'">07</button>
+  <button onclick="location.href='#postgres'">08</button>
+  <button onclick="location.href='#json-detail'">09</button>
+  <button onclick="location.href='#metadata-views'">10</button>
+  <button onclick="location.href='#blocks'">11</button>
+  <button onclick="location.href='#converter'">12</button>
+  <button onclick="location.href='#multi-format-embed'">13</button>
+  <button onclick="location.href='#example'">14</button>
+  <button onclick="location.href='#heuristic'">15</button>
+  <button onclick="location.href='#ai-qa'">16</button>
+  <button onclick="location.href='#next-phase'">17</button>
  </div>
 </nav>
 
@@ -305,7 +306,7 @@ tr:hover td{background:var(--light);}
     <tbody>
      <tr><td><strong>PPT</strong></td><td><span class="tag tag-orange">부분적</span></td><td>레이아웃·그림이 핵심 — 텍스트 추출 시 맥락 소실</td></tr>
      <tr><td><strong>Excel</strong></td><td><span class="tag tag-orange">부분적</span></td><td>수식·셀 병합·색상 의미 — 평문화 시 소실</td></tr>
-     <tr><td><strong>PDF</strong></td><td><span class="tag tag-orange">어려움</span></td><td>스캔 PDF는 이미지, 텍스트 PDF도 표 구조 소실</td></tr>
+     <tr><td><strong>PDF</strong></td><td><span class="tag tag-orange">지원됨 (제한적)</span></td><td>텍스트 PDF는 변환 가능 (outline·표 추출). 스캔 PDF는 OCR 필요 (미지원)</td></tr>
      <tr><td><strong>Word</strong></td><td><span class="tag tag-orange">편차 큼</span></td><td>Heading·캡션 미사용 시 계층 없음, 표·그림 레이블 없음</td></tr>
     </tbody>
    </table>
@@ -445,7 +446,7 @@ tr:hover td{background:var(--light);}
   <div class="wf-step">
    <span class="wf-n">STEP 1</span>
    <div class="wf-t">소스 변환</div>
-   <div class="wf-d">PPT·Excel·PDF를 <strong>Word로 변환</strong>. 내용 이전이 목적. 시각 디자인은 버린다.</div>
+   <div class="wf-d">PPT·Excel·<strong>PDF</strong>·MD를 직접 변환 (또는 Word로 옮긴 뒤 변환). PDF는 outline·표·메타를 추출하지만 정보 손실이 가장 크므로 표준 양식 권장.</div>
   </div>
   <div class="wf-arrow">›</div>
   <div class="wf-step" style="border-color:var(--teal);">
@@ -650,9 +651,187 @@ tr:hover td{background:var(--light);}
  <div class="slide-footer">표준 .potx 템플릿 + 작성 가이드를 배포하면 PPT도 Word와 동일한 변환 품질을 얻는다</div>
 </section>
 
-<!-- ===== SLIDE 06 ===== -->
-<section class="slide" id="json-schema">
+<!-- ===== SLIDE 06: Excel 작성 표준 ===== -->
+<section class="slide" id="excel-rules">
  <div class="slide-num">SLIDE 06</div>
+ <h2 class="slide-title">Excel 작성 표준 — <span>표 데이터 + 데이터의 의미</span></h2>
+ <div class="slide-sub">Excel 시트 → DATA type JSON으로 직변환된다. 표 자체는 데이터, <code>_META</code>·<code>_GLOSSARY</code> 시트는 의미. AI가 데이터를 안다는 건 두 시트를 같이 읽는다는 것이다.</div>
+
+ <h3 class="sec">Excel의 구조적 한계</h3>
+ <div class="four-col" style="margin-bottom:1.2rem;">
+  <div class="card red">
+   <h4>본문 흐름 부재</h4>
+   <p>시트 단위로 분리되어 본문 흐름이 형성되지 않는다. Word·PPT 같은 서술 구조가 없다.</p>
+  </div>
+  <div class="card red">
+   <h4>표 위치 임의성</h4>
+   <p>표가 시트 임의 위치에 배치되면 헤더 자동 인식이 어려워진다.</p>
+  </div>
+  <div class="card red">
+   <h4>서식 의미 소실</h4>
+   <p>셀 병합·서식·색상으로 정보를 표현하면 변환 시 의미가 소실된다.</p>
+  </div>
+  <div class="card red">
+   <h4>수식·차트 미캡처</h4>
+   <p>수식은 계산 결과만 추출되고 차트·이미지는 변환되지 않는다.</p>
+  </div>
+ </div>
+
+ <h3 class="sec">6가지 작성 원칙</h3>
+ <div class="three-col" style="margin-bottom:1rem;">
+  <div class="card teal">
+   <h4>원칙 1 — 시트 상단 고정 (가장 중요)</h4>
+   <p>표는 항상 <code>A1</code>부터 시작한다. 시트 중간에 애매하게 표를 띄우지 않는다.</p>
+   <div style="margin-top:.7rem;font-size:.78rem;color:#475569;line-height:1.6;">
+    <strong>이유:</strong><br/>
+    1행 = 헤더, 2행부터 데이터. 표 위·옆에 빈 셀이나 메타 정보를 두면 헤더 자동 인식이 어려워진다.
+   </div>
+  </div>
+  <div class="card purple">
+   <h4>원칙 2 — 헤더에 단위 명시</h4>
+   <p><code>무게(kg)</code>, <code>응력(MPa)</code>, <code>시간(s)</code>처럼 단위를 헤더에 포함한다.</p>
+   <div style="margin-top:.7rem;font-size:.78rem;color:#475569;line-height:1.6;">
+    <strong>이유:</strong><br/>
+    변환기의 <code>--infer-units</code> 가 자동 분리한다: <code>("무게", "kg")</code>. 같은 단위라도 명시하지 않으면 분석에서 단위 혼선이 발생한다.
+   </div>
+  </div>
+  <div class="card orange">
+   <h4>원칙 3 — 셀 병합 금지</h4>
+   <p>헤더 행은 절대 병합하지 않는다. 데이터 행도 같은 값을 반복 입력한다.</p>
+   <div style="margin-top:.7rem;font-size:.78rem;color:#475569;line-height:1.6;">
+    <strong>이유:</strong><br/>
+    변환기는 병합된 셀 값을 모든 셀에 복제하지만 의도가 손실될 수 있다. 같은 값을 표현하려면 셀을 합치지 말고 반복 입력한다.
+   </div>
+  </div>
+ </div>
+ <div class="three-col" style="margin-bottom:1.2rem;">
+  <div class="card green">
+   <h4>원칙 4 — 색상 의미 별도 컬럼화</h4>
+   <p>"빨간 행 = 불량" 같은 색상 의미는 별도 컬럼(<code>불량여부</code>)으로 명시한다. 색상은 변환기에 전달되지 않는다. 조건부 서식 대신 데이터 값 자체로 표현한다.</p>
+  </div>
+  <div class="card accent">
+   <h4>원칙 5 — 1시트 1주제</h4>
+   <p>하나의 시트에 한 가지 주제만 (한 종류의 측정 데이터). 같은 시트에 여러 표를 두지 않는다. 다른 주제는 다른 시트로 분리한다.</p>
+  </div>
+  <div class="card red">
+   <h4>원칙 6 — 데이터 의미 명시 (★ 핵심)</h4>
+   <p>표 자체는 숫자 행렬일 뿐. <strong><code>_META</code> + <code>_GLOSSARY</code></strong> 시트로 데이터의 의미·시험 방법·컬럼 정의를 Excel 자체에 기술한다.</p>
+   <div style="margin-top:.7rem;font-size:.78rem;color:#475569;line-height:1.6;">
+    <strong>이유:</strong><br/>
+    "100 / 250 / 0.85" 만 보면 사람도 AI도 의미를 모른다. 컨텍스트가 없으면 데이터는 검색 불가능한 행렬로 남는다.
+   </div>
+  </div>
+ </div>
+
+ <h3 class="sec">데이터 의미를 기술하는 3가지 방법</h3>
+ <div class="three-col" style="margin-bottom:1.2rem;">
+  <div class="card dark">
+   <h4><code>_META</code> 시트 — 워크북·시트 컨텍스트</h4>
+   <p style="font-size:.82rem;color:#cbd5e1;">2열(<code>key | value</code>) 구조. 워크북 레벨 키(title/summary/tags/agents/domain)와 시트 레벨 키(<code>sheet:Sheet1.method</code> 등)를 모두 담는다.</p>
+   <div style="font-family:'Consolas','Courier New',monospace;font-size:.72rem;color:#86efac;line-height:1.7;margin-top:.6rem;">
+    title | 브라켓 하중 시험 (2026-04)<br/>
+    tags | 시험,브라켓,하중<br/>
+    sheet:Sheet1.method | KS B 0814<br/>
+    sheet:Sheet1.condition | 23±2℃, 50%RH<br/>
+    sheet:Sheet1.equipment | UTM-500
+   </div>
+  </div>
+  <div class="card dark">
+   <h4><code>_GLOSSARY</code> 시트 — 컬럼 의미 정의</h4>
+   <p style="font-size:.82rem;color:#cbd5e1;">4열(<code>column | description | unit | dtype</code>) 구조. 헤더와 매칭되는 컬럼별 의미·단위·자료형을 정의한다.</p>
+   <div style="font-family:'Consolas','Courier New',monospace;font-size:.72rem;color:#86efac;line-height:1.7;margin-top:.6rem;">
+    무게 | 시험 직전 측정 | g | float<br/>
+    단면적 | 시험부 단면적 | mm² | float<br/>
+    최대하중 | 시험 중 최대 하중 | N | float<br/>
+    파괴여부 | 파괴 발생 여부 | - | enum:Y/N
+   </div>
+  </div>
+  <div class="card dark">
+   <h4>워크북 빌트인 속성 — 폴백</h4>
+   <p style="font-size:.82rem;color:#cbd5e1;">File → Info → Properties 의 <code>Title</code>, <code>Subject</code>, <code>Comments</code>, <code>Keywords</code>. <code>_META</code>가 없을 때만 사용되는 폴백.</p>
+   <div style="font-size:.78rem;color:#94a3b8;line-height:1.7;margin-top:.6rem;">
+    우선순위 (낮음→높음):<br/>
+    빌트인 → 헤더 인라인 단위 →<br/>
+    <code>_GLOSSARY</code> → <code>_META</code> → CLI 인자
+   </div>
+  </div>
+ </div>
+
+ <h3 class="sec">의미 없는 Excel vs 의미가 명시된 Excel</h3>
+ <div class="vs-grid" style="margin-bottom:1.2rem;">
+  <div class="vs-card bad">
+   <h4>✗ 데이터만 있는 Excel</h4>
+   <ul style="font-size:.82rem;color:#7f1d1d;padding-left:1.2rem;line-height:1.8;">
+    <li>"100 / 250 / 0.85" — 단위와 의미를 알 수 없음</li>
+    <li>이 시트가 무엇을 측정한 것인가? 모름</li>
+    <li>측정 방법·시험 표준은? 모름</li>
+    <li>측정 조건(온도·습도)은? 모름</li>
+    <li>"파괴여부" Y/N — Y 가 양품인가 불량인가? 모름</li>
+    <li>RAG 검색 시 데이터 매칭 불가능</li>
+   </ul>
+  </div>
+  <div class="vs-card good">
+   <h4>✓ <code>_META</code> + <code>_GLOSSARY</code> 포함 Excel</h4>
+   <ul style="font-size:.82rem;color:#14532d;padding-left:1.2rem;line-height:1.8;">
+    <li><code>_META.title</code> — "브라켓 하중 시험 결과 (2026-04)"</li>
+    <li><code>sheet:Sheet1.method</code> — "KS B 0814 표준 인장시험"</li>
+    <li><code>sheet:Sheet1.condition</code> — "상온 23±2℃, 습도 50%RH"</li>
+    <li><code>_GLOSSARY.최대하중</code> — "시험 중 기록된 최대 하중 (N, float)"</li>
+    <li><code>tags=[시험,브라켓,하중]</code> — RAG 검색 가능</li>
+    <li>AI가 "이 데이터는 무엇인가" 에 답할 수 있음</li>
+   </ul>
+  </div>
+ </div>
+
+ <h3 class="sec">불규칙한 Excel 처리 방법</h3>
+ <div class="vs-grid">
+  <div class="vs-card bad">
+   <h4>✗ 불규칙한 형태</h4>
+   <ul style="font-size:.82rem;color:#7f1d1d;padding-left:1.2rem;line-height:1.8;">
+    <li>표가 시트 중간(예: B5)에서 시작</li>
+    <li>시트 상단에 제목 셀과 메타 정보(작성자·날짜)가 박혀 있음</li>
+    <li>데이터 사이에 빈 행이 들어가 있음</li>
+    <li>여러 표가 한 시트에 좌우로 나란히 배치</li>
+    <li>셀 병합으로 그룹 헤더 표현 (2행 헤더)</li>
+    <li>차트·이미지가 데이터와 겹쳐 있음</li>
+   </ul>
+  </div>
+  <div class="vs-card good">
+   <h4>✓ 변환기에 친화적인 형태</h4>
+   <ul style="font-size:.82rem;color:#14532d;padding-left:1.2rem;line-height:1.8;">
+    <li><code>A1</code>부터 헤더 시작</li>
+    <li>빈 행 없이 연속된 데이터</li>
+    <li>1시트 1주제, 시트 이름 = 데이터 주제</li>
+    <li>단위는 헤더에 괄호로 명시</li>
+    <li>색상·서식 의미는 별도 컬럼으로</li>
+   </ul>
+  </div>
+ </div>
+
+ <h3 class="sec">불규칙 Excel 변환 옵션</h3>
+ <div class="arch-box" style="margin-bottom:1rem;">
+  <div style="font-family:'Consolas','Courier New',monospace;font-size:.82rem;line-height:1.9;color:#e2e8f0;">
+   <div><span style="color:#fbbf24;">--header-row N</span>          &nbsp;&nbsp;# 헤더 행 위치 명시 (기본 1)</div>
+   <div><span style="color:#fbbf24;">--start-cell A5</span>         &nbsp;&nbsp;# 표 시작 셀 명시 (불규칙 시트용)</div>
+   <div><span style="color:#fbbf24;">--mode combined</span>        &nbsp;&nbsp;&nbsp;# 모든 시트를 하나의 record로 묶음</div>
+   <div><span style="color:#fbbf24;">--skip-empty</span>           &nbsp;&nbsp;&nbsp;&nbsp;# 빈 시트 자동 무시</div>
+   <div><span style="color:#fbbf24;">--infer-units</span>          &nbsp;&nbsp;&nbsp;# 헤더의 (단위) 자동 분리</div>
+   <div><span style="color:#fbbf24;">--meta-sheet _META</span>     &nbsp;&nbsp;&nbsp;# 워크북·시트 컨텍스트 시트 이름</div>
+   <div><span style="color:#fbbf24;">--glossary-sheet _GLOSSARY</span># 컬럼 의미 정의 시트 이름</div>
+   <div style="margin-top:.6rem;color:#94a3b8;"># 변환 후 검수 필수 — 변환기 경고 로그 확인</div>
+  </div>
+ </div>
+
+ <div class="insight-box">
+  <strong>표준 배포 전략 —</strong> 일반 사용자가 Excel을 자유롭게 만들면 변환 손실이 크다. 표 작성 표준을 사전 배포하고, 표준을 따르지 않는 기존 자료는 <code>--start-cell</code>·<code>--header-row</code> 옵션으로 보정한다.
+ </div>
+
+ <div class="slide-footer">표 형식 5원칙 + 의미 명시 1원칙 = 6원칙. <code>_META</code>·<code>_GLOSSARY</code> 가 있어야 데이터가 검색 가능한 자산이 된다.</div>
+</section>
+
+<!-- ===== SLIDE 07 ===== -->
+<section class="slide" id="json-schema">
+ <div class="slide-num">SLIDE 07</div>
  <h2 class="slide-title">범용 <span>JSON 스키마</span></h2>
  <div class="slide-sub">AI가 문서를 이해하려면 텍스트 덩어리가 아닌 구조화된 형태가 필요.</div>
 
@@ -701,9 +880,9 @@ tr:hover td{background:var(--light);}
  <div class="slide-footer">직원이 JSON을 직접 다룰 일 없음. 변환 스크립트가 Word에서 자동 생성.</div>
 </section>
 
-<!-- ===== SLIDE 07 ===== -->
+<!-- ===== SLIDE 08 ===== -->
 <section class="slide" id="postgres">
- <div class="slide-num">SLIDE 07</div>
+ <div class="slide-num">SLIDE 08</div>
  <h2 class="slide-title">PostgreSQL로 <span>데이터 축적</span></h2>
  <div class="slide-sub">JSON 파일을 파일 시스템에만 두면 단순 보관. PostgreSQL에 적재하면 검색·AI 연동 가능.</div>
 
@@ -792,9 +971,9 @@ tr:hover td{background:var(--light);}
  <div class="slide-footer">PostgreSQL: 오픈소스, 라이선스 비용 없음, Docker 한 줄로 설치</div>
 </section>
 
-<!-- ===== SLIDE 08: JSON 스키마 상세 ===== -->
+<!-- ===== SLIDE 09: JSON 스키마 상세 ===== -->
 <section class="slide" id="json-detail">
- <div class="slide-num">SLIDE 08</div>
+ <div class="slide-num">SLIDE 09</div>
  <h2 class="slide-title">JSON 스키마 <span>상세 규칙</span></h2>
  <div class="slide-sub">[json_schema_rules.md] v1.0 — 7개 최상위 키 + 전역 고유 ID 체계로 모든 레코드를 일관되게 표현. attachments는 9종을 포괄.</div>
 
@@ -853,9 +1032,9 @@ tr:hover td{background:var(--light);}
  <div class="slide-footer">상세 규칙: [json_schema_rules.md] — 13장 검증 체크리스트 포함</div>
 </section>
 
-<!-- ===== SLIDE 09: 메타데이터 + 분류 API ===== -->
+<!-- ===== SLIDE 10: 메타데이터 + 분류 API ===== -->
 <section class="slide" id="metadata-views">
- <div class="slide-num">SLIDE 09</div>
+ <div class="slide-num">SLIDE 10</div>
  <h2 class="slide-title">메타데이터 보강 + <span>분류 API</span></h2>
  <div class="slide-sub">일반화된 데이터에 12개 메타 필드 추가. 같은 데이터를 모양별·분류별로 슬라이스해서 가져온다.</div>
 
@@ -939,9 +1118,9 @@ tr:hover td{background:var(--light);}
  <div class="slide-footer">capabilities는 ingest 시 자동 산출. classification·status·valid_until은 거버넌스용 필수 메타.</div>
 </section>
 
-<!-- ===== SLIDE 10: blocks 구조 ===== -->
+<!-- ===== SLIDE 11: blocks 구조 ===== -->
 <section class="slide" id="blocks">
- <div class="slide-num">SLIDE 10</div>
+ <div class="slide-num">SLIDE 11</div>
  <h2 class="slide-title">sections.blocks — <span>순서 보존</span></h2>
  <div class="slide-sub">본문을 평탄한 텍스트가 아닌 블록 배열로 구성. 표·그림이 원본 위치에 박혀 있어 AI가 맥락 그대로 읽음.</div>
 
@@ -999,9 +1178,9 @@ tr:hover td{background:var(--light);}
  <div class="slide-footer">data ≠ context. 데이터 추출과 맥락 보존은 별개의 문제.</div>
 </section>
 
-<!-- ===== SLIDE 11: 변환기 ===== -->
+<!-- ===== SLIDE 12: 변환기 ===== -->
 <section class="slide" id="converter">
- <div class="slide-num">SLIDE 11</div>
+ <div class="slide-num">SLIDE 12</div>
  <h2 class="slide-title">변환기 — <span>Word → JSON 자동화</span></h2>
  <div class="slide-sub">[word_to_json_conversion_rules.md] 규칙을 따르는 Python 변환기. python-docx 기반.</div>
 
@@ -1074,9 +1253,9 @@ $ python -m converter file.docx \<br/>
 </section>
 
 
-<!-- ===== SLIDE 12: 다중 포맷 변환기 + pgvector ===== -->
+<!-- ===== SLIDE 13: 다중 포맷 변환기 + pgvector ===== -->
 <section class="slide" id="multi-format-embed">
- <div class="slide-num">SLIDE 12</div>
+ <div class="slide-num">SLIDE 13</div>
  <h2 class="slide-title">다중 포맷 변환기 + <span>pgvector 시맨틱 검색</span></h2>
  <div class="slide-sub">Word 외에 Excel 직변환을 추가. 모든 섹션은 384차원 벡터로 임베딩되어 의미 기반 검색 가능.</div>
 
@@ -1137,9 +1316,9 @@ $ python -m converter file.docx \<br/>
 </section>
 
 
-<!-- ===== SLIDE 13: 실증 사례 ===== -->
+<!-- ===== SLIDE 14: 실증 사례 ===== -->
 <section class="slide" id="example">
- <div class="slide-num">SLIDE 13</div>
+ <div class="slide-num">SLIDE 14</div>
  <h2 class="slide-title">실증: <span>iga_guide.docx → JSON</span></h2>
  <div class="slide-sub">Heading 스타일 미적용 레거시 문서를 변환기에 통과시킨 결과. 휴리스틱 감지로 12개 장 자동 인식.</div>
 
@@ -1203,9 +1382,9 @@ $ python -m converter file.docx \<br/>
  <div class="slide-footer">결과 파일: AI_data/examples/HE-CAE-2026-000001.json (49 KB) · warnings.log (75 건)</div>
 </section>
 
-<!-- ===== SLIDE 14: 휴리스틱 헤딩 감지 ===== -->
+<!-- ===== SLIDE 15: 휴리스틱 헤딩 감지 ===== -->
 <section class="slide" id="heuristic">
- <div class="slide-num">SLIDE 14</div>
+ <div class="slide-num">SLIDE 15</div>
  <h2 class="slide-title">휴리스틱 <span>헤딩 감지</span></h2>
  <div class="slide-sub">Heading 스타일이 없는 레거시 문서용 3단계 자동 감지. 단순 번호 목록과 섹션 헤딩을 구별.</div>
 
@@ -1270,9 +1449,9 @@ $ python -m converter file.docx \<br/>
  <div class="slide-footer">작성 시점부터 [제목 1/2/3] 스타일 적용 시 휴리스틱 없이 더 정확한 결과</div>
 </section>
 
-<!-- ===== SLIDE 15: AI Q&A 시연 ===== -->
+<!-- ===== SLIDE 16: AI Q&A 시연 ===== -->
 <section class="slide" id="ai-qa">
- <div class="slide-num">SLIDE 15</div>
+ <div class="slide-num">SLIDE 16</div>
  <h2 class="slide-title">AI가 <span>JSON만 보고 답한다</span></h2>
  <div class="slide-sub">변환된 JSON 하나로 원본 Word 없이 도메인 질문 응답 가능. RAG·Cline SR의 실제 동작 방식.</div>
 
@@ -1354,9 +1533,9 @@ $ python -m converter file.docx \<br/>
  <div class="slide-footer">잘 작성된 JSON 1개 = 학습된 AI 도메인 지식 1건</div>
 </section>
 
-<!-- ===== SLIDE 16: 운영 진입 준비 ===== -->
+<!-- ===== SLIDE 17: 운영 진입 준비 ===== -->
 <section class="slide" id="next-phase">
- <div class="slide-num">SLIDE 16</div>
+ <div class="slide-num">SLIDE 17</div>
  <h2 class="slide-title">운영 <span>진입 준비</span></h2>
  <div class="slide-sub">백엔드는 안정. 다음 작업은 백서 데이터 인덱싱부터.</div>
 

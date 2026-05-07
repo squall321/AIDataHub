@@ -16,6 +16,8 @@ AI Data Hub REST API. 베이스 URL: `http://localhost:8000`.
 - [GET /api/search](#get-apisearch)
 - [GET /api/agents](#get-apiagents)
 - [GET /api/analytics/distribution](#get-apianalyticsdistribution)
+- [POST /api/convert](#post-apiconvert)
+- [POST /api/convert/ingest](#post-apiconvertingest)
 - [GET /figures/{doc_id}/{filename}](#get-figuresdoc_idfilename)
 - [공통 에러 응답](#공통-에러-응답)
 
@@ -240,6 +242,103 @@ curl: `curl -s http://localhost:8000/api/agents`
 ```
 
 curl: `curl -s http://localhost:8000/api/analytics/distribution`
+
+---
+
+## `POST /api/convert`
+
+업로드된 파일을 변환기에 전달하고 결과 JSON 을 그대로 반환한다 (DB 적재 없음).
+
+지원 확장자:
+
+| 확장자                 | 변환기                | 출력 `data_type`        |
+|------------------------|-----------------------|-------------------------|
+| `.docx`                | `converter`           | `DOC`                   |
+| `.xlsx`                | `excel_converter`     | `DATA` 또는 `DATA_BUNDLE` |
+| `.pptx`                | `ppt_converter`       | `DOC`                   |
+| `.md`, `.markdown`     | `md_converter`        | `DOC`                   |
+| `.pdf`                 | `pdf_converter` (선택) | `DOC`                   |
+
+`Content-Type` 은 `multipart/form-data` 만 허용한다.
+
+| 위치 | 이름             | 타입    | 필수 | 설명                                               |
+|------|------------------|---------|------|----------------------------------------------------|
+| form | `file`           | file    | Y    | 업로드 파일 (지원 확장자 중 하나)                  |
+| form | `division`       | string  | Y    | 사업부 코드 (`HE`, `VE` …)                         |
+| form | `team`           | string  | Y    | 팀 코드 (`CAE`, `BMS` …)                           |
+| form | `year`           | int     | Y    | 연도 (예: `2026`)                                  |
+| form | `seq`            | int     | N    | 순번 (기본 `1`)                                    |
+| form | `tags`           | string  | N    | 콤마 구분 태그 (`"IGA,LS-DYNA"`)                   |
+| form | `agents`         | string  | N    | 콤마 구분 agent_type (`"iga-analyst,cae-reporter"`) |
+| form | `classification` | string  | N    | `internal`(기본)/`public`/`confidential` 등        |
+| form | `domain`         | string  | N    | 도메인 라벨                                        |
+
+응답: 변환기 결과 dict 그대로 (`schema_version`/`meta`/`sections`/... 또는 `headers`/`rows` …).
+
+에러:
+
+| HTTP | code                   | 설명                                |
+|------|------------------------|-------------------------------------|
+| 415  | `UNSUPPORTED_FORMAT`   | 확장자 매핑 없음                    |
+| 413  | `PAYLOAD_TOO_LARGE`    | 업로드 크기 > `MAX_UPLOAD_MB`(50MB) |
+| 422  | `VALIDATION_ERROR`     | 폼 필드 누락/타입 오류              |
+| 500  | `CONVERSION_FAILED`    | 변환기 단계에서 예외                |
+| 501  | `PDF_NOT_AVAILABLE`    | PDF 변환기가 설치되지 않음          |
+
+curl:
+
+```bash
+curl -X POST http://localhost:8000/api/convert/ \
+  -H "X-API-Key: $KEY" \
+  -F "file=@iga_guide.docx" \
+  -F "division=HE" -F "team=CAE" -F "year=2026" -F "seq=1" \
+  -F "tags=IGA,LS-DYNA" -F "agents=iga-analyst"
+```
+
+---
+
+## `POST /api/convert/ingest`
+
+`/api/convert` 와 동일하게 업로드 → 변환을 수행한 뒤, 결과를
+`api.ingest.normalizer.normalize` → `api.ingest.db_writer.write_record` 파이프라인에
+넘겨 DB 에 INSERT 또는 UPDATE 한다.
+
+폼 필드는 `/api/convert` 와 동일하다. 응답 본문:
+
+```json
+{
+  "record_id": "DOC-HE-CAE-2026-000001",
+  "status": "inserted",
+  "sections_written": 12,
+  "record": {
+    "id": "DOC-HE-CAE-2026-000001",
+    "data_type": "DOC",
+    "title": "IGA 가이드",
+    "summary": "...",
+    "tags": ["IGA", "LS-DYNA"],
+    "agents": ["iga-analyst"],
+    "division": "HE",
+    "team": "CAE",
+    "year": 2026,
+    "seq": 1,
+    "source_file": "iga_guide.docx",
+    "content_hash": "..."
+  }
+}
+```
+
+`status` 는 `inserted` / `updated` / `skipped` 중 하나이다.
+`skipped` 는 같은 `id` 로 동일 `content_hash` 가 이미 존재할 때 발생 (멱등 동작).
+
+curl:
+
+```bash
+curl -X POST http://localhost:8000/api/convert/ingest \
+  -H "X-API-Key: $KEY" \
+  -F "file=@iga_guide.docx" \
+  -F "division=HE" -F "team=CAE" -F "year=2026" -F "seq=1" \
+  -F "tags=IGA,LS-DYNA" -F "agents=iga-analyst"
+```
 
 ---
 
