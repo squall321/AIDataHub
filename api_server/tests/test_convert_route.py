@@ -262,3 +262,189 @@ async def test_convert_idempotency_via_ingest(db_client) -> None:
     body2 = r2.json()
     assert body2["record_id"] == rid
     assert body2["status"] == "skipped"
+
+
+# ---------------------------------------------------------------------------
+# 확장 메타 폼 필드 (extension_integration_plan §4)
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_ingest_with_full_metadata_overrides(
+    db_client, test_session_maker
+) -> None:
+    """status / language / subject_keywords / derivation / quality_score /
+    valid_from / valid_until / title_override / summary_override 가
+    DB record 에 정확히 반영되는지."""
+    from api.db.models import Record
+    from sqlalchemy import select
+
+    files = {"file": ("meta_full.md", _make_md_bytes(), "text/markdown")}
+    form = {
+        "division": "HE",
+        "team": "CAE",
+        "year": "2026",
+        "seq": "300",
+        "tags": "iga,offset",
+        "agents": "iga-analyst",
+        "classification": "internal",
+        "domain": "battery",
+        "status": "review",
+        "language": "en",
+        "subject_keywords": "shell,offset",
+        "derivation": "translated",
+        "quality_score": "70",
+        "valid_from": "2026-05-08",
+        "valid_until": "2027-05-08",
+        "title_override": "Custom Title",
+        "summary_override": "Custom summary text.",
+    }
+    resp = await db_client.post("/api/convert/ingest", files=files, data=form)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "inserted"
+    rid = body["record_id"]
+
+    # DB 검증
+    async with test_session_maker() as s:
+        rec = (
+            await s.execute(select(Record).where(Record.id == rid))
+        ).scalar_one()
+        assert rec.status == "review"
+        assert rec.language == "en"
+        assert "shell" in (rec.subject_keywords or [])
+        assert "offset" in (rec.subject_keywords or [])
+        assert rec.derivation == "translated"
+        assert rec.quality_score == 70
+        assert rec.valid_from is not None and str(rec.valid_from) == "2026-05-08"
+        assert rec.valid_until is not None and str(rec.valid_until) == "2027-05-08"
+        assert rec.title == "Custom Title"
+        assert rec.summary == "Custom summary text."
+
+
+@pytest.mark.asyncio
+async def test_ingest_with_invalid_status_returns_422(db_client) -> None:
+    files = {"file": ("bad_status.md", _make_md_bytes(), "text/markdown")}
+    form = {
+        "division": "HE",
+        "team": "CAE",
+        "year": "2026",
+        "seq": "301",
+        "status": "totally-bogus",
+    }
+    resp = await db_client.post("/api/convert/ingest", files=files, data=form)
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+
+
+@pytest.mark.asyncio
+async def test_ingest_with_invalid_date_returns_422(db_client) -> None:
+    files = {"file": ("bad_date.md", _make_md_bytes(), "text/markdown")}
+    form = {
+        "division": "HE",
+        "team": "CAE",
+        "year": "2026",
+        "seq": "302",
+        "valid_from": "2026/05/08",  # ISO 형식 아님
+    }
+    resp = await db_client.post("/api/convert/ingest", files=files, data=form)
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+@pytest.mark.asyncio
+async def test_ingest_with_quality_score_out_of_range_returns_422(
+    db_client,
+) -> None:
+    files = {"file": ("bad_q.md", _make_md_bytes(), "text/markdown")}
+    form = {
+        "division": "HE",
+        "team": "CAE",
+        "year": "2026",
+        "seq": "303",
+        "quality_score": "150",
+    }
+    resp = await db_client.post("/api/convert/ingest", files=files, data=form)
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+@pytest.mark.asyncio
+async def test_ingest_with_partial_overrides(
+    db_client, test_session_maker
+) -> None:
+    """부분적인 override — 비어있는 필드는 normalizer 결과/기본값 유지."""
+    from api.db.models import Record
+    from sqlalchemy import select
+
+    files = {"file": ("partial.md", _make_md_bytes(), "text/markdown")}
+    form = {
+        "division": "HE",
+        "team": "CAE",
+        "year": "2026",
+        "seq": "304",
+        # status 만 지정. language/derivation 등은 기본값.
+        "status": "approved",
+    }
+    resp = await db_client.post("/api/convert/ingest", files=files, data=form)
+    assert resp.status_code == 200, resp.text
+    rid = resp.json()["record_id"]
+
+    async with test_session_maker() as s:
+        rec = (
+            await s.execute(select(Record).where(Record.id == rid))
+        ).scalar_one()
+        assert rec.status == "approved"
+        # 기본값 유지 — language 는 "ko".
+        assert rec.language == "ko"
+        # derivation 기본값 "original".
+        assert rec.derivation == "original"
+        # subject_keywords 미지정 → 빈 리스트.
+        assert list(rec.subject_keywords or []) == []
+        # quality_score 미지정 → None.
+        assert rec.quality_score is None
+
+
+@pytest.mark.asyncio
+async def test_ingest_title_override_replaces_extracted_title(
+    db_client, test_session_maker
+) -> None:
+    """``title_override`` 가 비어있지 않으면 변환기 추출 title 을 덮어쓴다."""
+    from api.db.models import Record
+    from sqlalchemy import select
+
+    files = {"file": ("over_title.md", _make_md_bytes(), "text/markdown")}
+    form = {
+        "division": "HE",
+        "team": "CAE",
+        "year": "2026",
+        "seq": "305",
+        "title_override": "Manually Curated Title",
+    }
+    resp = await db_client.post("/api/convert/ingest", files=files, data=form)
+    assert resp.status_code == 200, resp.text
+    rid = resp.json()["record_id"]
+
+    async with test_session_maker() as s:
+        rec = (
+            await s.execute(select(Record).where(Record.id == rid))
+        ).scalar_one()
+        # 변환기는 보통 첫 H1("변환 테스트") 을 title 로 추출하지만,
+        # title_override 가 우선해야 한다.
+        assert rec.title == "Manually Curated Title"
+
+
+@pytest.mark.asyncio
+async def test_ingest_invalid_valid_range_returns_422(db_client) -> None:
+    """``valid_from > valid_until`` → 422."""
+    files = {"file": ("range.md", _make_md_bytes(), "text/markdown")}
+    form = {
+        "division": "HE",
+        "team": "CAE",
+        "year": "2026",
+        "seq": "306",
+        "valid_from": "2027-05-08",
+        "valid_until": "2026-05-08",
+    }
+    resp = await db_client.post("/api/convert/ingest", files=files, data=form)
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "VALIDATION_ERROR"

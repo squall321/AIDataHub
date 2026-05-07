@@ -2,6 +2,7 @@
 import tempfile
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -42,6 +43,23 @@ class Settings(BaseSettings):
     max_upload_mb: int = 50
     # 업로드 임시 저장소. ``UPLOAD_TEMP_DIR`` 로 오버라이드.
     upload_temp_dir: Path = Path(tempfile.gettempdir()) / "ai_data_uploads"
+
+    # ----------------------------------------------------------------- CORS
+    # 추가 허용 오리진 (CSV). 예: "https://datahub.example.com,https://staging.x.io"
+    # ``vscode-webview://*`` 는 별도 정규식으로 항상 허용된다.
+    extra_allowed_origins: list[str] = []
+
+    @field_validator("extra_allowed_origins", mode="before")
+    @classmethod
+    def _split_extra_origins(cls, v):
+        """CSV 문자열 → list[str]. 비어 있으면 빈 리스트."""
+        if v is None or v == "":
+            return []
+        if isinstance(v, str):
+            return [piece.strip() for piece in v.split(",") if piece.strip()]
+        if isinstance(v, list):
+            return [str(item).strip() for item in v if str(item).strip()]
+        return v
 
 
 settings = Settings()

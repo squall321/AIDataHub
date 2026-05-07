@@ -301,3 +301,21 @@ python scripts/smoke_test.py
 | `code-assistant`      | 코드 어시스턴트   | DOC            |
 
 자세한 정의는 `src/api/seed/agents_data.py` 참고. 멱등(upsert)이라 재실행해도 안전.
+
+## VS Code 확장 연동
+
+VS Code 확장(`AI_data/vscode_extension`) 은 다음 엔드포인트를 사용한다:
+
+- `GET /api/system/health` — 인증 모드 / 버전 / 빌드 메타.
+- `GET /api/meta/options` — 폼 셀렉트박스 옵션 카탈로그 (5분 캐시).
+- `POST /api/auth/keys/verify` — 발급 키 유효성 검증 (부트스트랩 미요구).
+- `POST /api/convert/ingest` — 파일 + 메타 폼 → 변환 → DB 적재.
+  - 확장 폼 필드: `status` / `language` / `subject_keywords` / `derivation` /
+    `quality_score` / `valid_from` / `valid_until` / `title_override` /
+    `summary_override` (전부 선택).
+
+CORS 는 `vscode-webview://*` 정규식을 항상 허용. 추가 오리진은
+`EXTRA_ALLOWED_ORIGINS` 환경변수로 콤마 구분 지정.
+
+자세한 계약은 `docs/api_reference.md`, `docs/extension_integration_plan.md`,
+`vscode_extension/docs/metadata_spec.md` 참고.

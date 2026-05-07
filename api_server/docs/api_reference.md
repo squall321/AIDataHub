@@ -10,6 +10,9 @@ AI Data Hub REST API. 베이스 URL: `http://localhost:8000`.
 ## 목차
 
 - [Health](#health)
+- [GET /api/system/health](#get-apisystemhealth)
+- [GET /api/meta/options](#get-apimetaoptions)
+- [POST /api/auth/keys/verify](#post-apiauthkeysverify)
 - [GET /api/data](#get-apidata)
 - [GET /api/records](#get-apirecords)
 - [GET /api/records/{id}](#get-apirecordsid)
@@ -43,6 +46,126 @@ AI Data Hub REST API. 베이스 URL: `http://localhost:8000`.
 - 설명: 헬스체크.
 - 응답: `{"status": "ok"}`
 - curl: `curl -s http://localhost:8000/health`
+
+---
+
+## `GET /api/system/health`
+
+`/health` 의 상위 호환. VS Code 확장 등 클라이언트가 한 번에 인증 모드 (`AUTH_REQUIRED`)
+와 빌드 메타를 판단할 수 있도록 추가 필드를 노출한다.
+
+응답:
+
+```json
+{
+  "status": "ok",
+  "version": "0.1.0",
+  "auth_required": false,
+  "build": "dev"
+}
+```
+
+| 필드            | 타입    | 설명                                                |
+|-----------------|---------|-----------------------------------------------------|
+| `status`        | string  | 항상 `"ok"`                                          |
+| `version`       | string  | `api.__version__`                                    |
+| `auth_required` | bool    | `AUTH_REQUIRED` 환경변수 반영                        |
+| `build`         | string  | `BUILD_SHA` 환경변수 (없으면 `"dev"`)                |
+
+- curl: `curl -s http://localhost:8000/api/system/health`
+
+---
+
+## `GET /api/meta/options`
+
+VS Code 확장 등 클라이언트가 폼 옵션을 일관되게 받기 위한 **권위 메타 카탈로그**.
+`Cache-Control: public, max-age=300` 응답 헤더가 포함되며, 클라이언트는 5분 인메모리
+캐시를 권장한다. 인증 비요구 (모든 호출자 접근 가능).
+
+응답 예:
+
+```json
+{
+  "version": "1.0",
+  "divisions": ["HE", "EV", "PT", "DA", "MX", "VD"],
+  "teams": {
+    "HE": ["CAE", "Test", "Design"],
+    "EV": ["BMS", "Battery", "Motor"],
+    "PT": ["Material", "Process"]
+  },
+  "agents": [
+    {
+      "agent_type": "iga-analyst",
+      "name": "IGA 해석 분석가",
+      "description": "...",
+      "data_types": ["DOC", "SIM", "DATA"]
+    }
+  ],
+  "classifications": ["public", "internal", "confidential", "restricted"],
+  "statuses":        ["draft", "review", "approved", "deprecated"],
+  "derivations":     ["original", "extracted", "aggregated", "translated"],
+  "languages":       ["ko", "en", "ja", "zh"],
+  "data_types":      ["DOC", "DATA", "SIM", "CAD", "LOG", "FORM", "OTHER"],
+  "supported_extensions": [".docx", ".markdown", ".md", ".pdf", ".pptx", ".xlsx"],
+  "max_upload_mb":  50,
+  "allow_custom": {
+    "division": false,
+    "team":     true,
+    "domain":   true
+  }
+}
+```
+
+| 필드                      | 출처                                                 |
+|---------------------------|------------------------------------------------------|
+| `divisions` / `teams`     | `api.seed.divisions` (정적 매핑)                     |
+| `agents`                  | `agents` 테이블 (`/api/agents` 와 같은 데이터)       |
+| `classifications`         | `api.schemas.common.CLASSIFICATIONS`                 |
+| `statuses`                | `api.schemas.common.STATUSES`                        |
+| `derivations`             | `api.schemas.common.DERIVATIONS`                     |
+| `languages`               | 정적 (`["ko","en","ja","zh"]`)                       |
+| `data_types`              | `api.schemas.id_format.DATA_TYPES`                   |
+| `supported_extensions`    | `api.services.converter_dispatch.EXTENSION_MAP.keys` |
+| `max_upload_mb`           | `settings.max_upload_mb`                             |
+| `allow_custom`            | 정적 (확장 UI 의 자유 입력 허용 플래그)              |
+
+- curl: `curl -s http://localhost:8000/api/meta/options`
+
+---
+
+## `POST /api/auth/keys/verify`
+
+발급된 `X-API-Key` 가 활성 상태인지 확인한다. 부트스트랩 키 미요구 — 일반 발급 키만으로
+호출 가능하다. 만료 / 폐기 / 미존재 키는 401.
+
+| 위치    | 이름          | 타입    | 필수 | 설명                             |
+|---------|---------------|---------|------|----------------------------------|
+| header  | `X-API-Key`   | string  | Y    | 발급된 plaintext API 키           |
+
+응답 (200):
+
+```json
+{
+  "ok": true,
+  "key_name": "vscode-extension-tester",
+  "agent_scopes": ["iga-analyst", "cae-reporter"]
+}
+```
+
+응답 (401, 통합 에러 envelope):
+
+```json
+{
+  "error": {
+    "code": "AUTHENTICATION_ERROR",
+    "message": "invalid or revoked API key",
+    "details": {},
+    "request_id": "..."
+  }
+}
+```
+
+- curl: `curl -X POST -H "X-API-Key: $KEY" http://localhost:8000/api/auth/keys/verify`
 
 ---
 
@@ -303,7 +426,26 @@ curl -X POST http://localhost:8000/api/convert/ \
 `api.ingest.normalizer.normalize` → `api.ingest.db_writer.write_record` 파이프라인에
 넘겨 DB 에 INSERT 또는 UPDATE 한다.
 
-폼 필드는 `/api/convert` 와 동일하다. 응답 본문:
+폼 필드는 `/api/convert` 의 모든 필드 + 메타 확장 필드를 지원한다 (VS Code 확장 폼과
+1:1 매핑 — `vscode_extension/docs/metadata_spec.md` 참조).
+
+### 확장 메타 폼 필드
+
+| 폼 필드            | 타입             | 기본값       | 매핑 (`RecordIn`) | 비고                                 |
+|--------------------|------------------|--------------|-------------------|--------------------------------------|
+| `status`           | enum string      | `draft`      | `status`          | `draft`/`review`/`approved`/`deprecated` |
+| `language`         | string           | `ko`         | `language`        | ISO 639-1 (`ko`/`en`/`ja`/`zh`)       |
+| `subject_keywords` | string (csv)     | `""`         | `subject_keywords`| 콤마 구분, 공백/빈 토큰 제거          |
+| `derivation`       | enum string      | `original`   | `derivation`      | `original`/`extracted`/`aggregated`/`translated` |
+| `quality_score`    | int (0..100)     | `null`       | `quality_score`   | 범위 외 → 422                         |
+| `valid_from`       | string (ISO date)| `""`         | `valid_from`      | 빈값 허용 → `null`                    |
+| `valid_until`      | string (ISO date)| `""`         | `valid_until`     | `valid_from > valid_until` 시 422     |
+| `title_override`   | string           | `""`         | (덮어쓰기)         | 비어있지 않으면 변환기 추출 `title` 대체 |
+| `summary_override` | string           | `""`         | (덮어쓰기)         | 비어있지 않으면 변환기 추출 `summary` 대체 |
+
+빈 값(빈 문자열 / `null`) 은 정규화 결과 / `RecordIn` 기본값을 유지한다.
+
+응답 본문:
 
 ```json
 {
@@ -373,15 +515,35 @@ curl -s -o F001.png \
 
 ## 공통 에러 응답
 
+모든 에러 경로는 통합 envelope 으로 응답한다 (Agent 12 / `api.errors`):
+
 ```json
 {
-  "detail": "사람이 읽을 수 있는 에러 설명"
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "사람이 읽을 수 있는 에러 설명",
+    "details": {},
+    "request_id": "ac229f2a6d504d45a3b103cd75115b9d"
+  }
 }
 ```
 
-| 코드 | 의미                                |
-|------|-------------------------------------|
-| 400  | 잘못된 쿼리/바디                    |
-| 404  | 리소스 없음                         |
-| 422  | 스키마 검증 실패 (Pydantic)         |
-| 500  | 서버 내부 오류 (DB 연결 실패 등)    |
+- `code` 는 항상 SCREAMING_SNAKE 식 도메인 코드.
+- `request_id` 는 `RequestLoggingMiddleware` 가 생성하는 헥스 문자열. 응답
+  헤더에도 `X-Request-ID` 로 노출된다.
+- `details` 는 도메인별 추가 정보 (e.g. `PAYLOAD_TOO_LARGE` → `{"max_bytes": ..., "received_bytes": ...}`).
+
+| HTTP | code                   | 의미                                |
+|------|------------------------|-------------------------------------|
+| 400  | `BAD_REQUEST`          | 잘못된 쿼리/바디                     |
+| 401  | `AUTHENTICATION_ERROR` | API 키 누락/잘못됨/폐기됨            |
+| 403  | `AUTHORIZATION_ERROR`  | 권한 부족 (부트스트랩 키 요구 등)   |
+| 404  | `NOT_FOUND`            | 리소스 없음                          |
+| 409  | `CONFLICT`             | 중복/충돌                            |
+| 413  | `PAYLOAD_TOO_LARGE`    | 업로드 크기 > `MAX_UPLOAD_MB`        |
+| 415  | `UNSUPPORTED_FORMAT`   | 변환 가능한 확장자 아님               |
+| 422  | `VALIDATION_ERROR`     | 스키마 검증 실패 (Pydantic / 도메인) |
+| 429  | `RATE_LIMIT`           | (예약) 레이트 리밋                   |
+| 500  | `INTERNAL_ERROR`       | 서버 내부 오류                       |
+| 500  | `CONVERSION_FAILED`    | 변환기 단계에서 예외                  |
+| 501  | `PDF_NOT_AVAILABLE`    | PDF 변환기가 설치되지 않음            |

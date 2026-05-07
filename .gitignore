@@ -55,3 +55,13 @@ tmp/
 
 # Docker volumes (if any local mount)
 postgres_data/
+
+# Node / VS Code extension
+node_modules/
+out/
+*.vsix
+*.tsbuildinfo
+.vscode-test/
+
+# Stray Windows junctions
+NVIDIA Corporation/

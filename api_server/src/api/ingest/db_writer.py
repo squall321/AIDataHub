@@ -172,6 +172,19 @@ async def write_record(
         existing.department = record_in.department
         existing.project = record_in.project
         existing.version = record_in.version
+        # Extended classification metadata (Migration 0006)
+        existing.classification = record_in.classification
+        existing.status = record_in.status
+        existing.domain = record_in.domain
+        existing.subject_keywords = list(record_in.subject_keywords)
+        existing.source_system = record_in.source_system
+        existing.language = record_in.language
+        existing.parent_record_id = record_in.parent_record_id
+        existing.derivation = record_in.derivation
+        existing.capabilities = list(record_in.capabilities)
+        existing.quality_score = record_in.quality_score
+        existing.valid_from = record_in.valid_from
+        existing.valid_until = record_in.valid_until
         action = "updated"
         target = existing
 
@@ -197,6 +210,19 @@ async def write_record(
             department=record_in.department,
             project=record_in.project,
             version=record_in.version,
+            # Extended classification metadata (Migration 0006)
+            classification=record_in.classification,
+            status=record_in.status,
+            domain=record_in.domain,
+            subject_keywords=list(record_in.subject_keywords),
+            source_system=record_in.source_system,
+            language=record_in.language,
+            parent_record_id=record_in.parent_record_id,
+            derivation=record_in.derivation,
+            capabilities=list(record_in.capabilities),
+            quality_score=record_in.quality_score,
+            valid_from=record_in.valid_from,
+            valid_until=record_in.valid_until,
         )
         session.add(target)
         action = "inserted"

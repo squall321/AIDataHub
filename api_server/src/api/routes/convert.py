@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import shutil
 import tempfile
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,7 @@ from ..db.base import get_session
 from ..errors import APIError, ValidationError
 from ..ingest.db_writer import write_record
 from ..ingest.normalizer import normalize
+from ..schemas.common import DERIVATIONS, STATUSES
 from ..services.converter_dispatch import (
     EXTENSION_MAP,
     ConvertRequest,
@@ -64,6 +66,98 @@ def _split_csv(raw: str) -> list[str]:
     if not raw:
         return []
     return [piece.strip() for piece in raw.split(",") if piece.strip()]
+
+
+def _parse_date(raw: str | None) -> date | None:
+    """ISO 날짜 문자열(``YYYY-MM-DD``) → :class:`datetime.date`.
+
+    빈 문자열/None → ``None``. 형식 오류 시 :class:`ValidationError`.
+    """
+    if raw is None:
+        return None
+    s = raw.strip()
+    if not s:
+        return None
+    try:
+        return date.fromisoformat(s)
+    except ValueError as exc:
+        raise ValidationError(
+            f"날짜 형식이 잘못되었습니다 (YYYY-MM-DD): {raw!r}",
+            details={"value": raw},
+        ) from exc
+
+
+def _build_overrides(
+    *,
+    status_value: str | None,
+    language: str | None,
+    subject_keywords: str | None,
+    derivation: str | None,
+    quality_score: int | None,
+    valid_from: str | None,
+    valid_until: str | None,
+    title_override: str | None,
+    summary_override: str | None,
+) -> dict[str, Any]:
+    """확장 폼 필드 → ``RecordIn.model_copy(update=...)`` 인자 dict.
+
+    빈 값(None / 빈 문자열 / 빈 리스트) 은 override 하지 않는다 — normalizer 결과
+    또는 ``RecordIn`` 기본값을 유지하기 위함이다.
+
+    추가로 ``status`` / ``derivation`` / ``quality_score`` 의 도메인 검증을 수행해
+    422 ``VALIDATION_ERROR`` 로 변환한다 (Pydantic 검증보다 사용자 친화적 메시지).
+    """
+    overrides: dict[str, Any] = {}
+
+    if status_value:
+        if status_value not in STATUSES:
+            raise ValidationError(
+                f"status 값이 잘못되었습니다: {status_value!r}",
+                details={"allowed": list(STATUSES), "value": status_value},
+            )
+        overrides["status"] = status_value
+
+    if language:
+        overrides["language"] = language
+
+    kw = _split_csv(subject_keywords or "")
+    if kw:
+        overrides["subject_keywords"] = kw
+
+    if derivation:
+        if derivation not in DERIVATIONS:
+            raise ValidationError(
+                f"derivation 값이 잘못되었습니다: {derivation!r}",
+                details={"allowed": list(DERIVATIONS), "value": derivation},
+            )
+        overrides["derivation"] = derivation
+
+    if quality_score is not None:
+        if not (0 <= int(quality_score) <= 100):
+            raise ValidationError(
+                "quality_score 는 0~100 범위여야 합니다",
+                details={"value": quality_score},
+            )
+        overrides["quality_score"] = int(quality_score)
+
+    vf = _parse_date(valid_from)
+    vu = _parse_date(valid_until)
+    if vf is not None and vu is not None and vf > vu:
+        raise ValidationError(
+            "valid_from 은 valid_until 이전이어야 합니다",
+            details={"valid_from": str(vf), "valid_until": str(vu)},
+        )
+    if vf is not None:
+        overrides["valid_from"] = vf
+    if vu is not None:
+        overrides["valid_until"] = vu
+
+    if title_override and title_override.strip():
+        overrides["title"] = title_override.strip()
+    if summary_override and summary_override.strip():
+        overrides["summary"] = summary_override.strip()
+
+    return overrides
 
 
 def _make_temp_dir() -> Path:
@@ -212,11 +306,35 @@ async def convert_and_ingest(
     agents: str = Form(""),
     classification: str = Form("internal"),
     domain: str | None = Form(None),
+    # ---- 확장 메타 (metadata_spec.md §1) -------------------------------
+    status_field: str = Form("draft", alias="status"),
+    language: str = Form("ko"),
+    subject_keywords: str = Form(""),
+    derivation: str = Form("original"),
+    quality_score: int | None = Form(None),
+    valid_from: str = Form(""),
+    valid_until: str = Form(""),
+    title_override: str = Form(""),
+    summary_override: str = Form(""),
     session: AsyncSession = Depends(get_session),
 ) -> JSONResponse:
     """업로드 → 변환 → ``write_record()`` 호출. 레코드 요약 반환."""
     _validate_extension(file.filename or "")
     max_bytes = settings.max_upload_mb * 1024 * 1024
+
+    # 폼 입력 단계 검증 (도메인 enum / 날짜 / quality_score) — 라우터에서
+    # 422 로 빠르게 변환하기 위해 normalize 전에 수행.
+    overrides = _build_overrides(
+        status_value=status_field,
+        language=language,
+        subject_keywords=subject_keywords,
+        derivation=derivation,
+        quality_score=quality_score,
+        valid_from=valid_from,
+        valid_until=valid_until,
+        title_override=title_override,
+        summary_override=summary_override,
+    )
 
     work_dir = _make_temp_dir()
     try:
@@ -251,6 +369,16 @@ async def convert_and_ingest(
                 f"정규화 실패: {exc}",
                 details={"payload_keys": sorted(payload.keys()) if isinstance(payload, dict) else None},
             ) from exc
+
+        # 확장 폼 필드 머지 — 비어있는 필드는 normalizer 결과 / 기본값 유지.
+        if overrides:
+            try:
+                record_in = record_in.model_copy(update=overrides)
+            except Exception as exc:  # pragma: no cover — model_copy 는 거의 실패하지 않음
+                raise ValidationError(
+                    f"override 적용 실패: {exc}",
+                    details={"overrides": {k: str(v) for k, v in overrides.items()}},
+                ) from exc
 
         write_result = await write_record(session, record_in)
         await session.commit()

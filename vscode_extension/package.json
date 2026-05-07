@@ -1,0 +1,50 @@
+{
+  "name": "ai-data-hub-uploader",
+  "displayName": "AI Data Hub Uploader",
+  "description": "Drag and drop documents into AI Data Hub from VS Code.",
+  "version": "0.0.1",
+  "publisher": "squall321",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/squall321/AIDataHubExtension.git"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "aidh.openUploader",
+        "title": "AI Data Hub: Open Uploader",
+        "category": "AI Data Hub"
+      },
+      {
+        "command": "aidh.openSettings",
+        "title": "AI Data Hub: Settings",
+        "category": "AI Data Hub"
+      },
+      {
+        "command": "aidh.resetConnection",
+        "title": "AI Data Hub: Reset Connection",
+        "category": "AI Data Hub"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0",
+    "@vscode/vsce": "^2.24.0"
+  }
+}

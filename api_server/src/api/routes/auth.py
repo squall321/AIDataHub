@@ -14,6 +14,7 @@ from ..auth import (
     Principal,
     create_api_key,
     list_api_keys,
+    require_api_key,
     require_bootstrap,
     revoke_api_key,
 )
@@ -71,6 +72,25 @@ async def revoke_key(
     ok = await revoke_api_key(session, key_id)
     if not ok:
         raise NotFoundError(f"api key not found: id={key_id}")
+
+
+@router.post("/verify", status_code=status.HTTP_200_OK)
+async def verify_key(
+    principal: Principal = Depends(require_api_key),
+) -> dict:
+    """현재 ``X-API-Key`` 헤더의 유효성만 검증.
+
+    부트스트랩 키 불필요. 발급된 일반 키도 호출 가능. 만료/폐기 시 ``require_api_key``
+    가 401 (``AUTHENTICATION_ERROR``) 을 던진다.
+
+    Response:
+        ``{"ok": true, "key_name": str, "agent_scopes": list[str]}``
+    """
+    return {
+        "ok": True,
+        "key_name": principal.name,
+        "agent_scopes": list(principal.agent_scopes or []),
+    }
 
 
 __all__ = ["router"]

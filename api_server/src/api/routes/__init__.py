@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from ..config import settings
@@ -20,7 +21,18 @@ from ..errors import register_exception_handlers
 from ..logging_config import configure_logging
 from ..middleware.metrics import MetricsMiddleware
 from ..middleware.request_logging import RequestLoggingMiddleware
-from . import agents, analytics, auth, convert, data, metrics, records, search
+from . import (
+    agents,
+    analytics,
+    auth,
+    convert,
+    data,
+    meta,
+    metrics,
+    records,
+    search,
+    system,
+)
 
 
 def register_routers(app: FastAPI) -> None:
@@ -32,6 +44,20 @@ def register_routers(app: FastAPI) -> None:
     configure_logging(level=settings.log_level, fmt=settings.log_format)
 
     # -------------------------------------------------------------- middleware
+    # CORS — vscode-webview://* + EXTRA_ALLOWED_ORIGINS 추가 허용.
+    # 주의: ``api/main.py`` 가 이미 ``allow_origins=["*"]`` 로 등록한 미들웨어가 있으나,
+    # 여기서 정규식 기반 미들웨어를 한 번 더 추가해 webview 사전요청 헤더를 보장한다.
+    extra_origins = list(settings.extra_allowed_origins or [])
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=extra_origins,
+        allow_origin_regex=r"^vscode-webview://.*$",
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["X-API-Key", "Content-Type", "Accept", "Authorization"],
+        expose_headers=["X-Request-ID"],
+    )
+
     # 미들웨어는 LIFO 로 적용된다 → request_logging 을 마지막에 추가하면 outer-most.
     if settings.enable_metrics:
         app.add_middleware(MetricsMiddleware)
@@ -48,6 +74,8 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(analytics.router)
     app.include_router(auth.router)
     app.include_router(convert.router)
+    app.include_router(meta.router)
+    app.include_router(system.router)
     if settings.enable_metrics:
         app.include_router(metrics.router)
 
@@ -66,8 +94,10 @@ __all__ = [
     "auth",
     "convert",
     "data",
+    "meta",
     "metrics",
     "records",
     "register_routers",
     "search",
+    "system",
 ]
