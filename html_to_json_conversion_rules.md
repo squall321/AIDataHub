@@ -1,6 +1,6 @@
 # HTML → JSON 변환 규칙서
 
-## 자동화 프로그램 구현 가이드 v1.0
+## 자동화 프로그램 구현 가이드 v1.2 (코드 정합)
 
 > 작성일: 2026-05-08
 > 적용 대상: 표준 HTML 문서를 [json_schema_rules.md](./json_schema_rules.md) 스키마로 변환하는 자동화 프로그램
@@ -13,6 +13,21 @@
 > - [excel_to_json_conversion_rules.md](./excel_to_json_conversion_rules.md) — Excel 변환 규칙
 > - [ppt_to_json_conversion_rules.md](./ppt_to_json_conversion_rules.md) — PPT 변환 규칙
 > - [pdf_to_json_conversion_rules.md](./pdf_to_json_conversion_rules.md) — PDF 변환 규칙
+
+---
+
+## 0. 코드 정합 노트 (필독)
+
+본 문서는 [`api_server/src/html_converter/`](./api_server/src/html_converter/) 의 실제 출력을 단일 진실 공급원으로 한다.
+
+| 항목 | 변환기 출력 / 코드 위치 | normalizer 흡수 / DB |
+|---|---|---|
+| 식별자 | `meta.doc_id` (`html_converter/core.py:625`) | `meta.doc_id` 우선 → `records.id` |
+| 에이전트 | `<meta name="agents">` 또는 `agent-scope` → `meta.agent_scope` (`html_converter/core.py:260-263, 617, 639`) | `meta.agent_scope` 우선, `raw.agents` 폴백 → `records.agents` |
+| head meta own-extras | 표준 매핑 안 된 `<meta name=...>` 모두 → `meta.head_meta_extra` (`html_converter/core.py:641-650`) | `records.content` JSONB 보존 |
+| 분류/생애주기 | head meta 로 기술 가능 (예: `<meta name="classification">`) 하나 normalizer 가 흡수하지 않음 (KNOWN GAP) | RecordIn 기본값 |
+
+자세한 KNOWN GAP 은 [`json_schema_rules.md`](./json_schema_rules.md) §4.4 참조.
 
 ---
 

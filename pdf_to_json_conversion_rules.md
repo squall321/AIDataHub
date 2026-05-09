@@ -1,5 +1,5 @@
 # PDF → JSON 변환 규칙서
-## 자동화 프로그램 구현 가이드 v1.1 (OCR 정식 지원)
+## 자동화 프로그램 구현 가이드 v1.2 (코드 정합)
 
 > 작성일: 2026-05-08
 > 적용 대상: PDF 문서를 [json_schema_rules.md](./json_schema_rules.md) 스키마로 변환하는 자동화 프로그램
@@ -12,6 +12,22 @@
 > - [ppt_to_json_conversion_rules.md](./ppt_to_json_conversion_rules.md) — PPT 변환 규칙
 > - [md_to_json_conversion_rules.md](./md_to_json_conversion_rules.md) — Markdown 변환 규칙
 > - [html_to_json_conversion_rules.md](./html_to_json_conversion_rules.md) — HTML 변환 규칙
+
+---
+
+## 0. 코드 정합 노트 (필독)
+
+본 문서는 [`api_server/src/pdf_converter/`](./api_server/src/pdf_converter/) 의 실제 출력을 단일 진실 공급원으로 한다.
+
+| 항목 | 변환기 출력 / 코드 위치 | normalizer 흡수 / DB |
+|---|---|---|
+| 식별자 | `meta.doc_id` (`pdf_converter/core.py:635`) | `meta.doc_id` 우선 → `records.id` |
+| 에이전트 | CLI `--agents` → `meta.agent_scope` (`pdf_converter/core.py:649`) | `meta.agent_scope` 우선, `raw.agents` 폴백 → `records.agents` |
+| PDF own-extras | `meta.pdf` (`{page_count, heading_strategy, creator, producer, creation_date, modification_date, ocr_pages?}`) `pdf_converter/core.py:651-664` | `records.content` JSONB 보존 |
+| OCR 적용 페이지 | `meta.pdf.ocr_pages: [page_no, ...]` (`--ocr` 사용 시) | 동상 |
+| 분류/생애주기 | 변환기 자동 추출 없음 (`/Info.Subject` 등 일부 매핑은 §8 참조). normalizer 미흡수 (KNOWN GAP) | RecordIn 기본값 |
+
+자세한 KNOWN GAP 은 [`json_schema_rules.md`](./json_schema_rules.md) §4.4 참조.
 
 ---
 

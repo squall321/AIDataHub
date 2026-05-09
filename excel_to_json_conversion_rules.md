@@ -1,6 +1,6 @@
 # Excel → JSON 변환 규칙서
 
-## 자동화 프로그램 구현 가이드 v1.1 (multi-table 자동 탐지)
+## 자동화 프로그램 구현 가이드 v1.2 (코드 정합)
 
 ## 자동화 프로그램 구현 가이드 v1.0
 
@@ -18,6 +18,22 @@
 > - [md_to_json_conversion_rules.md](./md_to_json_conversion_rules.md) — Markdown 변환 규칙
 > - [pdf_to_json_conversion_rules.md](./pdf_to_json_conversion_rules.md) — PDF 변환 규칙 (OCR opt-in)
 > - [html_to_json_conversion_rules.md](./html_to_json_conversion_rules.md) — HTML 변환 규칙
+
+---
+
+## 0. 코드 정합 노트 (필독)
+
+본 문서는 [`api_server/src/excel_converter/`](./api_server/src/excel_converter/) 의 실제 출력을 단일 진실 공급원으로 한다.
+
+| 항목 | 변환기 출력 / 코드 위치 | normalizer 흡수 / DB |
+|---|---|---|
+| 페이로드 형식 | `schema_version="data.v1"` (별도 변종, 표준 7-키 아님). `excel_converter/core.py:125-159` | `_extract_data()` (`normalizer.py:147-160`) 가 `data_id`/`caption`/`headers`/`rows`/`units` 를 RecordIn 으로 매핑 |
+| 식별자 | top-level `data_id` (예: `DATA-HE-CAE-2026-000034`) | `RecordIn.id` |
+| 단위 | `units` (객체) **+ `units_map` (동일내용 alias)** 두 키 모두 출력. `core.py:145, 158` | 신규 소비자는 `units` 권장 |
+| `meta.agent_scope` (옵션) | `_META.agents` 배열을 `agent_scope` 로 출력 | normalizer 폴백 — `meta.agent_scope` 우선 |
+| 분류/생애주기 (`classification`/`status`/`domain`/`subject_keywords`/`source_system`/`language`) | Excel `_META` 시트가 출력하지만 normalizer 가 흡수하지 않음 (KNOWN GAP) | 향후 `_extract_data` 에 폴백 추가 예정 |
+
+자세한 KNOWN GAP 은 [`json_schema_rules.md`](./json_schema_rules.md) §4.4 참조.
 
 ---
 
@@ -432,7 +448,7 @@ python -m excel_converter messy.xlsx \
 | `title`                   | `meta.title`                                |
 | `summary`                 | `meta.summary`                              |
 | `tags`                    | `meta.tags` (콤마로 분리하여 배열)          |
-| `agents`                  | `meta.agents` (콤마로 분리하여 배열)        |
+| `agents`                  | `meta.agent_scope` (콤마로 분리하여 배열). 코드는 `agent_scope` 키로 출력. |
 | `domain`                  | `meta.domain`                               |
 | `classification`          | `meta.classification`                       |
 | `status`                  | `meta.status`                               |
@@ -472,7 +488,7 @@ python -m excel_converter messy.xlsx \
     "title": "브라켓 하중 시험 결과 (2026-04)",
     "summary": "100개 시료에 대한 정적 하중 시험 결과.",
     "tags": ["시험", "브라켓", "하중", "2026Q2"],
-    "agents": ["material-reviewer", "cae-reporter"]
+    "agent_scope": ["material-reviewer", "cae-reporter"]
   },
   "content": {
     "caption": "Sheet1",

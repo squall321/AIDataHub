@@ -241,9 +241,21 @@ DB 측: `record_sections.embedding (vector(384))` 가 `EMBEDDING_PROVIDER=e5_sma
 
 ---
 
-## 6. 변경 추적 — v1.0 → v1.1 (2026-05-10)
+## 6. 변경 추적
 
-이 인덱스 v1.0 발행 + 다음 룰 문서들 v1.1 로 동기화:
+### v1.2 (2026-05-10) — 코드 정합
+
+룰 MD 들을 **변환기 소스 코드를 단일 진실 공급원으로** 정렬. [`META_FORMAT_AUDIT.md`](./META_FORMAT_AUDIT.md) P0 8건 중 6건 doc-fixed, 2건 code-TODO 식별.
+
+| 문서 | 변경점 |
+|---|---|
+| `json_schema_rules.md` | §4 meta — `doc_id` / `agent_scope` 1차 표기 + `derivation` enum 정정 + KNOWN GAP 박스 (classification 등 미흡수) + own-extras 표 §4.6 |
+| `*_to_json_conversion_rules.md` (6종) | §0 "코드 정합 노트" 박스 추가 — 변환기별 식별자/agent/own-extras/KNOWN GAP 위치 명시 |
+| `META_FORMAT_AUDIT.md` | P0 8건에 Status 라벨 (doc-fixed/code-TODO) + §5 잔여 액션 A/B/C 분류 |
+
+### v1.1 (2026-05-10) — 6변환기 정식화
+
+이 인덱스 v1.0 발행 + 6 변환기 cross-ref + 새 기능 정식화:
 
 | 문서 | 변경점 |
 |---|---|

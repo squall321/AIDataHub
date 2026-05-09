@@ -1,7 +1,7 @@
 # Word → JSON 변환 규칙서
-## 자동화 프로그램 구현 가이드 v1.1
+## 자동화 프로그램 구현 가이드 v1.2 (코드 정합)
 
-> 작성일: 2026-05-07 (개정: 2026-05-10 — 6개 변환기 cross-ref + attachments 정식)
+> 작성일: 2026-05-07 (개정: 2026-05-10 — `meta.doc_id` / `meta.agent_scope` 코드 정합)
 > 적용 대상: 표준 Word 문서를 [json_schema_rules.md](./json_schema_rules.md) 스키마로 변환하는 자동화 프로그램
 > 시작점: [`CONVERSION_RULES_INDEX.md`](./CONVERSION_RULES_INDEX.md)
 > 자매 문서 (모두 동일 JSON 스키마 출력):
@@ -12,6 +12,20 @@
 > - [md_to_json_conversion_rules.md](./md_to_json_conversion_rules.md) — Markdown 변환 규칙
 > - [pdf_to_json_conversion_rules.md](./pdf_to_json_conversion_rules.md) — PDF 변환 규칙 (OCR opt-in)
 > - [html_to_json_conversion_rules.md](./html_to_json_conversion_rules.md) — HTML 변환 규칙
+
+---
+
+## 0. 코드 정합 노트 (필독)
+
+본 문서는 [`api_server/src/converter/`](./api_server/src/converter/) 의 실제 출력을 단일 진실 공급원으로 한다.
+
+| 항목 | 본 문서 표기 / 변환기 출력 | normalizer 흡수 | DB 컬럼 |
+|---|---|---|---|
+| 식별자 | `meta.doc_id` (`converter/core.py:796`) | `meta.doc_id` 우선, `meta.id` / `raw.id` 폴백 | `records.id` |
+| 에이전트 | `meta.agent_scope` (`converter/core.py:809-810`) | `meta.agent_scope` 우선, `raw.agents` 폴백 | `records.agents` |
+| 파생/생애주기 | `derivation` enum: `original` / `extracted` / `aggregated` / `translated` (코드 `schemas/common.py:26`) | RecordIn 기본값만 — 변환기 meta 의 `classification`/`status`/`domain`/`subject_keywords`/`source_system`/`language`/`derivation`/`quality_score`/`valid_from`/`valid_until` 는 현재 normalizer 가 흡수하지 않음 (KNOWN GAP) | 동일명 컬럼 |
+
+자세한 KNOWN GAP 은 [`json_schema_rules.md`](./json_schema_rules.md) §4.4 "변환기·normalizer 미연결" 박스 참조.
 
 ---
 

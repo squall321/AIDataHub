@@ -1,6 +1,6 @@
 # PPT → JSON 변환 규칙서
 
-## 자동화 프로그램 구현 가이드 v1.1 (chart 데이터 추출)
+## 자동화 프로그램 구현 가이드 v1.2 (코드 정합)
 
 > 작성일: 2026-05-08
 > 적용 대상: 표준 PowerPoint(.pptx) 문서를 [json_schema_rules.md](./json_schema_rules.md) 의 `data_type=DOC` JSON 으로 변환하는 자동화 프로그램.
@@ -14,6 +14,21 @@
 > - [md_to_json_conversion_rules.md](./md_to_json_conversion_rules.md) — Markdown 변환 규칙
 > - [pdf_to_json_conversion_rules.md](./pdf_to_json_conversion_rules.md) — PDF 변환 규칙 (OCR opt-in)
 > - [html_to_json_conversion_rules.md](./html_to_json_conversion_rules.md) — HTML 변환 규칙
+
+---
+
+## 0. 코드 정합 노트 (필독)
+
+본 문서는 [`api_server/src/ppt_converter/`](./api_server/src/ppt_converter/) 의 실제 출력을 단일 진실 공급원으로 한다.
+
+| 항목 | 변환기 출력 / 코드 위치 | normalizer 흡수 / DB |
+|---|---|---|
+| 식별자 | `meta.doc_id` (`ppt_converter/core.py:893`) | `meta.doc_id` 우선, `meta.id` / `raw.id` 폴백 → `records.id` |
+| 에이전트 | `meta.agent_scope` (`ppt_converter/core.py:907`) | `meta.agent_scope` 우선, `raw.agents` 폴백 → `records.agents` |
+| 차트 | `tables[]` 1행 + `attachments[].kind="chart"` placeholder (`ppt_converter/charts.py`) | 표준 tables/attachments 경로 |
+| 분류/생애주기 | 변환기 자동 추출 없음 — CLI override 경로만. normalizer 미흡수 (KNOWN GAP) | RecordIn 기본값 |
+
+자세한 KNOWN GAP 은 [`json_schema_rules.md`](./json_schema_rules.md) §4.4 참조.
 
 ---
 
