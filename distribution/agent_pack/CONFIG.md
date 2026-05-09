@@ -1,52 +1,59 @@
 ﻿# 설정 (CONFIG)
 
-## API 서버 주소
+## API 서버 주소 — 한 곳만 바꾸면 전파
 
-본 가이드 팩 전체에 다음 URL 이 **하드코딩** 되어 있다:
+현재 캐노니컬 URL 은 [`.api_url`](./.api_url) 마커 파일에 한 줄로 저장되어 있다:
 
 ```text
 http://110.15.177.125:8000
 ```
 
-(이 PC 의 외부 IP. 같은 LAN 내부에서는 LAN IP `192.168.0.133:8000` 도 사용 가능 — 본 팩은 외부 직결을 기본으로 한다.)
+(이 PC 의 외부 IP. 같은 LAN 내부에서는 LAN IP `192.168.0.133:8000` 도 사용 가능.)
 
-### URL 변경이 필요한 경우
+본 팩의 모든 .md / .py / .sh / .ts / .json 파일에 동일 URL 이 **하드코딩** 되어 있어 standalone 으로 동작한다. 변경 시 두 가지 방식 중 하나:
 
-다른 서버/포트에서 운영 중이면 본 팩의 모든 파일에서 `110.15.177.125:8000` 를 일괄 교체:
-
-**Python 클라이언트** ([`examples/python_client.py`](./examples/python_client.py)):
-
-```python
-BASE = "http://110.15.177.125:8000"  # ← 이 한 줄만 변경
-```
-
-**curl 스크립트** ([`examples/curl_smoke.sh`](./examples/curl_smoke.sh)):
+### 1. 일괄 갱신 (권장 — 영구 반영)
 
 ```bash
-BASE="http://110.15.177.125:8000"  # ← 이 한 줄만 변경
+# Python (cross-platform)
+cd agent_pack
+python update_url.py http://new-server:8000
+
+# 또는 PowerShell
+.\update_url.ps1 http://new-server:8000
+
+# 미리보기 (변경 안 함)
+python update_url.py --dry-run http://new-server:8000
 ```
 
-**TypeScript 클라이언트** ([`examples/ts_client.ts`](./examples/ts_client.ts)):
+스크립트는:
 
-```typescript
-const BASE = "http://110.15.177.125:8000";  // ← 이 한 줄만 변경
-```
+- `.api_url` 의 현재 URL 을 읽어 그것만 정확히 치환 (다른 URL 건드리지 않음)
+- .md / .py / .sh / .ts / .json / .txt / .yaml 파일 전체 스캔
+- 치환 후 `.api_url` 도 갱신 (idempotent — 재실행 시 "already at NEW" 출력)
+- 변경된 파일·횟수 보고
 
-**전체 일괄 교체** (Linux/macOS/Git Bash):
+### 2. 환경변수 override (런타임 임시)
+
+각 예제 클라이언트는 `AIDH_API_URL` 환경변수가 있으면 우선 사용:
 
 ```bash
-NEW="http://your-server:8000"
-grep -lr "http://110.15.177.125:8000" agent_pack/ | xargs sed -i "s|http://110\.15\.177\.125:8000|$NEW|g"
+# Linux / macOS / Git Bash
+export AIDH_API_URL="http://other-server:8080"
+python examples/python_client.py
+bash examples/curl_smoke.sh
+
+# PowerShell
+$env:AIDH_API_URL = "http://other-server:8080"
+python examples/python_client.py
+
+# Node (TS client)
+AIDH_API_URL=http://other-server:8080 node examples/ts_client.js
 ```
 
-PowerShell:
+env var 가 빈 문자열 / 미설정이면 하드코딩 값으로 자동 폴백.
 
-```powershell
-$NEW = "http://your-server:8000"
-Get-ChildItem agent_pack -Recurse -File | ForEach-Object {
-  (Get-Content $_.FullName) -replace 'http://110\.15\.177\.125:8000', $NEW | Set-Content $_.FullName
-}
-```
+API key 도 동일 방식으로 `AIDH_API_KEY` env var 지원.
 
 ---
 
@@ -62,20 +69,15 @@ curl http://110.15.177.125:8000/api/system/health
 `auth_required=true` 이면 모든 요청에 `X-API-Key` 헤더 필요:
 
 ```bash
-curl -H "X-API-Key: <발급받은_키>" http://110.15.177.125:8000/api/discover
+# 환경변수로 주입 (예제 클라이언트는 자동 인식)
+export AIDH_API_KEY="your-key-here"
+python examples/python_client.py
+
+# 또는 직접
+curl -H "X-API-Key: your-key" http://110.15.177.125:8000/api/discover
 ```
 
-Python:
-
-```python
-import urllib.request
-req = urllib.request.Request(
-    "http://110.15.177.125:8000/api/discover",
-    headers={"X-API-Key": "your-key-here"},
-)
-```
-
-키 발급은 운영자가 다음 명령으로:
+키 발급은 운영자가:
 
 ```powershell
 cd api_server

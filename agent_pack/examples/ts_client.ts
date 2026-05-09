@@ -7,10 +7,19 @@
  *   const rec   = await client.getRecord(items[0].record_id);
  */
 
-// === HARDCODED API URL =====================================================
-const BASE = "http://110.15.177.125:8000";
-const API_KEY: string | null = null; // 인증 활성 시 설정 (CONFIG.md)
+// === API URL ===============================================================
+// 우선순위:
+//   1) process.env.AIDH_API_URL (Node) 또는 globalThis.AIDH_API_URL (browser)
+//   2) 아래 하드코딩 값 (../update_url.py 가 일괄 갱신)
 // ===========================================================================
+const ENV_URL: string | undefined =
+  (typeof process !== "undefined" && process.env?.AIDH_API_URL) ||
+  (globalThis as { AIDH_API_URL?: string }).AIDH_API_URL;
+const BASE = (ENV_URL ?? "http://110.15.177.125:8000").replace(/\/$/, "");
+const ENV_KEY: string | undefined =
+  (typeof process !== "undefined" && process.env?.AIDH_API_KEY) ||
+  (globalThis as { AIDH_API_KEY?: string }).AIDH_API_KEY;
+const API_KEY: string | null = ENV_KEY ?? null;
 
 interface SearchItem {
   record_id?: string;

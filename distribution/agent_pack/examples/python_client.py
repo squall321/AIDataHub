@@ -15,17 +15,21 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.parse
 import urllib.request
 import urllib.error
 from typing import Any
 
-# === HARDCODED API URL =====================================================
-# 다른 서버에서 운영 중이면 이 한 줄만 변경.
-BASE = "http://110.15.177.125:8000"
-API_KEY: str | None = None  # 인증 활성 시 설정 (CONFIG.md 참조)
-# ===========================================================================
+# === API URL ================================================================
+# 우선순위:
+#   1) 환경변수 AIDH_API_URL (런타임 임시 override)
+#   2) 아래 하드코딩 값 (`agent_pack/update_url.py` 가 일괄 갱신)
+# 일괄 갱신: cd agent_pack && python update_url.py http://new-server:8000
+# ============================================================================
+BASE = os.environ.get("AIDH_API_URL", "http://110.15.177.125:8000").rstrip("/")
+API_KEY: str | None = os.environ.get("AIDH_API_KEY")  # CONFIG.md 참조
 
 
 class AIDataHubClient:

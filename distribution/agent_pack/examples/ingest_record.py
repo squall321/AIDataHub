@@ -10,6 +10,7 @@ Agent 가 외부에서 문서 파일을 받아 본 시스템에 적재하는 흐
 """
 from __future__ import annotations
 import argparse
+import os
 import sys
 import urllib.request
 import urllib.error
@@ -17,10 +18,11 @@ from pathlib import Path
 import json
 import mimetypes
 
-# === HARDCODED API URL =====================================================
-BASE = "http://110.15.177.125:8000"
-API_KEY: str | None = None
-# ===========================================================================
+# === API URL ================================================================
+# 우선순위: AIDH_API_URL env > 하드코딩. 일괄 갱신은 ../update_url.py.
+# ============================================================================
+BASE = os.environ.get("AIDH_API_URL", "http://110.15.177.125:8000").rstrip("/")
+API_KEY: str | None = os.environ.get("AIDH_API_KEY")
 
 
 def upload_and_ingest(

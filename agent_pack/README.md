@@ -11,7 +11,7 @@
 http://110.15.177.125:8000
 ```
 
-다른 머신/포트에서 운영 중이면 [`CONFIG.md`](./CONFIG.md) 의 "URL 변경" 절 참조 (1줄 변경).
+> URL 바꾸려면 한 줄 명령으로 전파: `python update_url.py http://new-server:8000` (또는 PowerShell `.\update_url.ps1`). [`CONFIG.md`](./CONFIG.md) 참조. 런타임 임시 override 는 `AIDH_API_URL` 환경변수.
 
 헬스체크 (시작 직후 한 번):
 
@@ -26,14 +26,17 @@ curl http://110.15.177.125:8000/api/system/health
 
 ## 1. 본 폴더에 무엇이 있나
 
-| 파일 | 용도 | 분량 |
-|---|---|---|
-| [`README.md`](./README.md) | 본 문서 — 진입점 | — |
-| [`CONFIG.md`](./CONFIG.md) | API 서버 URL · API 키 · 환경변수 | 짧음 |
-| [`api_reference_compact.md`](./api_reference_compact.md) | 56 endpoint 한 페이지 요약 | 1 page |
-| [`schema_reference.md`](./schema_reference.md) | JSON 스키마 (메타·섹션·표·첨부) 핵심만 | 짧음 |
-| [`patterns.md`](./patterns.md) | 자주 쓰는 호출 패턴 (검색·그룹·ingest) | 짧음 |
-| [`examples/`](./examples/) | 동작하는 코드 예제 (.py / .sh / .ts) | 6 files |
+| 파일 | 용도 |
+|---|---|
+| [`README.md`](./README.md) | 본 문서 — 진입점 |
+| [`CONFIG.md`](./CONFIG.md) | API 서버 URL · API 키 · 환경변수 |
+| [`api_reference_compact.md`](./api_reference_compact.md) | 56 endpoint 한 페이지 요약 |
+| [`schema_reference.md`](./schema_reference.md) | JSON 스키마 (메타·섹션·표·첨부) 핵심만 |
+| [`patterns.md`](./patterns.md) | 자주 쓰는 호출 패턴 (검색·그룹·ingest) |
+| [`examples/`](./examples/) | 동작하는 코드 예제 (.py / .sh / .ts) — 6 files |
+| [`.api_url`](./.api_url) | 캐노니컬 API URL (sync 마커 — `update_url.py` 가 사용) |
+| [`update_url.py`](./update_url.py) | URL 일괄 갱신 (Python, cross-platform) |
+| [`update_url.ps1`](./update_url.ps1) | URL 일괄 갱신 (PowerShell) |
 
 본 폴더는 **자체 완결**. 더 깊이 들어가야 할 경우 다음을 참조 (선택):
 
