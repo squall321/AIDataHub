@@ -134,6 +134,46 @@ async def cross_agent(
     }
 
 
+async def usage_top(
+    session: AsyncSession, *, limit: int = 20
+) -> list[dict]:
+    """``read_count`` 상위 레코드 목록 (Migration 0008).
+
+    최근 접근 시각(``last_accessed_at``)을 보조 정렬 키로 사용한다.
+    soft-deleted 레코드는 제외.
+    """
+    limit = max(1, min(int(limit or 20), 100))
+    stmt = (
+        select(
+            Record.id,
+            Record.title,
+            Record.data_type,
+            Record.read_count,
+            Record.last_accessed_at,
+        )
+        .where(Record.deleted_at.is_(None))
+        .order_by(
+            Record.read_count.desc(),
+            Record.last_accessed_at.desc(),
+            Record.id.desc(),
+        )
+        .limit(limit)
+    )
+    rows = (await session.execute(stmt)).all()
+    return [
+        {
+            "id": r.id,
+            "title": r.title,
+            "data_type": r.data_type,
+            "read_count": int(r.read_count or 0),
+            "last_accessed_at": (
+                r.last_accessed_at.isoformat() if r.last_accessed_at else None
+            ),
+        }
+        for r in rows
+    ]
+
+
 async def timeline(session: AsyncSession, year: int) -> dict:
     """연도별 월간 레코드 생성 카운트."""
     stmt = (
@@ -155,4 +195,5 @@ __all__ = [
     "cross_agent",
     "distribution",
     "timeline",
+    "usage_top",
 ]

@@ -39,8 +39,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="Excel(.xlsx) → DATA JSON 직접 변환기",
     )
     p.add_argument("xlsx_path", type=str, help="입력 .xlsx 경로")
-    p.add_argument("--division", required=True, help="사업부 코드 (예: HE)")
-    p.add_argument("--team", required=True, help="팀 코드 (예: CAE)")
+    p.add_argument("--division", required=True, help="팀 코드 (예: HE)")
+    p.add_argument("--team", required=True, help="그룹 코드 (예: CAE)")
     p.add_argument("--year", type=int, required=True, help="연도 (예: 2026)")
     p.add_argument(
         "--start-seq",
@@ -120,6 +120,16 @@ def build_parser() -> argparse.ArgumentParser:
             "규칙서 11장 참조."
         ),
     )
+    p.add_argument(
+        "--detect-multi-tables",
+        dest="detect_multi_tables",
+        action="store_true",
+        help=(
+            "시트당 contiguous-row block 휴리스틱으로 다중 표를 탐지하고, "
+            "2 개 이상이 발견되면 경고/요약을 출력. 본 옵션은 변환 결과를 "
+            "변경하지 않고 보고만 수행한다 (opt-in)."
+        ),
+    )
     p.add_argument("--verbose", "-v", action="store_true", help="상세 로그")
     return p
 
@@ -170,6 +180,36 @@ def main(argv: list[str] | None = None) -> int:
     print(f"시트 수   : {len(sheets)}")
     for s, p in zip(sheets, paths):
         print(f"  - {s.source_sheet:<24}  rows={len(s.rows):<5} -> {p}")
+
+    # ---- S8. multi-table detection (opt-in) -----------------------------
+    if getattr(args, "detect_multi_tables", False):
+        try:
+            from openpyxl import load_workbook
+
+            from .detect_multi import detect_in_worksheet
+
+            wb = load_workbook(xlsx_path, data_only=True, read_only=False)
+            print("--- 다중 표 탐지 ---")
+            for sheet_name in wb.sheetnames:
+                if sheet_name in (opts.meta_sheet, opts.glossary_sheet):
+                    continue
+                ws = wb[sheet_name]
+                rep = detect_in_worksheet(ws)
+                if rep.has_multi_tables:
+                    print(
+                        f"  [{sheet_name}] blocks={len(rep.blocks)} "
+                        f"-> 별도 레코드 분리 권장"
+                    )
+                    for i, blk in enumerate(rep.blocks, start=1):
+                        print(
+                            f"    block#{i}: rows {blk.start_row}-{blk.end_row} "
+                            f"cols {blk.start_col}-{blk.end_col} "
+                            f"data_rows={blk.num_rows}"
+                        )
+                else:
+                    print(f"  [{sheet_name}] single table (or empty)")
+        except Exception as exc:  # noqa: BLE001
+            print(f"  multi-table 탐지 실패: {exc}", file=sys.stderr)
     return 0
 
 

@@ -4,10 +4,18 @@ REST API(``/api/data``, ``/api/agents`` 등)를 MCP 도구로 래핑한다.
 
 도구 목록
 ---------
+- ``discover_schema()`` → ``GET /api/discover`` + ``/api/schema`` 합본 (먼저 호출).
+- ``discover_capabilities(agent_type)`` → ``GET /api/agents/{type}`` 풍부화.
+- ``ask(query, limit=5)`` → ``POST /api/ask`` 자연어 검색.
+- ``find_related(record_id, mode='auto')`` → tags/semantic/graph 결합.
+- ``explain_field(field_name)`` / ``explain_schema(field_name)`` → ``/api/schema`` 단일 필드 설명 (alias).
 - ``query_data(agent, query="", limit=5)`` → ``GET /api/data``
 - ``list_agents()`` → ``GET /api/agents``
 - ``get_record(record_id)`` → ``GET /api/records/{id}``
 - ``search(mode, query, tags=None)`` → ``GET /api/search``
+
+LLM 이 도구 docstring 만 읽고도 올바른 도구를 선택할 수 있도록 docstring 을
+명시적으로 작성한다 (Agent 30 — Discovery / RAG-friendly API).
 
 실행
 ----
@@ -100,6 +108,228 @@ def _clamp_limit(limit: int) -> int:
     except (TypeError, ValueError):
         return 5
     return max(1, min(limit, MAX_LIMIT))
+
+
+# ---------------------------------------------------------------------------
+# 도구: discover_schema (Agent 30 — RAG-friendly entry point)
+# ---------------------------------------------------------------------------
+@mcp.tool()
+async def discover_schema() -> dict[str, Any]:
+    """**Call this FIRST.** 데이터 허브의 전체 구조를 한 번에 받아온다.
+
+    반환:
+        ``GET /api/discover`` (카운트, 에이전트, 데이터 타입 설명, 시작점 URL) +
+        ``GET /api/schema`` (JSON Schema, draft-2020-12, 필드/enum/oneOf).
+
+    AI 에이전트가 백엔드 source 를 읽지 않고도 이 한 호출로 아래를 알 수 있다:
+        - 어떤 data_type 이 있고 record 가 몇 개 있는지
+        - 어떤 agent 타입이 있고 무엇을 다루는지
+        - 필드/enum/관계 (parent_record_id, related_record_ids, ...)
+        - 다음 단계 endpoint (starting_points)
+    """
+    discover = await _request("GET", "/api/discover")
+    schema = await _request("GET", "/api/schema")
+    return {"discover": discover, "schema": schema}
+
+
+@mcp.tool()
+async def discover_capabilities(agent_type: str) -> dict[str, Any]:
+    """특정 agent 타입에 대해 어떤 데이터가 있는지 본다.
+
+    ``discover_schema`` 다음 호출. agent 의 메타(common_tags, data_types) +
+    실제 보유 record 수 + 샘플 record 까지.
+
+    Args:
+        agent_type: 예시 — 'iga-analyst', 'cae-reporter'.
+    """
+    if not agent_type:
+        return {"error": "missing_argument", "detail": "agent_type required"}
+    agent_meta = await _request("GET", f"/api/agents/{agent_type}")
+    if isinstance(agent_meta, dict) and "error" in agent_meta:
+        return agent_meta
+    records = await _request(
+        "GET", f"/api/agents/{agent_type}/records"
+    )
+    sample = records if isinstance(records, list) else []
+    return {
+        "agent": agent_meta,
+        "record_count": len(sample),
+        "sample_records": sample[:5],
+        "follow_up": [
+            f"GET /api/data?agent={agent_type}&query=<keyword>",
+            f"POST /api/ask {{\"query\":\"... {agent_type} ...\"}}",
+        ],
+    }
+
+
+@mcp.tool()
+async def ask(query: str, limit: int = 5) -> dict[str, Any]:
+    """자연어 쿼리. 한국어/영어 모두 가능.
+
+    이 도구는 쿼리를 해석한 ``interpreted_query`` (어떤 필터로 풀었는지) +
+    ``results`` (record 목록) + ``follow_up_queries`` 를 반환한다.
+
+    Args:
+        query: 예시 — '최근 1주일 IGA 시뮬레이션', 'tables with quality>=80'.
+        limit: 최대 결과 수 (1-50, 기본 5).
+
+    Returns:
+        ``{interpreted_query, results, total_matched, follow_up_queries}``
+    """
+    if not query or not query.strip():
+        return {"error": "missing_argument", "detail": "query required"}
+    return await _request(
+        "POST", "/api/ask", json_body={"query": query, "limit": _clamp_limit(limit)}
+    )
+
+
+@mcp.tool()
+async def find_related(record_id: str, mode: str = "auto") -> dict[str, Any]:
+    """주어진 record 와 관련된 record 들을 찾는다.
+
+    Args:
+        record_id: 기준 record (예: 'DOC-HE-CAE-2026-000001').
+        mode: 'tags' | 'graph' | 'semantic' | 'auto' (기본).
+            - 'tags': 같은 태그 ≥1 공유.
+            - 'graph': record.related_record_ids + parent/children.
+            - 'semantic': /api/search?mode=semantic 활용 (pgvector 필요).
+            - 'auto': 위 셋을 모두 합쳐 dedup.
+
+    Returns:
+        ``{related: [...], by_mode: {tags: [...], graph: [...], semantic: [...]}}``
+    """
+    if not record_id:
+        return {"error": "missing_argument", "detail": "record_id required"}
+    if mode not in {"tags", "graph", "semantic", "auto"}:
+        return {
+            "error": "invalid_argument",
+            "detail": f"mode must be tags/graph/semantic/auto, got {mode!r}",
+        }
+
+    base = await _request("GET", f"/api/records/{record_id}")
+    if isinstance(base, dict) and "error" in base:
+        return base
+
+    by_mode: dict[str, list[dict[str, Any]]] = {
+        "tags": [],
+        "graph": [],
+        "semantic": [],
+    }
+
+    # graph: related_record_ids + parent/children
+    if mode in ("graph", "auto"):
+        ids: list[str] = []
+        for rid in base.get("related_record_ids") or []:
+            if rid != record_id:
+                ids.append(rid)
+        if base.get("parent_record_id"):
+            ids.append(base["parent_record_id"])
+        for rid in ids:
+            r = await _request("GET", f"/api/records/{rid}")
+            if isinstance(r, dict) and "error" not in r:
+                by_mode["graph"].append(
+                    {"id": r.get("id"), "title": r.get("title"), "data_type": r.get("data_type")}
+                )
+
+    # tags: ?mode=tag&tags=<each>
+    if mode in ("tags", "auto"):
+        tags = base.get("tags") or []
+        if tags:
+            params: list[tuple[str, Any]] = [("mode", "tag")]
+            for t in tags[:5]:  # cap to first 5 tags
+                params.append(("tags", t))
+            data = await _request("GET", "/api/search", params=params)  # type: ignore[arg-type]
+            items = (
+                data.get("results")
+                if isinstance(data, dict)
+                else (data if isinstance(data, list) else [])
+            ) or []
+            for it in items:
+                if it.get("record_id") and it.get("record_id") != record_id:
+                    by_mode["tags"].append(
+                        {
+                            "id": it.get("record_id"),
+                            "title": it.get("title"),
+                            "data_type": it.get("data_type"),
+                        }
+                    )
+
+    # semantic
+    if mode in ("semantic", "auto"):
+        title = base.get("title") or ""
+        if title:
+            data = await _request(
+                "GET", "/api/search", params={"mode": "semantic", "q": title}
+            )
+            items = (
+                data.get("results") if isinstance(data, dict) else []
+            ) or []
+            for it in items:
+                if it.get("record_id") and it.get("record_id") != record_id:
+                    by_mode["semantic"].append(
+                        {
+                            "id": it.get("record_id"),
+                            "title": it.get("title"),
+                            "data_type": it.get("data_type"),
+                        }
+                    )
+
+    # dedup
+    seen: set[str] = set()
+    related: list[dict[str, Any]] = []
+    for items in by_mode.values():
+        for r in items:
+            rid = r.get("id")
+            if rid and rid not in seen:
+                seen.add(rid)
+                related.append(r)
+
+    return {"record_id": record_id, "mode": mode, "related": related, "by_mode": by_mode}
+
+
+@mcp.tool()
+async def explain_field(field_name: str) -> dict[str, Any]:
+    """단일 필드의 의미·타입·허용 값을 설명한다.
+
+    내부적으로 ``GET /api/schema`` 를 받아 해당 프로퍼티만 추출한다.
+
+    Args:
+        field_name: 예시 — 'data_type', 'classification', 'capabilities'.
+    """
+    if not field_name:
+        return {"error": "missing_argument", "detail": "field_name required"}
+    schema = await _request("GET", "/api/schema")
+    if isinstance(schema, dict) and "error" in schema:
+        return schema
+    props = (schema.get("properties") or {}) if isinstance(schema, dict) else {}
+    spec = props.get(field_name)
+    if spec is None:
+        return {
+            "error": "field_not_found",
+            "field_name": field_name,
+            "available_fields": sorted(props.keys()),
+        }
+    return {
+        "field_name": field_name,
+        "spec": spec,
+        "is_enum": "enum" in spec,
+        "allowed_values": spec.get("enum"),
+        "type": spec.get("type"),
+        "description": spec.get("description"),
+    }
+
+
+@mcp.tool()
+async def explain_schema(field_name: str) -> dict[str, Any]:
+    """``explain_field`` 의 alias — REMAINING_JOBS 명세 (B4) 와 1:1 매칭용.
+
+    동작은 ``explain_field`` 와 완전히 동일. 단순한 AI 에이전트가 명세에 적힌
+    이름 그대로 호출해도 작동하도록 둘 다 등록한다.
+
+    Args:
+        field_name: 예시 — 'data_type', 'classification', 'capabilities'.
+    """
+    return await explain_field(field_name)
 
 
 # ---------------------------------------------------------------------------

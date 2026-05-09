@@ -248,14 +248,21 @@ def summary_ilike(column: Any, q: str) -> ColumnElement[bool]:
 def fts_match(column: Any, q: str, session: AsyncSession) -> ColumnElement[bool]:
     """간이 FTS.
 
-    - PG : ``to_tsvector('simple', column) @@ plainto_tsquery('simple', q)``
+    - PG : ``to_tsvector('simple'::regconfig, column) @@ plainto_tsquery('simple'::regconfig, q)``
+      ``literal('simple')`` 만 쓰면 첫 인자가 ``varchar`` 로 추론되어 PG 의
+      ``to_tsvector(regconfig, text)`` 시그니처와 매칭되지 않는다
+      (``UndefinedFunctionError``). ``literal_column`` 으로 ``::regconfig``
+      캐스팅을 강제한다.
     - 기타 : ILIKE 폴백.
     """
     if not q:
         return literal(False)
     if is_postgres(session):
-        tsvector = func.to_tsvector(literal("simple"), column)
-        tsquery = func.plainto_tsquery(literal("simple"), literal(q))
+        from sqlalchemy import literal_column
+
+        cfg = literal_column("'simple'::regconfig")
+        tsvector = func.to_tsvector(cfg, column)
+        tsquery = func.plainto_tsquery(cfg, literal(q))
         return tsvector.op("@@")(tsquery)
     return summary_ilike(column, q)
 

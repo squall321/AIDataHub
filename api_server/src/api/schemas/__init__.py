@@ -19,11 +19,13 @@ from .attachment import (
 )
 from .cad import CADContent
 from .common import (
+    ACCESS_PATTERNS,
     CAPABILITY_LABELS,
     CLASSIFICATIONS,
     DATA_TYPES,
     DERIVATIONS,
     STATUSES,
+    AccessPattern,
     Classification,
     DataType,
     Derivation,

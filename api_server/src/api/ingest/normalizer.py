@@ -112,6 +112,21 @@ def _extract_doc(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         "department": meta.get("department", "") or raw.get("department", ""),
         "project": meta.get("project") or raw.get("project"),
         "version": str(meta.get("version", "1.0") or "1.0"),
+        # Agent discovery hints (Migration 0007) — meta 우선, 없으면 raw.
+        "agent_hints": meta.get("agent_hints") or raw.get("agent_hints"),
+        "related_record_ids": list(
+            meta.get("related_record_ids")
+            or raw.get("related_record_ids")
+            or []
+        ),
+        "query_examples": list(
+            meta.get("query_examples") or raw.get("query_examples") or []
+        ),
+        "access_pattern": (
+            meta.get("access_pattern")
+            or raw.get("access_pattern")
+            or "occasional"
+        ),
     }
 
     # content 는 DOC 본문(meta/toc/sections/figures/tables/sources) 자체.
@@ -189,6 +204,7 @@ def _extract_other(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]
 
 def _common_fields(raw: dict[str, Any], default_title: str = "") -> dict[str, Any]:
     """비-DOC 변종에서 공용 메타 필드를 끌어온다."""
+    meta = raw.get("meta") if isinstance(raw.get("meta"), dict) else {}
     return {
         "id": raw.get("id"),
         "title": raw.get("title") or default_title,
@@ -201,6 +217,21 @@ def _common_fields(raw: dict[str, Any], default_title: str = "") -> dict[str, An
         "department": raw.get("department", ""),
         "project": raw.get("project"),
         "version": str(raw.get("version", "1.0") or "1.0"),
+        # Agent discovery hints (Migration 0007).
+        "agent_hints": raw.get("agent_hints") or meta.get("agent_hints"),
+        "related_record_ids": list(
+            raw.get("related_record_ids")
+            or meta.get("related_record_ids")
+            or []
+        ),
+        "query_examples": list(
+            raw.get("query_examples") or meta.get("query_examples") or []
+        ),
+        "access_pattern": (
+            raw.get("access_pattern")
+            or meta.get("access_pattern")
+            or "occasional"
+        ),
     }
 
 
@@ -264,6 +295,12 @@ def normalize(raw: dict[str, Any]) -> RecordIn:
         department=common.get("department", ""),
         project=common.get("project"),
         version=common.get("version", "1.0"),
+        # Agent discovery hints (Migration 0007). RecordIn 의 기본값이 있으므로
+        # 빈 값이면 그쪽이 사용된다.
+        agent_hints=common.get("agent_hints"),
+        related_record_ids=common.get("related_record_ids", []),
+        query_examples=common.get("query_examples", []),
+        access_pattern=common.get("access_pattern", "occasional"),
     )
     return record
 

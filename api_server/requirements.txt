@@ -11,7 +11,13 @@ alembic>=1.14.0
 pgvector>=0.3.0
 
 # Optional embedding providers (install on demand):
-#   pip install "openai>=1.0"   # for OpenAIEmbedder (set OPENAI_API_KEY)
+#   pip install "openai>=1.0"
+#       → OpenAIEmbedder, EMBEDDING_PROVIDER=openai, OPENAI_API_KEY 필요
+#   pip install "sentence-transformers>=3.0"
+#       → SentenceTransformerEmbedder (default: intfloat/multilingual-e5-small)
+#       → EMBEDDING_PROVIDER=e5_small (또는 sentence_transformers)
+#       → CPU 추론 OK, dim=384, 한국어 우수, 외부 API 불필요
+#       → 첫 가동 시 모델 자동 다운로드 ~118MB (HF 캐시)
 
 # Utilities
 python-dotenv>=1.0.1
@@ -26,6 +32,13 @@ markdown-it-py>=3.0
 mdit-py-plugins>=0.4
 pdfplumber>=0.11.0
 pypdf>=4.0.0
+# Optional — PDF OCR (Agent 32 / S6).
+# Tesseract 시스템 바이너리는 별도 설치 (Windows: https://github.com/UB-Mannheim/tesseract/wiki).
+# `pdf2image` 는 poppler 도 필요 (https://github.com/oschwartz10612/poppler-windows).
+# 의존성/바이너리가 없으면 `--ocr` 플래그는 안전하게 무시된다.
+# pytesseract>=0.3.10
+# pdf2image>=1.16.3
+# Pillow>=10.0.0
 
 # MCP server (Model Context Protocol)
 mcp>=1.2.0

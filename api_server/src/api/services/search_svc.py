@@ -2,6 +2,7 @@
 
 - ``tag_search``       : 모든 태그를 포함하는 레코드 (ARRAY @> on PG, 파이썬 후필터 on SQLite)
 - ``fts_search``       : 본문/요약 텍스트 ILIKE 기반 단순 FTS
+- ``semantic_search``  : pgvector ``<=>`` (cosine) 또는 numpy 폴백 시맨틱 검색
 - ``data_for_agent``   : ``/api/data`` 엔드포인트의 핵심 로직
 
 ARRAY/JSONB 등 방언 의존 표현은 모두 :mod:`api.services.sql_compat` 의
@@ -13,7 +14,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 
-from sqlalchemy import or_, select
+from sqlalchemy import Float, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.db.models import AgentRecord, Record, RecordSection
@@ -23,6 +24,7 @@ from .sql_compat import (
     array_contains,
     array_overlap,
     fts_match,
+    is_postgres,
     paginate_rows,
     summary_ilike,
 )
@@ -176,6 +178,143 @@ def _make_snippet(text: str, q: str, *, length: int = 300) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Semantic search (pgvector cosine on PG, numpy fallback on SQLite)
+# ---------------------------------------------------------------------------
+async def semantic_search(
+    session: AsyncSession,
+    query: str,
+    *,
+    top_k: int = 5,
+    data_types: Sequence[str] | None = None,
+    record_ids: Sequence[str] | None = None,
+) -> list[dict]:
+    """시맨틱 검색.
+
+    동작:
+        1. ``query`` 를 :func:`api.services.embedding.get_embedder` 로 인코딩.
+        2. PostgreSQL: ``embedding <=> :query_vec`` (cosine distance) ORDER BY
+           오름차순 + LIMIT — pgvector ivfflat 인덱스 활용.
+        3. SQLite (테스트): 모든 미- ``NULL`` 임베딩 행을 가져와 numpy 로
+           코사인 유사도 계산 (작은 데이터셋 가정).
+        4. 응답: ``[{section_id, record_id, title, section_title,
+           content_text[:200], score, data_type, tags}]`` (score 는 0..1
+           코사인 유사도, 1 이 최고).
+
+    ``data_types`` / ``record_ids`` 필터는 양쪽 백엔드에서 동일하게 적용.
+    """
+    from .embedding import get_embedder
+
+    if not (query or "").strip():
+        return []
+
+    embedder = get_embedder()
+    qvec = embedder.encode(query)
+    top_k = max(1, min(int(top_k), 100))
+
+    if is_postgres(session):
+        # pgvector cosine distance: ``<=>`` (0 = identical, 2 = opposite).
+        # similarity = 1 - distance/2 로 0..1 정규화 (cosine sim ∈ [-1,1]).
+        # ``return_type=Float()`` 명시 — 미명시 시 SQLAlchemy 가 결과 타입을 Vector
+        # 로 추정해 pgvector ORM result processor 가 float scalar 를 vector 처럼
+        # 파싱하다 TypeError 발생 (`'float' object is not subscriptable`).
+        distance = RecordSection.embedding.op("<=>", return_type=Float())(qvec).label("distance")
+        stmt = (
+            select(
+                RecordSection.id.label("section_pk"),
+                RecordSection.section_id.label("section_id"),
+                RecordSection.record_id.label("record_id"),
+                RecordSection.title.label("section_title"),
+                RecordSection.content_text.label("content_text"),
+                Record.title.label("title"),
+                Record.data_type.label("data_type"),
+                Record.tags.label("tags"),
+                distance,
+            )
+            .join(Record, Record.id == RecordSection.record_id)
+            .where(RecordSection.embedding.is_not(None))
+        )
+        if data_types:
+            stmt = stmt.where(Record.data_type.in_(list(data_types)))
+        if record_ids:
+            stmt = stmt.where(RecordSection.record_id.in_(list(record_ids)))
+        stmt = stmt.order_by(distance.asc()).limit(top_k)
+        rows = (await session.execute(stmt)).all()
+        results: list[dict] = []
+        for row in rows:
+            d = float(row.distance) if row.distance is not None else 2.0
+            sim = max(0.0, 1.0 - d / 2.0)
+            results.append(
+                {
+                    "record_id": row.record_id,
+                    "section_id": row.section_id,
+                    "title": row.title,
+                    "section_title": row.section_title,
+                    "data_type": row.data_type,
+                    "snippet": (row.content_text or "")[:200],
+                    "score": round(sim, 4),
+                    "tags": list(row.tags or []),
+                }
+            )
+        return results
+
+    # SQLite 폴백 — 전체 로드 후 numpy 로 코사인.
+    import numpy as np
+
+    stmt = (
+        select(RecordSection, Record)
+        .join(Record, Record.id == RecordSection.record_id)
+        .where(RecordSection.embedding.is_not(None))
+    )
+    if data_types:
+        stmt = stmt.where(Record.data_type.in_(list(data_types)))
+    if record_ids:
+        stmt = stmt.where(RecordSection.record_id.in_(list(record_ids)))
+    rows = (await session.execute(stmt)).all()
+
+    if not rows:
+        return []
+
+    q = np.asarray(qvec, dtype="float32")
+    qnorm = float(np.linalg.norm(q))
+    if qnorm < 1e-12:
+        return []
+    q /= qnorm
+
+    scored: list[tuple[float, RecordSection, Record]] = []
+    for sec, rec in rows:
+        emb = sec.embedding
+        if emb is None:
+            continue
+        v = np.asarray(emb, dtype="float32")
+        if v.shape != q.shape:
+            continue
+        vnorm = float(np.linalg.norm(v))
+        if vnorm < 1e-12:
+            continue
+        sim = float(np.dot(q, v) / vnorm)
+        # cosine sim ∈ [-1, 1] → [0, 1] (음수는 0 으로 클립).
+        sim01 = max(0.0, min(1.0, (sim + 1.0) / 2.0))
+        scored.append((sim01, sec, rec))
+
+    scored.sort(key=lambda t: t[0], reverse=True)
+    out: list[dict] = []
+    for score, sec, rec in scored[:top_k]:
+        out.append(
+            {
+                "record_id": rec.id,
+                "section_id": sec.section_id,
+                "title": rec.title,
+                "section_title": sec.title,
+                "data_type": rec.data_type,
+                "snippet": (sec.content_text or "")[:200],
+                "score": round(score, 4),
+                "tags": list(rec.tags or []),
+            }
+        )
+    return out
+
+
+# ---------------------------------------------------------------------------
 # /api/data — Cline SR core
 # ---------------------------------------------------------------------------
 async def data_for_agent(
@@ -309,5 +448,6 @@ __all__ = [
     "array_overlap_compat",
     "data_for_agent",
     "fts_search",
+    "semantic_search",
     "tag_search",
 ]

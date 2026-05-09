@@ -35,20 +35,31 @@ if not exist ".venv\Scripts\python.exe" (
 )
 echo [OK]    venv 확인됨
 
-REM --- 2) psql 위치 확인 -----------------------------------------------
+REM --- 2) psql 위치 확인 (PG 18/17/16 자동 검색) ----------------------
+set "PSQL="
 where psql > nul 2>&1
 if %errorlevel%==0 (
     set "PSQL=psql"
 ) else (
-    set "PSQL=C:\Program Files\PostgreSQL\16\bin\psql.exe"
-    if not exist "!PSQL!" (
+    REM 높은 버전부터 검색 (사용자가 18 을 설치했다면 자동 인식)
+    for %%V in (18 17 16) do (
+        if not defined PSQL (
+            if exist "C:\Program Files\PostgreSQL\%%V\bin\psql.exe" (
+                set "PSQL=C:\Program Files\PostgreSQL\%%V\bin\psql.exe"
+                set "PG_VERSION=%%V"
+            )
+        )
+    )
+    if not defined PSQL (
         echo [ERROR] psql.exe 를 PATH 또는 기본 설치 경로에서 찾지 못했습니다.
-        echo         PostgreSQL 16 을 설치하거나 PATH 에 추가하세요.
-        echo         기본 경로: C:\Program Files\PostgreSQL\16\bin
+        echo         PostgreSQL 16/17/18 을 설치하거나 PATH 에 추가하세요.
+        echo         기본 경로: C:\Program Files\PostgreSQL\{16^|17^|18}\bin
+        echo         자동 설치: deploy\install_postgres_windows.ps1
         exit /b 1
     )
 )
 echo [OK]    psql 위치: !PSQL!
+if defined PG_VERSION echo [OK]    PostgreSQL 버전: !PG_VERSION!
 
 REM --- 3) .env 확인 ----------------------------------------------------
 if not exist ".env" (
@@ -127,7 +138,8 @@ if %errorlevel%==0 (
     echo [OK]    pgvector 활성화됨 (시맨틱 검색 사용 가능)
 ) else (
     echo [WARN]  pgvector 미설치 — 시맨틱 검색은 ILIKE 폴백 사용
-    echo         설치 가이드: docs\windows_native_setup.md 3장
+    echo         자동 설치: deploy\install_pgvector_windows.ps1
+    echo         수동 가이드: docs\windows_native_setup.md 3장
 )
 
 REM --- 9) alembic 마이그레이션 -----------------------------------------

@@ -30,14 +30,17 @@ from ..config import settings
 from ..db.base import get_session
 from ..errors import APIError, ValidationError
 from ..ingest.db_writer import write_record
+from ..ingest.loader import copy_attachments
 from ..ingest.normalizer import normalize
-from ..schemas.common import DERIVATIONS, STATUSES
+from ..schemas.common import ACCESS_PATTERNS, DERIVATIONS, STATUSES
 from ..services.converter_dispatch import (
     EXTENSION_MAP,
     ConvertRequest,
+    SourceFormat,
     convert_file,
     detect_format,
 )
+from ..services.seq import next_seq
 
 log = logging.getLogger(__name__)
 
@@ -98,6 +101,10 @@ def _build_overrides(
     valid_until: str | None,
     title_override: str | None,
     summary_override: str | None,
+    agent_hints: str | None = None,
+    related_record_ids: str | None = None,
+    query_examples: str | None = None,
+    access_pattern: str | None = None,
 ) -> dict[str, Any]:
     """확장 폼 필드 → ``RecordIn.model_copy(update=...)`` 인자 dict.
 
@@ -156,6 +163,29 @@ def _build_overrides(
         overrides["title"] = title_override.strip()
     if summary_override and summary_override.strip():
         overrides["summary"] = summary_override.strip()
+
+    # ---- Agent discovery hints (Migration 0007) ---------------------------
+    if agent_hints and agent_hints.strip():
+        overrides["agent_hints"] = agent_hints.strip()
+
+    related = _split_csv(related_record_ids or "")
+    if related:
+        overrides["related_record_ids"] = related
+
+    examples = _split_csv(query_examples or "")
+    if examples:
+        overrides["query_examples"] = examples
+
+    if access_pattern:
+        if access_pattern not in ACCESS_PATTERNS:
+            raise ValidationError(
+                f"access_pattern 값이 잘못되었습니다: {access_pattern!r}",
+                details={
+                    "allowed": list(ACCESS_PATTERNS),
+                    "value": access_pattern,
+                },
+            )
+        overrides["access_pattern"] = access_pattern
 
     return overrides
 
@@ -316,9 +346,21 @@ async def convert_and_ingest(
     valid_until: str = Form(""),
     title_override: str = Form(""),
     summary_override: str = Form(""),
+    # ---- Agent discovery hints (Migration 0007) -----------------------
+    agent_hints: str = Form(""),
+    related_record_ids: str = Form(""),
+    query_examples: str = Form(""),
+    access_pattern: str = Form(""),
+    persist_attachments: bool = Form(True),
     session: AsyncSession = Depends(get_session),
 ) -> JSONResponse:
-    """업로드 → 변환 → ``write_record()`` 호출. 레코드 요약 반환."""
+    """업로드 → 변환 → ``write_record()`` 호출. 레코드 요약 반환.
+
+    Args:
+        seq: 시퀀스 번호. 0 또는 미지정이면 ``MAX(seq)+1`` 자동 할당.
+        persist_attachments: True (기본) 면 변환 산출물의 ``{record_id}/`` 폴더
+            를 ``settings.attachments_dir`` 로 복사한다.
+    """
     _validate_extension(file.filename or "")
     max_bytes = settings.max_upload_mb * 1024 * 1024
 
@@ -334,17 +376,45 @@ async def convert_and_ingest(
         valid_until=valid_until,
         title_override=title_override,
         summary_override=summary_override,
+        agent_hints=agent_hints,
+        related_record_ids=related_record_ids,
+        query_examples=query_examples,
+        access_pattern=access_pattern,
     )
 
     work_dir = _make_temp_dir()
     try:
         saved = await _save_upload(file, work_dir, max_bytes=max_bytes)
         fmt = detect_format(saved.name)
+
+        # ---- S1. auto-seq -----------------------------------------------
+        # seq=0 (또는 음수) → backend 가 (data_type, division, team, year)
+        # 튜플 단위로 ``MAX(seq)+1`` 을 할당한다. 단일-writer 가정.
+        # data_type 은 포맷에서 추정한다 (DOCX/PPTX/MD/PDF→DOC, XLSX→DATA).
+        effective_seq = seq
+        if effective_seq is None or int(effective_seq) <= 0:
+            inferred_dt = "DATA" if fmt == SourceFormat.XLSX else "DOC"
+            effective_seq = await next_seq(
+                session,
+                data_type=inferred_dt,
+                division=division,
+                team=team,
+                year=year,
+            )
+            log.info(
+                "auto-seq assigned: type=%s div=%s team=%s year=%s -> seq=%d",
+                inferred_dt,
+                division,
+                team,
+                year,
+                effective_seq,
+            )
+
         req = ConvertRequest(
             division=division,
             team=team,
             year=year,
-            seq=seq,
+            seq=effective_seq,
             tags=_split_csv(tags),
             agents=_split_csv(agents),
             classification=classification,
@@ -352,9 +422,10 @@ async def convert_and_ingest(
             output_dir=work_dir / "out",
         )
         log.info(
-            "convert_and_ingest: file=%s fmt=%s",
+            "convert_and_ingest: file=%s fmt=%s seq=%s",
             saved.name,
             fmt.value,
+            effective_seq,
         )
         payload = convert_file(saved, fmt, req)
 
@@ -384,10 +455,38 @@ async def convert_and_ingest(
         await session.commit()
 
         record = write_result.record
+
+        # ---- S5. attachment binary persistence --------------------------
+        attachments_copied = 0
+        if persist_attachments:
+            try:
+                attachments_copied = copy_attachments(
+                    record.id,
+                    source_root=work_dir / "out",
+                    attachments_dir=settings.attachments_dir,
+                )
+            except Exception as exc:  # noqa: BLE001 — 첨부 복사 실패는 인제스트를 막지 않는다.
+                log.warning(
+                    "attachment persistence failed for %s: %s",
+                    record.id,
+                    exc,
+                )
+
+        # ---- S4. auto-embedding trigger (best-effort) -------------------
+        if write_result.action in ("inserted", "updated"):
+            try:
+                from ..services.jobs import maybe_schedule_auto_embed
+
+                maybe_schedule_auto_embed(record.id)
+            except Exception as exc:  # noqa: BLE001
+                log.debug("auto-embed schedule skipped: %s", exc)
+
         body: dict[str, Any] = {
             "record_id": record_in.id,
             "status": write_result.action,
             "sections_written": write_result.sections_written,
+            "assigned_seq": int(effective_seq),
+            "attachments_persisted": int(attachments_copied),
             "record": {
                 "id": record.id,
                 "data_type": record.data_type,

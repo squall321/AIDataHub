@@ -35,6 +35,25 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
 
+# ---------------------------------------------------------------------------
+# Vector type — pgvector 가 설치되어 있으면 ``vector(384)`` 컬럼으로,
+# 없으면 SQLite 환경(테스트) 에서 ``TEXT`` 폴백으로 사용한다.
+#
+# 운영(PostgreSQL): ``pgvector.sqlalchemy.Vector(384)`` — 마이그레이션
+# 0004_pgvector_embeddings 가 도입한 ``vector(384)`` 컬럼과 정확히 정합.
+# SQLite(test): conftest 에서 ``@compiles(Vector, "sqlite")`` override 로
+# ``TEXT`` DDL 을 발급하고, bind/result processor 가 ``"[v1, v2, ...]"``
+# 형태로 직렬화한다.
+# ---------------------------------------------------------------------------
+try:
+    from pgvector.sqlalchemy import Vector as _Vector  # type: ignore[import-not-found]
+
+    _VECTOR_AVAILABLE = True
+except ImportError:  # pragma: no cover — pgvector 패키지 없음
+    from sqlalchemy import JSON as _Vector  # type: ignore[assignment]
+
+    _VECTOR_AVAILABLE = False
+
 
 # ---------------------------------------------------------------------------
 # Record
@@ -77,6 +96,12 @@ class Record(Base):
             postgresql_using="gin",
         ),
         Index("idx_records_parent", "parent_record_id"),
+        Index("idx_records_access_pattern", "access_pattern"),
+        Index(
+            "idx_records_related",
+            "related_record_ids",
+            postgresql_using="gin",
+        ),
     )
 
     # ---- Identity ---------------------------------------------------------
@@ -152,6 +177,29 @@ class Record(Base):
     valid_from: Mapped[date | None] = mapped_column(Date, nullable=True)
     valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
 
+    # ---- Agent discovery hints (Migration 0007) -------------------------
+    agent_hints: Mapped[str | None] = mapped_column(Text, nullable=True)
+    related_record_ids: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default="{}"
+    )
+    query_examples: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default="{}"
+    )
+    access_pattern: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="occasional"
+    )
+
+    # ---- Soft delete + usage stats (Migration 0008) ---------------------
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    read_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    last_accessed_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+
     # ---- Timestamps ------------------------------------------------------
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
@@ -207,7 +255,10 @@ class Record(Base):
 class RecordSection(Base):
     """레코드 본문 섹션 (RAG 청크 단위).
 
-    pgvector `embedding` 컬럼은 후속 마이그레이션에서 추가된다.
+    ``embedding`` 컬럼은 마이그레이션 0004_pgvector_embeddings 에서 도입한
+    ``vector(384)`` 와 정합한다. pgvector 패키지가 없으면 ``JSON`` 으로
+    폴백 (SQLite 테스트). ``embedded_at`` / ``embedding_model`` 은 백필
+    추적용 — 마이그레이션 0004 가 동시에 추가한다.
     """
 
     __tablename__ = "record_sections"
@@ -232,6 +283,22 @@ class RecordSection(Base):
     table_refs: Mapped[list[str]] = mapped_column(
         ARRAY(Text), nullable=False, server_default="{}"
     )
+
+    # ---- Embedding (Migration 0004) -------------------------------------
+    # PG: vector(384). SQLite (test): TEXT (conftest 가 compile 오버라이드).
+    # pgvector 미설치 환경: JSON 컬럼 폴백 (list[float] 직렬화).
+    if _VECTOR_AVAILABLE:
+        embedding: Mapped[list[float] | None] = mapped_column(
+            _Vector(384), nullable=True
+        )
+    else:  # pragma: no cover — pgvector 패키지 없음
+        embedding: Mapped[list[float] | None] = mapped_column(
+            _Vector, nullable=True
+        )
+    embedded_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    embedding_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     record: Mapped["Record"] = relationship(back_populates="sections")
 
@@ -417,10 +484,51 @@ class ApiKey(Base):
         return f"<ApiKey id={self.id} name={self.name!r} revoked={self.revoked}>"
 
 
+# ---------------------------------------------------------------------------
+# AuditLog
+# ---------------------------------------------------------------------------
+class AuditLog(Base):
+    """거버넌스용 감사 로그 (Migration 0008).
+
+    각 INSERT/UPDATE/DELETE/RESTORE/ACCESS/VIEW 이벤트마다 한 행을 추가한다.
+    ``field_changes`` 는 ``{field: [old, new]}`` 형태이며 INSERT 의 경우 비워두고,
+    UPDATE 의 경우 변경 필드만 기록한다.
+    """
+
+    __tablename__ = "audit_log"
+    __table_args__ = (
+        Index("idx_audit_record", "record_id"),
+        Index("idx_audit_actor", "actor"),
+        Index("idx_audit_action", "action"),
+        Index("idx_audit_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    record_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    actor: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    action: Mapped[str] = mapped_column(String(50), nullable=False)
+    field_changes: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default="{}"
+    )
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return (
+            f"<AuditLog id={self.id} record={self.record_id!r} "
+            f"action={self.action!r} actor={self.actor!r}>"
+        )
+
+
 __all__ = [
     "Agent",
     "AgentRecord",
     "ApiKey",
+    "AuditLog",
     "Record",
     "RecordAttachment",
     "RecordSection",

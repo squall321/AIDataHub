@@ -24,6 +24,7 @@ from .id_format import DATA_TYPES, DataType, parse_id
 Classification = Literal["public", "internal", "confidential", "restricted"]
 Status = Literal["draft", "review", "approved", "deprecated"]
 Derivation = Literal["original", "extracted", "aggregated", "translated"]
+AccessPattern = Literal["frequent", "occasional", "rare"]
 
 CLASSIFICATIONS: tuple[str, ...] = (
     "public",
@@ -38,6 +39,7 @@ DERIVATIONS: tuple[str, ...] = (
     "aggregated",
     "translated",
 )
+ACCESS_PATTERNS: tuple[str, ...] = ("frequent", "occasional", "rare")
 # 표준 capabilities 라벨 (compute_capabilities 와 일치)
 CAPABILITY_LABELS: tuple[str, ...] = (
     "sections",
@@ -94,6 +96,12 @@ class RecordIn(BaseModel):
     valid_from: date | None = None
     valid_until: date | None = None
 
+    # ---- Agent discovery hints (Migration 0007) ---------------------------
+    agent_hints: str | None = None
+    related_record_ids: list[str] = Field(default_factory=list)
+    query_examples: list[str] = Field(default_factory=list)
+    access_pattern: AccessPattern = "occasional"
+
     @field_validator("id")
     @classmethod
     def validate_id(cls, v: str) -> str:
@@ -108,7 +116,14 @@ class RecordIn(BaseModel):
             raise ValueError(f"data_type must be one of {DATA_TYPES}, got {v!r}")
         return v
 
-    @field_validator("tags", "agents", "subject_keywords", "capabilities")
+    @field_validator(
+        "tags",
+        "agents",
+        "subject_keywords",
+        "capabilities",
+        "related_record_ids",
+        "query_examples",
+    )
     @classmethod
     def _strings_only(cls, v: list[Any]) -> list[str]:
         if not isinstance(v, list):
@@ -184,6 +199,10 @@ class RecordSlim(BaseModel):
     quality_score: int | None = None
     valid_from: date | None = None
     valid_until: date | None = None
+    agent_hints: str | None = None
+    related_record_ids: list[str] = Field(default_factory=list)
+    query_examples: list[str] = Field(default_factory=list)
+    access_pattern: str = "occasional"
     has_attachments: bool = False
     attachment_count: int = 0
     created_at: datetime | None = None
@@ -191,6 +210,8 @@ class RecordSlim(BaseModel):
 
 
 __all__ = [
+    "ACCESS_PATTERNS",
+    "AccessPattern",
     "CAPABILITY_LABELS",
     "CLASSIFICATIONS",
     "Classification",

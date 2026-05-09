@@ -27,11 +27,15 @@ from . import (
     auth,
     convert,
     data,
+    discover,
+    groups,
+    jobs,
     meta,
     metrics,
     records,
     search,
     system,
+    taxonomy,
 )
 
 
@@ -74,8 +78,17 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(analytics.router)
     app.include_router(auth.router)
     app.include_router(convert.router)
+    app.include_router(jobs.router)
     app.include_router(meta.router)
     app.include_router(system.router)
+    # /api/taxonomy/* — 작은 모델용 어휘 발견 / 동의어 매핑
+    app.include_router(taxonomy.router)
+    # /api/groups/auto, /api/records/{id}/cluster, /api/records/bulk —
+    # 의미 그룹 (Semantic Groups) 라우터 — 같은 의미의 record 군을 묶어
+    # 작은 AI 가 한 번에 가져갈 수 있게 한다.
+    app.include_router(groups.router)
+    # /api/discover, /api/schema, /api/hints, /api/docs/llm.txt, /api/ask
+    app.include_router(discover.router)
     if settings.enable_metrics:
         app.include_router(metrics.router)
 
@@ -94,10 +107,14 @@ __all__ = [
     "auth",
     "convert",
     "data",
+    "discover",
+    "groups",
+    "jobs",
     "meta",
     "metrics",
     "records",
     "register_routers",
     "search",
     "system",
+    "taxonomy",
 ]

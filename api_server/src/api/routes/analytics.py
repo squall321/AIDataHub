@@ -50,4 +50,14 @@ async def timeline(
     return await analytics_svc.timeline(session, year)
 
 
+@router.get("/usage")
+async def usage(
+    limit: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """상위 접근 레코드 (Migration 0008 read_count)."""
+    items = await analytics_svc.usage_top(session, limit=limit)
+    return {"items": items, "total": len(items), "limit": limit}
+
+
 __all__ = ["router"]

@@ -129,11 +129,15 @@ def _blocks_to_text(blocks: list[dict[str, Any]]) -> str:
 async def write_record(
     session: AsyncSession,
     record_in: RecordIn,
+    *,
+    actor: str | None = None,
+    request_id: str | None = None,
 ) -> WriteResult:
     """``RecordIn`` 을 DB 에 INSERT or UPDATE 하고 결과를 반환한다.
 
     Notes:
         - 호출 측에서 ``await session.commit()`` 을 책임진다.
+        - ``actor`` / ``request_id`` 를 전달하면 audit_log 에 변경 이벤트를 추가한다.
     """
     # 모델은 함수 단위 import (Agent 1 미완성 환경에서도 schema 모듈은 import 가능하도록).
     from ..db.models import (
@@ -143,16 +147,20 @@ async def write_record(
         RecordAttachment,
         RecordSection,
     )
+    from ..services.audit import compute_diff, log_action, record_snapshot
 
     parts = parse_id(record_in.id)
     content_hash = compute_content_hash(record_in.content)
 
     existing = await session.get(Record, record_in.id)
+    pre_snapshot: dict[str, Any] | None = None
 
     if existing is not None:
         if existing.content_hash == content_hash:
             logger.info("Record %s unchanged — skipping", record_in.id)
             return WriteResult(existing, action="skipped")
+
+        pre_snapshot = record_snapshot(existing)
 
         # update — 모든 mutable 필드 갱신.
         existing.data_type = record_in.data_type
@@ -185,6 +193,11 @@ async def write_record(
         existing.quality_score = record_in.quality_score
         existing.valid_from = record_in.valid_from
         existing.valid_until = record_in.valid_until
+        # Agent discovery hints (Migration 0007)
+        existing.agent_hints = record_in.agent_hints
+        existing.related_record_ids = list(record_in.related_record_ids)
+        existing.query_examples = list(record_in.query_examples)
+        existing.access_pattern = record_in.access_pattern
         action = "updated"
         target = existing
 
@@ -223,6 +236,11 @@ async def write_record(
             quality_score=record_in.quality_score,
             valid_from=record_in.valid_from,
             valid_until=record_in.valid_until,
+            # Agent discovery hints (Migration 0007)
+            agent_hints=record_in.agent_hints,
+            related_record_ids=list(record_in.related_record_ids),
+            query_examples=list(record_in.query_examples),
+            access_pattern=record_in.access_pattern,
         )
         session.add(target)
         action = "inserted"
@@ -236,6 +254,44 @@ async def write_record(
 
     # record_attachments 동기화 + Record.has_attachments / attachment_count 갱신.
     await _resync_attachments(session, target, record_in, RecordAttachment)
+
+    # ----------------------------- audit log (Migration 0008) ---------------
+    # write_record 의 호출자는 인제스트 CLI / 라우터 / 백필 스크립트 다양함.
+    # actor 가 명시 안 되면 'system' 으로 기록.
+    try:
+        if action == "inserted":
+            await log_action(
+                session,
+                action="INSERT",
+                record_id=target.id,
+                actor=actor,
+                request_id=request_id,
+                field_changes={"content_hash": [None, content_hash]},
+            )
+        elif action == "updated":
+            post_snapshot = record_snapshot(target)
+            diff = compute_diff(pre_snapshot, post_snapshot)
+            await log_action(
+                session,
+                action="UPDATE",
+                record_id=target.id,
+                actor=actor,
+                request_id=request_id,
+                field_changes=diff,
+            )
+    except Exception as exc:  # pragma: no cover - best-effort audit
+        logger.warning("audit log emit failed for %s: %s", target.id, exc)
+
+    # ----------------------------- S4 auto-embed trigger --------------------
+    # ``AUTO_EMBED_ON_INSERT=true`` 인 경우 inserted/updated 이벤트에 대해
+    # 임베딩 backfill 잡을 등록한다. 섹션이 없는 레코드는 스킵.
+    if action in ("inserted", "updated") and sections_written > 0:
+        try:
+            from ..services.jobs import maybe_schedule_auto_embed
+
+            maybe_schedule_auto_embed(target.id)
+        except Exception as exc:  # noqa: BLE001 - best effort
+            logger.debug("auto-embed schedule skipped for %s: %s", target.id, exc)
 
     return WriteResult(target, action=action, sections_written=sections_written)
 

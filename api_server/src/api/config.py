@@ -7,7 +7,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    # extra="ignore" — Settings 모델에 정의되지 않은 .env 변수는 무시 (process env 엔
+    # 살아남으므로 ``os.environ.get(...)`` 으로 읽는 코드는 영향 X). 예: EMBEDDING_PROVIDER,
+    # SENTENCE_TRANSFORMER_MODEL 같은 embedder 측 변수.
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/ai_data"
 
@@ -43,6 +50,15 @@ class Settings(BaseSettings):
     max_upload_mb: int = 50
     # 업로드 임시 저장소. ``UPLOAD_TEMP_DIR`` 로 오버라이드.
     upload_temp_dir: Path = Path(tempfile.gettempdir()) / "ai_data_uploads"
+
+    # ------------------------------------------------------- /api/jobs/*
+    # 레코드 INSERT/UPDATE 후 임베딩 잡을 자동 등록할지 여부.
+    # ``AUTO_EMBED_ON_INSERT`` 환경변수로 토글한다 (기본 false).
+    auto_embed_on_insert: bool = False
+    # in-memory job 보관 TTL (초). 기본 1 시간.
+    jobs_ttl_seconds: int = 3600
+    # /api/jobs?kind= 응답의 최대 개수.
+    jobs_list_limit: int = 100
 
     # ----------------------------------------------------------------- CORS
     # 추가 허용 오리진 (CSV). 예: "https://datahub.example.com,https://staging.x.io"

@@ -142,6 +142,16 @@ class Converter:
         document = open_document(docx_path)
         self._document = document
         self._heuristic_headings = self._prescan_headings(document)
+        # Pre-detect: does the document open with the [DOC_TYPE]/.../[SOURCES]
+        # marker prologue convention? If so, suppress the "no Heading 1 at top"
+        # warning — the prologue is intentional.
+        self._has_marker_prologue = False
+        for p in document.paragraphs[:30]:
+            t = (p.text or "").strip()
+            if t.startswith(("[DOC_TYPE]", "[SUMMARY]", "[TAGS]",
+                             "[AGENT_SCOPE]", "[SOURCES]")):
+                self._has_marker_prologue = True
+                break
         self._process_body(document)
         self._flush_code_buffer()  # 마지막에 남은 코드 블록 정리
 
@@ -300,7 +310,16 @@ class Converter:
             and self.figures
             and "(캡션 누락 — 검수 필요)" in self.figures[-1].caption
         ):
+            fig_num = self.figures[-1].number
             self.figures[-1].caption = full_caption
+            # Attachment 도 동일하게 갱신.
+            for att in reversed(self.attachments):
+                if "(캡션 누락 — 검수 필요)" in att.caption and att.kind == "figure":
+                    att.caption = full_caption
+                    break
+            # 이전에 기록된 "그림 N: 캡션 없음" 경고를 회수 — 캡션이 해소되었음.
+            warn_msg = f"그림 {fig_num}: 캡션 없음"
+            self.warnings = [w for w in self.warnings if w != warn_msg]
             return
         # 직전 표에 캡션 누락 자동 캡션이 붙어 있으면 즉시 교체
         if (
@@ -308,7 +327,10 @@ class Converter:
             and self.tables
             and "(캡션 누락 — 검수 필요)" in self.tables[-1].caption
         ):
+            tbl_num = self.tables[-1].number
             self.tables[-1].caption = full_caption
+            warn_msg = f"표 {tbl_num}: 캡션 없음"
+            self.warnings = [w for w in self.warnings if w != warn_msg]
             return
         # 그렇지 않으면 다음 그림/표를 기다리는 pending 큐에 보관
         self.pending_caption = _PendingCaption(
@@ -600,16 +622,29 @@ class Converter:
                 t.strip() for t in value.split(",") if t.strip()
             ]
         elif key == "SOURCES":
-            self.warnings.append("[SOURCES] 마커 표는 현재 버전에서 미지원")
+            # The SOURCES marker is followed by a Table Grid (parsed as a normal
+            # table). We don't extract its rows specially in this version, but
+            # the table itself is preserved in `tables[]`. This is by design
+            # (KooRemapper prologue convention) — no warning emitted.
+            self.meta_overrides["has_sources_marker"] = True
 
     def _open_section(self, level: int, heading_text: str) -> None:
         parsed_id, title = extract_section_id_and_title(heading_text)
         auto_id = self._next_auto_id(level)
         section_id = parsed_id or auto_id
+        # Mismatch between author-supplied numbering and auto-numbering is
+        # **normal** for documents with explicit chapter numbers (e.g., the
+        # Theory manual: "1.2 Solid Elements" / "23.4 Material Models"). The
+        # author's number is canonical; emit a warning only when the depth
+        # disagrees (which would indicate a real structural problem).
         if parsed_id and parsed_id != auto_id:
-            self.warnings.append(
-                f"섹션 번호 불일치: 본문='{parsed_id}', 자동={auto_id}. 본문 값 사용."
-            )
+            depth_parsed = parsed_id.count(".") + 1
+            depth_auto = auto_id.count(".") + 1
+            if depth_parsed != depth_auto:
+                self.warnings.append(
+                    f"섹션 번호 불일치 (깊이): 본문='{parsed_id}', "
+                    f"자동={auto_id}. 본문 값 사용."
+                )
 
         section = Section(id=section_id, level=level, title=title)
 
@@ -637,7 +672,11 @@ class Converter:
         return f"{self.l1_counter}.{self.l2_counter}.{self.l3_counter}"
 
     def _create_virtual_top_heading(self) -> None:
-        self.warnings.append("문서 시작에 Heading 1 없음 → 가상 '본문' 섹션 추가")
+        # If the doc uses the marker prologue convention (DOC_TYPE/SUMMARY/...
+        # before any Heading 1), creating a virtual '본문' section is the
+        # designed behaviour — not a problem worth warning about.
+        if not getattr(self, "_has_marker_prologue", False):
+            self.warnings.append("문서 시작에 Heading 1 없음 → 가상 '본문' 섹션 추가")
         s = Section(id="1", level=1, title="본문")
         self.section_root.append(s)
         self.section_stack.append(s)
