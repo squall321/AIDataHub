@@ -24,9 +24,10 @@
 | 식별자 | `meta.doc_id` (`md_converter/core.py:633`) | `meta.doc_id` 우선 → `records.id` |
 | 에이전트 | YAML frontmatter `agents` 를 `meta.agent_scope` 로 매핑 (`md_converter/core.py:625, 647`) | `meta.agent_scope` 우선, `raw.agents` 폴백 → `records.agents` |
 | frontmatter own-extras | 표준 키 외 모든 frontmatter → `meta.front_matter_extra` (`md_converter/core.py:649-656`) | `records.content` JSONB 보존 |
-| 분류/생애주기 | frontmatter 에 기술 가능하나 normalizer 가 흡수하지 않음 (KNOWN GAP) | RecordIn 기본값 |
+| 분류/생애주기 (0006 10개) | YAML frontmatter (`classification: confidential` 등) 에 기술하면 normalizer 가 그대로 흡수 (`normalizer.py:103-153`) ✅ | `records.classification` 등 |
+| 0007 agent-discovery 자동 채움 | `agent_hints`/`query_examples`/`access_pattern` 자동 생성 (`md_converter/core.py:678-694`). frontmatter override 가능 | `records.agent_hints` 등 |
 
-자세한 KNOWN GAP 은 [`json_schema_rules.md`](./json_schema_rules.md) §4.4 참조.
+(v1.2 의 "KNOWN GAP" 은 v1.3 커밋 `c2c66c6` 에서 해소.)
 
 ---
 

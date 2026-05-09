@@ -26,9 +26,10 @@
 | 식별자 | `meta.doc_id` (`ppt_converter/core.py:893`) | `meta.doc_id` 우선, `meta.id` / `raw.id` 폴백 → `records.id` |
 | 에이전트 | `meta.agent_scope` (`ppt_converter/core.py:907`) | `meta.agent_scope` 우선, `raw.agents` 폴백 → `records.agents` |
 | 차트 | `tables[]` 1행 + `attachments[].kind="chart"` placeholder (`ppt_converter/charts.py`) | 표준 tables/attachments 경로 |
-| 분류/생애주기 | 변환기 자동 추출 없음 — CLI override 경로만. normalizer 미흡수 (KNOWN GAP) | RecordIn 기본값 |
+| 분류/생애주기 (0006 10개) | `meta.*` 에 출력하면 normalizer 가 그대로 흡수 (`normalizer.py:103-153`). 변환기 자동 추출은 PPT 본문 분석 미지원 — CLI override 또는 작성자 기재 | `records.classification` 등 |
+| 0007 agent-discovery 자동 채움 | `agent_hints` 자동 생성 ("이 record 는 DOC 입니다. ..."), `query_examples` (title/tags 기반), `access_pattern="occasional"` `ppt_converter/core.py:976-986` | `records.agent_hints` 등 |
 
-자세한 KNOWN GAP 은 [`json_schema_rules.md`](./json_schema_rules.md) §4.4 참조.
+(v1.2 의 "KNOWN GAP" 은 v1.3 커밋 `c2c66c6` 에서 해소.)
 
 ---
 

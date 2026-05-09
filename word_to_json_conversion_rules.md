@@ -23,9 +23,11 @@
 |---|---|---|---|
 | 식별자 | `meta.doc_id` (`converter/core.py:796`) | `meta.doc_id` 우선, `meta.id` / `raw.id` 폴백 | `records.id` |
 | 에이전트 | `meta.agent_scope` (`converter/core.py:809-810`) | `meta.agent_scope` 우선, `raw.agents` 폴백 | `records.agents` |
-| 파생/생애주기 | `derivation` enum: `original` / `extracted` / `aggregated` / `translated` (코드 `schemas/common.py:26`) | RecordIn 기본값만 — 변환기 meta 의 `classification`/`status`/`domain`/`subject_keywords`/`source_system`/`language`/`derivation`/`quality_score`/`valid_from`/`valid_until` 는 현재 normalizer 가 흡수하지 않음 (KNOWN GAP) | 동일명 컬럼 |
+| 파생/생애주기 (10개 0006 필드) | `derivation` enum: `original` / `extracted` / `aggregated` / `translated`. classification/status/domain/subject_keywords/source_system/language/parent_record_id/derivation/quality_score/valid_from/valid_until 모두 `meta.*` 출력 시 normalizer 흡수 (`normalizer.py:103-153`) ✅ | 동일명 컬럼 |
+| 0007 agent-discovery 자동 채움 | `agent_hints` (자동 생성), `query_examples` (title/tag 기반 최대 3개), `access_pattern="occasional"`, `related_record_ids=[]` — `_apply_agent_discovery_defaults` (`converter/core.py:57-129`) | `records.agent_hints` 등 |
+| 자동 추출 (A-3) | `summary` (extractive lead-3, 한국어 종결어 처리), `tags` (RAKE + KO/EN stopword) `converter/core.py:1119-1142` | `records.summary` / `tags` |
 
-자세한 KNOWN GAP 은 [`json_schema_rules.md`](./json_schema_rules.md) §4.4 "변환기·normalizer 미연결" 박스 참조.
+(이전 v1.2 까지 "KNOWN GAP" 으로 표기되었던 normalizer 미흡수 / 변환기 미채움 이슈는 v1.3 (커밋 `c2c66c6`) 에서 해소됨.)
 
 ---
 

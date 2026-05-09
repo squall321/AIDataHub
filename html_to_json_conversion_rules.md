@@ -25,9 +25,10 @@
 | 식별자 | `meta.doc_id` (`html_converter/core.py:625`) | `meta.doc_id` 우선 → `records.id` |
 | 에이전트 | `<meta name="agents">` 또는 `agent-scope` → `meta.agent_scope` (`html_converter/core.py:260-263, 617, 639`) | `meta.agent_scope` 우선, `raw.agents` 폴백 → `records.agents` |
 | head meta own-extras | 표준 매핑 안 된 `<meta name=...>` 모두 → `meta.head_meta_extra` (`html_converter/core.py:641-650`) | `records.content` JSONB 보존 |
-| 분류/생애주기 | head meta 로 기술 가능 (예: `<meta name="classification">`) 하나 normalizer 가 흡수하지 않음 (KNOWN GAP) | RecordIn 기본값 |
+| 분류/생애주기 (0006 10개) | `<meta name="classification" content="...">` 등으로 기술하면 normalizer 가 흡수 (`normalizer.py:103-153`) ✅ | `records.classification` 등 |
+| 0007 agent-discovery 자동 채움 | `agent_hints`/`query_examples`/`access_pattern` 자동 생성 (`html_converter/core.py:670-685`). `<meta name="agent_hints" ...>` 로 override | `records.agent_hints` 등 |
 
-자세한 KNOWN GAP 은 [`json_schema_rules.md`](./json_schema_rules.md) §4.4 참조.
+(v1.2 의 "KNOWN GAP" 은 v1.3 커밋 `c2c66c6` 에서 해소.)
 
 ---
 

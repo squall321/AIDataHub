@@ -31,9 +31,10 @@
 | 식별자 | top-level `data_id` (예: `DATA-HE-CAE-2026-000034`) | `RecordIn.id` |
 | 단위 | `units` (객체) **+ `units_map` (동일내용 alias)** 두 키 모두 출력. `core.py:145, 158` | 신규 소비자는 `units` 권장 |
 | `meta.agent_scope` (옵션) | `_META.agents` 배열을 `agent_scope` 로 출력 | normalizer 폴백 — `meta.agent_scope` 우선 |
-| 분류/생애주기 (`classification`/`status`/`domain`/`subject_keywords`/`source_system`/`language`) | Excel `_META` 시트가 출력하지만 normalizer 가 흡수하지 않음 (KNOWN GAP) | 향후 `_extract_data` 에 폴백 추가 예정 |
+| 분류/생애주기 (0006 10개) | `_META` 시트의 `classification`/`status`/`domain`/`subject_keywords`/`source_system`/`language`/`derivation`/`quality_score`/`valid_from`/`valid_until` → `payload["meta"].*` → normalizer `_common_fields` 흡수 (`normalizer.py:240-274`) ✅ | `records.classification` 등 |
+| 0007 agent-discovery 자동 채움 | `agent_hints`/`query_examples`/`access_pattern` 자동 생성 (`excel_converter/core.py:230-247` `to_payload` 가 `payload["meta"]` 에 기록) | `records.agent_hints` 등 |
 
-자세한 KNOWN GAP 은 [`json_schema_rules.md`](./json_schema_rules.md) §4.4 참조.
+(v1.2 의 "KNOWN GAP" 은 v1.3 커밋 `c2c66c6` 에서 해소.)
 
 ---
 

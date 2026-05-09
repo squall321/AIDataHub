@@ -183,18 +183,25 @@
 
 **enum 권위 출처**: `api_server/src/api/schemas/common.py:24-42` (`Classification`, `Status`, `Derivation`, `AccessPattern` Literal 정의).
 
-> **⚠ KNOWN GAP — 변환기·normalizer 미연결 (코드 사이드 TODO)**
+> **✅ 변환기·normalizer 흡수 — v1.3 (2026-05-10) 부터 활성**
 >
-> 위 8개 필드는 **`RecordIn` (Pydantic) 입력 모델에는 정의되어 있고 DB 컬럼도 존재**하지만, 현재 normalizer (`api_server/src/api/ingest/normalizer.py:97-194, 206-235`) 의 `_extract_doc()` / `_common_fields()` 가 `meta.*` 또는 `raw.*` 에서 이들을 **읽지 않는다**. 결과적으로 변환기가 출력해도 ingest 시 RecordIn 의 기본값으로 덮인다.
+> 위 10개 필드는 `RecordIn` (Pydantic) 입력 모델 + DB 컬럼 + **normalizer 흡수 경로** 모두 정상 연결됨. 변환기가 `meta.*` 에 출력하면 ingest 시 그대로 DB 까지 흐른다.
 >
-> **흡수되는 경로 (예외)**:
+> **흡수 위치** (커밋 `c2c66c6`):
 >
-> - `agent_hints` / `related_record_ids` / `query_examples` / `access_pattern` (Migration 0007) — `_extract_doc` 라인 116-128 에서 `meta.*` 우선 + `raw.*` 폴백으로 읽음. ✅ 정상.
-> - 위 8개 필드 — 입력 JSON 에 있어도 무시됨 (정상화 단계에서 삭제). ❌ 미연결.
+> - `_extract_doc()` (`api_server/src/api/ingest/normalizer.py:103-153`) — DOC variant. `meta.*` 우선, 없으면 `raw.*` 폴백.
+> - `_common_fields()` (`:240-274`) — DATA/SIM/CAD/LOG/FORM/OTHER variant. `raw.*` 우선, 없으면 `meta.*` 폴백.
+> - `RecordIn(...)` instantiation (`:280-359`) — 모든 11개 필드를 명시적으로 전달.
+> - `quality_score` 는 `is not None` 검사로 0 보존.
 >
-> **변환기 출력 현황**: Excel `_META.{classification,status,domain,subject_keywords,source_system,language}` / HTML `<meta name="...">` / MD frontmatter 가 위 필드를 출력하긴 하지만 **DB 까지 도달하지 않음**.
+> **0006/0007 모두 흡수**:
 >
-> **워크어라운드**: API 호출 시 record 패치 (`PATCH /api/records/{id}`) 또는 `RecordIn` 직접 구성 후 `POST /api/records` 로 입력. 변환기 → normalizer 자동 흡수는 향후 정정 예정.
+> - 0006 (10개): classification/status/domain/subject_keywords/source_system/language/parent_record_id/derivation/quality_score/valid_from/valid_until ✅
+> - 0007 (4개): agent_hints/related_record_ids/query_examples/access_pattern ✅
+>
+> **변환기 자동 채움 (커밋 `c2c66c6`)**: 6 변환기 모두 `agent_hints` / `query_examples` / `access_pattern` 자동 채움. Word 는 추가로 `summary` (extractive lead-3) / `tags` (RAKE) 자동 채움.
+>
+> **검증**: pytest 318 통과 + E2E (normalize → write_record → DB read-back) 모든 11 필드 정상 (스크립트 `d:/tmp/e2e_full2.py`).
 
 ### 4.4-bis Agent discovery 필드 (Migration 0007)
 

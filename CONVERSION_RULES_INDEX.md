@@ -245,6 +245,22 @@ DB 측: `record_sections.embedding (vector(384))` 가 `EMBEDDING_PROVIDER=e5_sma
 
 ## 6. 변경 추적
 
+### v1.3 (2026-05-10) — 코드 사이드 P0 닫힘 + 자동 메타 채움
+
+코드 패치 3건으로 v1.2 의 KNOWN GAP / 잔여 자동화 갭 해소. 룰 MD 도 새 동작 반영.
+
+| 변경 | 위치 |
+|---|---|
+| **A-1** normalizer 가 0006 10필드 (classification/status/domain/...) 흡수 | `normalizer.py:103-153, 240-274, 280-359` |
+| **A-2** 6 변환기 모두 0007 필드 (`agent_hints`/`query_examples`/`access_pattern`) 자동 채움 | `_build_meta` × 6 + `_apply_agent_discovery_defaults` |
+| **A-3** Word `summary` (extractive lead-3) / `tags` (RAKE+stopword) 자동 추출 | `converter/core.py:132-339, 1119-1142` |
+| **doc** `json_schema_rules.md` §4.4 KNOWN GAP 박스 → "v1.3 닫힘" 박스로 교체 | `json_schema_rules.md` §4.4 |
+| **doc** 6 per-converter 룰 MD §0 노트 새 동작 반영 | 각 룰 §0 |
+| **doc** `META_FORMAT_AUDIT.md` v1.3 — P0 모두 닫힘, A-1/A-2/A-3 done 표기, 잔여 A-4~A-10 명시 | `META_FORMAT_AUDIT.md` |
+| **검증** pytest 318 + E2E (normalize → write_record → DB read-back) 통과 | `d:/tmp/e2e_full2.py` |
+
+이전과의 호환성: **JSON 출력 스키마는 v1.0 그대로**. 새 동작은 모두 작성자가 메타 출력 안 하면 자동 채움 (`agent_hints` 등) 또는 DB 까지 정상 흐름 (`classification` 등).
+
 ### v1.2 (2026-05-10) — 코드 정합
 
 룰 MD 들을 **변환기 소스 코드를 단일 진실 공급원으로** 정렬. [`META_FORMAT_AUDIT.md`](./META_FORMAT_AUDIT.md) P0 8건 중 6건 doc-fixed, 2건 code-TODO 식별.

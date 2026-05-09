@@ -1,24 +1,33 @@
 # 공용 메타데이터 포맷 감사 보고서
 
-> 작성일: 2026-05-09 (개정: 2026-05-10 — 룰 MD 코드 정합 v1.2 반영)
+> 작성일: 2026-05-09 (최종 개정: 2026-05-10 — v1.3, 코드 사이드 P0 닫힘)
 > 대상: `schema_v1` 기반 6개 변환기(Word·Excel·PPT·MD·HTML·PDF) 의 `meta` 객체 + `records` DB 스키마
-> 단일 진실 공급원: 변환기 소스 코드 (`api_server/src/{converter,excel_converter,ppt_converter,md_converter,html_converter,pdf_converter}/`) + `json_schema_rules.md` v1.1
+> 단일 진실 공급원: 변환기 소스 코드 (`api_server/src/{converter,excel_converter,ppt_converter,md_converter,html_converter,pdf_converter}/`) + `json_schema_rules.md` v1.3
 > 시작점: [`CONVERSION_RULES_INDEX.md`](./CONVERSION_RULES_INDEX.md)
 
-## v1.2 갱신 요약 (2026-05-10)
+## v1.3 갱신 요약 (2026-05-10) — 모든 P0 닫힘
 
-룰 MD ↔ 코드 불일치 8건 (P0) 중 **doc-side 정합 6건** 처리, **code-side TODO 2건**(P0-5, P0-6) 식별·문서화.
+원본 v1.0 감사 보고 (2026-05-09) 의 **P0 8건 모두 처리**. doc-fix 6건 (v1.2) + code-fix 2건 (v1.3, 커밋 `c2c66c6`).
 
-| 항목 | 처리 | 위치 |
+| 항목 | 처리 단계 | 결과 위치 |
 |---|---|---|
-| P0-1 `meta.id` vs `meta.doc_id` | **doc-fixed** — 룰 MD가 `meta.doc_id` 를 1차로 표기. normalizer 폴백 명시. | `json_schema_rules.md` §4.1 |
-| P0-2 `meta.agents` vs `meta.agent_scope` | **doc-fixed** — `meta.agent_scope` 가 변환기 출력 키임을 명시. | §4.2 |
-| P0-3 필수 필드 `data_type/division/team/year/seq` | **doc-fixed** — `doc_id` 파싱으로 도출됨을 명시 (변환기는 별도 키 출력 안 함). | §4.1 |
-| P0-4 `derivation` enum 충돌 | **doc-fixed** — 룰 MD를 코드 enum (`original/extracted/aggregated/translated`) 으로 정정. | §4.4, `schemas/common.py:26` |
-| P0-5 normalizer 가 `classification`/`status`/`domain` 등 미흡수 | **code-TODO 잔존** — 룰 MD에 KNOWN GAP 박스로 명시. | §4.4 KNOWN GAP |
-| P0-6 0007 필드 변환기 미채움 | **부분 doc-fixed** — normalizer 는 `agent_hints/related_record_ids/query_examples/access_pattern` 흡수 확인됨 (`normalizer.py:116-128, 222-232`). 변환기 자동 채움은 여전히 0%. | §4.4-bis |
-| P0-7 `units_map` vs `units` | **doc-fixed** — 코드가 두 키를 모두 출력함을 명시. 신규 소비자는 `units` 권장. | §11.2 |
-| P0-8 Excel `data.v1` 별도 schema | **doc-fixed** — 정식 변종으로 §11.2 에 명세. | §11.2 |
+| P0-1 `meta.id` vs `meta.doc_id` | v1.2 doc-fix | `json_schema_rules.md` §4.1 |
+| P0-2 `meta.agents` vs `meta.agent_scope` | v1.2 doc-fix | §4.2 |
+| P0-3 필수 필드 `data_type/division/team/year/seq` | v1.2 doc-fix (`doc_id` 파싱으로 도출 명시) | §4.1 |
+| P0-4 `derivation` enum 충돌 | v1.2 doc-fix (`original/extracted/aggregated/translated`) | §4.4, `schemas/common.py:26` |
+| **P0-5** normalizer 가 0006 10필드 미흡수 | **v1.3 code-fix** — A-1 commit `c2c66c6`. `_extract_doc:103-153` + `_common_fields:240-274` + `RecordIn(...)` 에 11개 필드 흡수 추가 | §4.4 (KNOWN GAP 박스 → "v1.3 닫힘" 박스로 교체) |
+| **P0-6** 0007 필드 변환기 자동 채움 0% | **v1.3 code-fix** — A-2 commit `c2c66c6`. 6 변환기 모두 `_apply_agent_discovery_defaults` 적용 — `agent_hints` (자동), `query_examples` (title/tag 기반), `access_pattern` 채움 | §4.4-bis |
+| P0-7 `units_map` vs `units` | v1.2 doc-fix (두 키 alias) | §11.2 |
+| P0-8 Excel `data.v1` 별도 schema | v1.2 doc-fix (정식 변종) | §11.2 |
+
+### 추가 boost (v1.3)
+
+- **A-3 (Word `summary` / `tags` 자동 추출)** — `converter/core.py` 에 RAKE 기반 keyword 추출 + extractive lead-3 summary. 한국어 종결어 (`다./요./함./음.`) 처리. 명세 P1-4, P1-5 동시 해소.
+
+### 검증
+
+- pytest **318 passed** (no regressions)
+- E2E (normalize → write_record → DB read-back) — 11 0006 필드 + 4 0007 필드 모두 정상 흐름 확인 (`d:/tmp/e2e_full2.py`)
 
 ---
 
@@ -108,8 +117,8 @@
 | P0-2 | **`meta.agents` vs `meta.agent_scope`** | ✅ doc-fixed | 변환기는 `agent_scope` 출력. Word `core.py:809-810`, PPT `core.py:907`, MD `core.py:647`, HTML `core.py:639`, PDF `core.py:649`. normalizer `:108` 폴백. | 룰 MD를 `agent_scope` 1차 표기로 정정. |
 | P0-3 | **`data_type`/`division`/`team`/`year`/`seq` 변환기 미출력** | ✅ doc-fixed (의도된 설계) | 변환기 어디에도 별도 키 없음. `doc_id` 파싱으로 도출 (`schemas/id_format.parse_id`). | 룰 MD에 "`doc_id` 에서 파싱" 으로 명시. Excel DATA 만 top-level 에 `division/team/year` 별도 출력 (예외). |
 | P0-4 | **`derivation` enum 충돌** | ✅ doc-fixed | 코드 `schemas/common.py:26`: `original/extracted/aggregated/translated`. 룰 MD가 `revision/translation/extract` 로 표기되어 있던 것이 잘못. | 룰 MD를 코드 enum 으로 정정. v1.1 변경 이력에 명시. |
-| P0-5 | **classification/status/domain/subject_keywords/source_system/language/parent_record_id/derivation/quality_score/valid_from/valid_until normalizer 미흡수** | ⚠ code-TODO | `_extract_doc` (`normalizer.py:103-130`) / `_common_fields` (`:206-235`) 가 위 10개 필드를 읽지 않음. `RecordIn` (`schemas/common.py:85-97`) 정의는 있으나 항상 Pydantic 기본값. | **doc-side**: 룰 MD §4.4 KNOWN GAP 박스로 사용자에게 경고. **code-side TODO**: `_common_fields` 에 10줄 추가 필요. PR 별도. |
-| P0-6 | **0007 `agent_hints/related_record_ids/query_examples/access_pattern`** | ✅ partial doc-fixed | normalizer `_extract_doc:116-128` + `_common_fields:222-232` 가 흡수 확인됨. 변환기 자동 채움은 0% (의도된 — 작성자/CLI 수동 입력 경로). | 룰 MD §4.4-bis 에 명시. 변환기 자동 추출은 향후 RAG-자동화 계획에 편입. |
+| P0-5 | **classification/status/domain/subject_keywords/source_system/language/parent_record_id/derivation/quality_score/valid_from/valid_until normalizer 미흡수** | ✅ code-fixed (v1.3) | A-1 (commit `c2c66c6`) — `_extract_doc` (`normalizer.py:103-153`) + `_common_fields` (`:240-274`) + `RecordIn(...)` 인스턴스화에 11개 필드 흡수 경로 추가. 모두 `meta.*` 우선 + `raw.*` 폴백 패턴. | E2E 검증 완료 (`d:/tmp/e2e_full2.py`) — 모든 11 필드 DB 까지 정상 흐름. |
+| P0-6 | **0007 `agent_hints/related_record_ids/query_examples/access_pattern`** | ✅ code-fixed (v1.3) | A-2 (commit `c2c66c6`) — 6 변환기 `_build_meta` 에 `_apply_agent_discovery_defaults` 적용. Word/MD/HTML/PDF 는 `converter/core.py:57-129` 공유 helper, Excel/PPT 는 로컬 helper. | 작성자 override (frontmatter / head_meta / CLI) 가 우선, 빈 경우 자동 채움. |
 | P0-7 | **Excel `units_map` vs `units`** | ✅ doc-fixed | 코드는 두 키를 모두 출력 (`excel_converter/core.py:145, 158`). 동일 내용 alias. | 룰 MD §11.2 에 두 키 모두 표기 + 신규 소비자는 `units` 권장. |
 | P0-8 | **Excel `data.v1` 별도 schema** | ✅ doc-fixed | top-level 키 `data_id`/`schema_version="data.v1"`/`headers`/`rows`/`source.kind` (`excel_converter/core.py:125-159`). normalizer `_extract_data:147-160` 가 RecordIn 으로 흡수. | 룰 MD §11.2 에 정식 변종으로 명세 — 표준 7-키와 별개임을 명확화. |
 
@@ -160,39 +169,42 @@
 
 ## 5. 다음 액션 우선순위
 
-v1.2 (2026-05-10) 갱신 후의 잔여 작업.
+v1.3 (2026-05-10) 갱신 후의 잔여 작업.
 
-### A. 코드-TODO 잔존 (룰 MD 정합 후에도 코드 변경 필요)
+### A. 코드 작업 — v1.3 처리 + 잔존
 
-| 우선 | 작업 | 위치 | 작업량 |
+| 우선 | 작업 | Status | 위치 |
 |---|---|---|---|
-| **A-1** (P0-5) | `_common_fields` / `_extract_doc` 에 0006 필드 (classification/status/domain/subject_keywords/source_system/language/parent_record_id/derivation/quality_score/valid_from/valid_until) 흡수 추가 | `api_server/src/api/ingest/normalizer.py:103-130, 206-235` | 10~15줄 |
-| **A-2** (P0-6 보강) | 변환기에 0007 필드 자동 채움 — `agent_hints` 기본값 (e.g. `summary` + tags 결합), `query_examples` 자동 생성 후보 | `_build_meta` × 6 | 변환기당 5~10줄 |
-| **A-3** (P1-4, P1-5) | Word `summary` / `tags` 자동 추출 (extractive lead-3 + yake) | `converter/core.py:_build_meta` | 30줄 |
-| **A-4** (P1-2) | `language_detected` 자동 — langdetect 또는 한글:영문 비율 휴리스틱 | normalizer 단계 1회 | 15줄 |
-| **A-5** (P2-1) | `compute_capabilities` 호출 추가 — `records.capabilities` 컬럼 채우기 | normalizer | 5줄 |
+| **A-1** (P0-5) | normalizer 0006 10필드 흡수 | ✅ done v1.3 (commit `c2c66c6`) | `normalizer.py:103-153, 240-274, 280-359` |
+| **A-2** (P0-6) | 6 변환기 0007 자동 채움 (agent_hints/query_examples/access_pattern) | ✅ done v1.3 (commit `c2c66c6`) | 6 converters `_build_meta` + `_apply_agent_discovery_defaults` |
+| **A-3** (P1-4, P1-5) | Word `summary` (lead-3) / `tags` (RAKE+stopword) 자동 추출 | ✅ done v1.3 (commit `c2c66c6`) | `converter/core.py:132-339, 1119-1142` |
+| **A-4** (P1-2) | `language_detected` 자동 (langdetect or 한↔영 ratio) | ⏳ pending | normalizer 단계 1회 (~15줄) |
+| **A-5** (P2-1) | `compute_capabilities` 호출 추가 — `records.capabilities` 채우기 | ⏳ pending | `normalizer.normalize()` (~5줄) |
 
-### B. 룰 MD 정합 (이번 v1.2 에서 처리됨 — 참고용)
+### B. 룰 MD 정합 (v1.2 doc-fix + v1.3 동기화 — 참고용)
 
-1. ✅ `meta.id` → `meta.doc_id` 1차 표기 (P0-1)
-2. ✅ `meta.agents` → `meta.agent_scope` 1차 표기 (P0-2)
-3. ✅ `data_type/division/team/year/seq` 는 `doc_id` 파싱으로 도출 명시 (P0-3)
-4. ✅ `derivation` enum 코드값으로 정정 (P0-4)
-5. ✅ KNOWN GAP 박스 추가 (P0-5)
-6. ✅ 0007 필드 흡수 경로 명시 (P0-6)
-7. ✅ Excel `units` / `units_map` 두 키 모두 명시 (P0-7)
-8. ✅ Excel `data.v1` 정식 변종 명세 (P0-8)
-9. ✅ own-extras 컨테이너 표준 표 (`meta.pdf` / `head_meta_extra` / `front_matter_extra`) — `json_schema_rules.md` §4.6
+1. ✅ `meta.id` → `meta.doc_id` 1차 표기 (P0-1, v1.2)
+2. ✅ `meta.agents` → `meta.agent_scope` 1차 표기 (P0-2, v1.2)
+3. ✅ `data_type/division/team/year/seq` 는 `doc_id` 파싱으로 도출 명시 (P0-3, v1.2)
+4. ✅ `derivation` enum 코드값으로 정정 (P0-4, v1.2)
+5. ✅ KNOWN GAP 박스 → "v1.3 닫힘" 박스로 교체 (P0-5, v1.3)
+6. ✅ 0007 필드 흡수 + 변환기 자동 채움 명시 (P0-6, v1.3)
+7. ✅ Excel `units` / `units_map` 두 키 모두 명시 (P0-7, v1.2)
+8. ✅ Excel `data.v1` 정식 변종 명세 (P0-8, v1.2)
+9. ✅ own-extras 컨테이너 표준 표 — `json_schema_rules.md` §4.6 (v1.2)
+10. ✅ Word A-3 (자동 summary/tags) §0 코드 정합 노트에 명시 (v1.3)
+11. ✅ 6 변환기 룰 §0 KNOWN GAP 표현 → "v1.3 해소" 로 정정
 
 ### C. 장기 (P1·P2 — 다음 사이클)
 
+- A-4 ~ A-10 (위 §A 표 잔존 항목)
 - own-extras 표준 컨테이너 `meta.format_extras.{word/excel/ppt/md/html/pdf}` 통합
 - Excel payload schema_v1 합치 (`data.v1` 폐기 → 표준 7-키)
 - `agents` 등록 검증 (`meta.agent_scope[]` 가 `agents` 테이블에 존재해야 통과)
 - `structure_score` + `key_phrases` + `entity_list` normalizer 자동 산출
 
-A-1 ~ A-3 만 처리하면 0006 컬럼이 dead 에서 활성으로 회복, RAG-친화 메타가 작은 모델 in-the-box 로 채워진다.
+**v1.3 시점 (2026-05-10) 결론**: 룰 MD ↔ 코드 P0 8건 모두 닫힘. RAG-친화 메타 (0006/0007) 가 작성자 입력 → DB → API 응답까지 완전 흐름. 이후 작업은 모두 RAG hit-rate 향상의 부가 자동화 (A-4 이후).
 
 ---
 
-*본 보고서는 d:/Personal/AI_data 의 2026-05-09 시점 코드를 근거로 작성. 모든 라인 번호는 검증 가능하다.*
+*본 보고서는 d:/Personal/AI_data 의 2026-05-10 v1.3 시점 코드 (커밋 `c2c66c6` 까지) 를 근거로 작성. 모든 라인 번호는 검증 가능하다.*

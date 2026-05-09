@@ -25,9 +25,10 @@
 | 에이전트 | CLI `--agents` → `meta.agent_scope` (`pdf_converter/core.py:649`) | `meta.agent_scope` 우선, `raw.agents` 폴백 → `records.agents` |
 | PDF own-extras | `meta.pdf` (`{page_count, heading_strategy, creator, producer, creation_date, modification_date, ocr_pages?}`) `pdf_converter/core.py:651-664` | `records.content` JSONB 보존 |
 | OCR 적용 페이지 | `meta.pdf.ocr_pages: [page_no, ...]` (`--ocr` 사용 시) | 동상 |
-| 분류/생애주기 | 변환기 자동 추출 없음 (`/Info.Subject` 등 일부 매핑은 §8 참조). normalizer 미흡수 (KNOWN GAP) | RecordIn 기본값 |
+| 분류/생애주기 (0006 10개) | CLI `--extra-meta '{"classification": "..."}'` 또는 PDF `/Info.*` 매핑으로 `meta.*` 채우면 normalizer 흡수 (`normalizer.py:103-153`) ✅ | `records.classification` 등 |
+| 0007 agent-discovery 자동 채움 | `agent_hints`/`query_examples`/`access_pattern` 자동 생성 (`pdf_converter/core.py:691-705`) | `records.agent_hints` 등 |
 
-자세한 KNOWN GAP 은 [`json_schema_rules.md`](./json_schema_rules.md) §4.4 참조.
+(v1.2 의 "KNOWN GAP" 은 v1.3 커밋 `c2c66c6` 에서 해소.)
 
 ---
 
