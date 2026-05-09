@@ -4,11 +4,15 @@
 
 > 작성일: 2026-05-08
 > 적용 대상: 표준 HTML 문서를 [json_schema_rules.md](./json_schema_rules.md) 스키마로 변환하는 자동화 프로그램
-> 자매 문서:
+> 시작점: [`CONVERSION_RULES_INDEX.md`](./CONVERSION_RULES_INDEX.md)
+> 자매 문서 (모두 동일 JSON 스키마 출력):
 >
 > - [json_schema_rules.md](./json_schema_rules.md) — JSON 스키마 전반 (모든 변환기 공통)
 > - [md_to_json_conversion_rules.md](./md_to_json_conversion_rules.md) — Markdown 변환 규칙 (구조가 거의 1:1로 동일)
 > - [word_to_json_conversion_rules.md](./word_to_json_conversion_rules.md) — Word 변환 규칙
+> - [excel_to_json_conversion_rules.md](./excel_to_json_conversion_rules.md) — Excel 변환 규칙
+> - [ppt_to_json_conversion_rules.md](./ppt_to_json_conversion_rules.md) — PPT 변환 규칙
+> - [pdf_to_json_conversion_rules.md](./pdf_to_json_conversion_rules.md) — PDF 변환 규칙
 
 ---
 

@@ -1,14 +1,17 @@
 # Word → JSON 변환 규칙서
-## 자동화 프로그램 구현 가이드 v1.0
+## 자동화 프로그램 구현 가이드 v1.1
 
-> 작성일: 2026-05-07
+> 작성일: 2026-05-07 (개정: 2026-05-10 — 6개 변환기 cross-ref + attachments 정식)
 > 적용 대상: 표준 Word 문서를 [json_schema_rules.md](./json_schema_rules.md) 스키마로 변환하는 자동화 프로그램
-> 자매 문서:
+> 시작점: [`CONVERSION_RULES_INDEX.md`](./CONVERSION_RULES_INDEX.md)
+> 자매 문서 (모두 동일 JSON 스키마 출력):
 >
 > - [json_schema_rules.md](./json_schema_rules.md) — JSON 스키마 전반 (모든 변환기 공통)
-> - [excel_to_json_conversion_rules.md](./excel_to_json_conversion_rules.md) — Excel 변환 규칙 (별도 파일)
-> - `ppt_to_json_conversion_rules.md` — PPT 변환 규칙 (별도 파일)
-> - `md_to_json_conversion_rules.md` — Markdown 변환 규칙 (별도 파일)
+> - [excel_to_json_conversion_rules.md](./excel_to_json_conversion_rules.md) — Excel 변환 규칙
+> - [ppt_to_json_conversion_rules.md](./ppt_to_json_conversion_rules.md) — PPT 변환 규칙
+> - [md_to_json_conversion_rules.md](./md_to_json_conversion_rules.md) — Markdown 변환 규칙
+> - [pdf_to_json_conversion_rules.md](./pdf_to_json_conversion_rules.md) — PDF 변환 규칙 (OCR opt-in)
+> - [html_to_json_conversion_rules.md](./html_to_json_conversion_rules.md) — HTML 변환 규칙
 
 ---
 
@@ -909,7 +912,20 @@ Excel→JSON 변환 규칙은 [excel_to_json_conversion_rules.md](./excel_to_jso
 
 ## 18. 변환기별 매핑 표
 
-각 Word 요소가 어느 XML 위치에서 발견되어 어느 JSON 출력으로 매핑되는지 한눈에 정리한다. 이 표는 [json_schema_rules.md](./json_schema_rules.md) 의 7-키 구조 및 `record_sections` 컬럼과 직접 대응된다.
+각 Word 요소가 어느 XML 위치에서 발견되어 어느 JSON 출력으로 매핑되는지 한눈에 정리한다. 이 표는 [json_schema_rules.md](./json_schema_rules.md) 의 8-키 구조 (`schema_version` · `meta` · `toc` · `sections` · `figures` · `tables` · `sources` · `attachments`) 및 `record_sections` 컬럼과 직접 대응된다.
+
+**최상위 출력 키 (참조용)** — `converter/models.py:218-228` `ConversionResult.to_dict()`:
+
+| 키 | 설명 | 비고 |
+|---|---|---|
+| `schema_version` | "1.0" 고정 | normalizer 가 검증 |
+| `meta` | 문서 신원 + 생애주기 | 4장 / json_schema_rules §4 |
+| `toc` | 목차 (검증 보조) | DB 미저장 |
+| `sections` | 본문 트리 (`record_sections` 행으로 평탄화) | json_schema_rules §6 |
+| `figures` | (deprecated) — `attachments[kind=image]` 로 통합 중 | 하위호환 위해 유지 |
+| `tables` | 표 데이터 (`tables[]` 1행 = 하나의 표) | json_schema_rules §8 |
+| `sources` | 외부 파일 참조 (시뮬레이션 입출력 등) | json_schema_rules §10 |
+| `attachments` | **모든 비텍스트 자원** (image · OLE · chart · audio · video · external_link · archive · other). `kind` 9종은 7.6절 + json_schema_rules §9 참조 | normalizer → `record_attachments` 테이블 |
 
 | Word 요소 | XML 위치 | JSON 출력 위치 |
 | --------- | -------- | -------------- |

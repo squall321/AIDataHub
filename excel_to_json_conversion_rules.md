@@ -1,4 +1,7 @@
 # Excel → JSON 변환 규칙서
+
+## 자동화 프로그램 구현 가이드 v1.1 (multi-table 자동 탐지)
+
 ## 자동화 프로그램 구현 가이드 v1.0
 
 > 작성일: 2026-05-08
@@ -6,12 +9,15 @@
 > `data_type = "DATA"` 스키마로 변환하는 자동화 프로그램
 > 변환기 구현: `api_server/src/excel_converter/` (openpyxl 기반)
 >
-> 자매 문서:
+> 시작점: [`CONVERSION_RULES_INDEX.md`](./CONVERSION_RULES_INDEX.md)
+> 자매 문서 (모두 동일 JSON 스키마 출력):
 >
 > - [json_schema_rules.md](./json_schema_rules.md) — JSON 스키마 전반 (모든 변환기 공통)
 > - [word_to_json_conversion_rules.md](./word_to_json_conversion_rules.md) — Word 변환 규칙
-> - `ppt_to_json_conversion_rules.md` — PPT 변환 규칙 (별도 파일)
-> - `md_to_json_conversion_rules.md` — Markdown 변환 규칙 (별도 파일)
+> - [ppt_to_json_conversion_rules.md](./ppt_to_json_conversion_rules.md) — PPT 변환 규칙
+> - [md_to_json_conversion_rules.md](./md_to_json_conversion_rules.md) — Markdown 변환 규칙
+> - [pdf_to_json_conversion_rules.md](./pdf_to_json_conversion_rules.md) — PDF 변환 규칙 (OCR opt-in)
+> - [html_to_json_conversion_rules.md](./html_to_json_conversion_rules.md) — HTML 변환 규칙
 
 ---
 
@@ -334,9 +340,21 @@ Suggested --start-cell B5. Reasons: A1 is empty; row 5 looks like a header (...)
 
 향후 `--header-row 1,2` 로 두 행을 결합해 헤더로 사용하는 옵션을 검토.
 
-### 9.3 한 시트에 여러 표
+### 9.3 한 시트에 여러 표 — `--detect-multi-tables` opt-in
 
-**미지원.** 변환기는 시트당 1개의 표만 인식한다. 사용자가 시트를 분리해야 한다.
+기본 동작은 시트당 1개 표 (`A1` 부터 첫 헤더 + 연속 행). 같은 시트에 표가 여러 개 (수직 / 수평 배치) 있는 경우 `--detect-multi-tables` 플래그로 자동 탐지 가능 (`excel_converter/detect_multi.py`).
+
+휴리스틱:
+
+1. 시트의 모든 행을 순회하며 **빈 행** (모든 셀이 None/공백) 으로 분리.
+2. 비어있지 않은 연속 블록 (contiguous block) 들을 후보 표로 식별.
+3. 각 블록의 첫 행을 헤더로, 나머지를 데이터로 가정.
+4. 좌우 빈 컬럼은 자동 trim.
+5. 블록이 ≥ 2개면 `has_multi_tables=True` → 각 블록을 `tables[]` 의 별도 행으로 출력 (`tables[0]`, `tables[1]`, ...).
+
+플래그가 꺼져 있을 때 (default): 기존 동작 그대로. 다중 표 시트를 감지하면 변환은 계속하되 `warnings[]` 에 "multiple non-empty blocks detected — consider --detect-multi-tables" 추가.
+
+권장: 가능하면 작성자가 시트를 분리. 분리할 수 없는 레거시 시트에 한해 본 옵션 사용.
 
 ### 9.4 데이터 사이의 빈 행
 
@@ -625,7 +643,7 @@ python -m excel_converter messy.xlsx \
 | 수식은 계산값(value) 만 추출됨            | `data_only=True` 로 로드. 계산되지 않은 수식은 `None` 또는 식 문자열 |
 | 차트는 변환 대상 아님                     | 별도 attachment 로 추출하는 옵션은 향후 과제                        |
 | 셀 서식(색상·굵기·배경)은 손실            | 의미는 별도 컬럼으로 표현하도록 가이드                              |
-| 한 시트에 여러 표가 있는 경우 미지원      | 사용자가 시트를 분리해야 함                                         |
+| 한 시트에 여러 표 — 기본 미지원, **opt-in 지원** | `--detect-multi-tables` 플래그로 자동 탐지 (9.3 절). 권장은 시트 분리. |
 | 그룹 헤더(2행 헤더) 미지원                 | 작성자가 1행 헤더로 평탄화                                          |
 | 매크로(VBA) 무시                          | 데이터만 사용                                                       |
 | `.xls` (BIFF) 미지원                      | `.xlsx` 로 사전 변환                                                |
