@@ -29,6 +29,7 @@ from converter.models import (
     Section,
     Table,
 )
+from converter.core import _apply_agent_discovery_defaults
 
 from .parser import (
     extract_section_id_from_heading,
@@ -658,6 +659,26 @@ class MarkdownConverter:
         # CLI extra_meta 가 있으면 덮어쓰기
         for k, v in (self.opts.extra_meta or {}).items():
             meta[k] = v
+
+        # Migration 0007: agent-discovery 자동 기본값. front_matter / extra_meta
+        # 에서 명시적으로 준 값은 위 로직에서 이미 meta 에 들어왔으므로 헬퍼는
+        # 빈 자리만 채운다.
+        overrides_for_agent: dict[str, Any] = {}
+        for k in ("agent_hints", "related_record_ids", "query_examples", "access_pattern"):
+            if k in fm and fm.get(k) is not None:
+                overrides_for_agent[k] = fm[k]
+            if k in (self.opts.extra_meta or {}):
+                overrides_for_agent[k] = self.opts.extra_meta[k]
+        _apply_agent_discovery_defaults(
+            meta,
+            overrides=overrides_for_agent,
+            data_type_name="Markdown 문서",
+            title=str(title),
+            tags=meta["tags"],
+            section_count=len(self.section_root),
+            table_count=len(self.tables),
+            figure_count=len(self.figures),
+        )
 
         if not meta["tags"]:
             self.warnings.append("front matter / CLI 에 tags 없음 → tags 비어 있음")

@@ -54,6 +54,69 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Migration 0007 — agent-discovery 자동 기본값 헬퍼
+# ---------------------------------------------------------------------------
+
+def _default_agent_hints(
+    *, data_type_name: str, tags: list[str], section_count: int,
+    table_count: int, figure_count: int,
+) -> str:
+    topics = ", ".join(t for t in (tags or []) if t) or "N/A"
+    return (
+        f"이 record 는 {data_type_name} 입니다. 주요 토픽: {topics}. "
+        f"본문은 총 {section_count} 섹션, {table_count} 표, "
+        f"{figure_count} 그림으로 구성됩니다."
+    )
+
+
+def _default_query_examples(*, title: str, tags: list[str]) -> list[str]:
+    out: list[str] = []
+    t = (title or "").strip()
+    if t:
+        out.append(f"{t} 어떻게 사용해?")
+    first_tag = next((x for x in (tags or []) if isinstance(x, str) and x.strip()), None)
+    if first_tag:
+        out.append(f"{first_tag}에 대해 알려줘")
+    if t:
+        out.append(f"{t} 관련 자료 보여줘")
+    return out[:3]
+
+
+def _apply_agent_discovery_defaults(
+    meta: dict[str, Any],
+    *,
+    overrides: dict[str, Any] | None = None,
+    data_type_name: str,
+    title: str,
+    tags: list[str],
+    section_count: int,
+    table_count: int,
+    figure_count: int,
+) -> None:
+    overrides = overrides or {}
+    if "agent_hints" in overrides and overrides["agent_hints"] is not None:
+        meta["agent_hints"] = overrides["agent_hints"]
+    elif meta.get("agent_hints") is None:
+        meta["agent_hints"] = _default_agent_hints(
+            data_type_name=data_type_name, tags=tags,
+            section_count=section_count, table_count=table_count,
+            figure_count=figure_count,
+        )
+    if "related_record_ids" in overrides and overrides["related_record_ids"] is not None:
+        meta["related_record_ids"] = list(overrides["related_record_ids"])
+    elif "related_record_ids" not in meta:
+        meta["related_record_ids"] = []
+    if "query_examples" in overrides and overrides["query_examples"] is not None:
+        meta["query_examples"] = list(overrides["query_examples"])
+    elif not meta.get("query_examples"):
+        meta["query_examples"] = _default_query_examples(title=title, tags=tags)
+    if "access_pattern" in overrides and overrides["access_pattern"]:
+        meta["access_pattern"] = overrides["access_pattern"]
+    elif not meta.get("access_pattern"):
+        meta["access_pattern"] = "occasional"
+
+
+# ---------------------------------------------------------------------------
 # Options
 # ---------------------------------------------------------------------------
 @dataclass
@@ -905,6 +968,18 @@ class PptxConverter:
         }
         if self.opts.agents:
             meta["agent_scope"] = list(self.opts.agents)
+
+        # Migration 0007: agent-discovery 자동 기본값.
+        _apply_agent_discovery_defaults(
+            meta,
+            overrides=None,  # PPT 변환기는 meta override 채널이 따로 없음.
+            data_type_name="PowerPoint 슬라이드",
+            title=str(title),
+            tags=meta["tags"],
+            section_count=len(self.section_root),
+            table_count=len(self.tables),
+            figure_count=len(self.figures),
+        )
 
         if not meta["tags"]:
             self.warnings.append("tags 미지정 → 빈 배열")

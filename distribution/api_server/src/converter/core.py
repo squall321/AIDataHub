@@ -50,6 +50,320 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Migration 0007 — agent-discovery 자동 기본값 헬퍼
+# ---------------------------------------------------------------------------
+
+def _default_agent_hints(
+    *, data_type_name: str, tags: list[str], section_count: int,
+    table_count: int, figure_count: int,
+) -> str:
+    """본문 통계로 agent_hints 한 줄을 한국어로 생성."""
+    topics = ", ".join(t for t in (tags or []) if t) or "N/A"
+    return (
+        f"이 record 는 {data_type_name} 입니다. 주요 토픽: {topics}. "
+        f"본문은 총 {section_count} 섹션, {table_count} 표, "
+        f"{figure_count} 그림으로 구성됩니다."
+    )
+
+
+def _default_query_examples(*, title: str, tags: list[str]) -> list[str]:
+    """제목 + 태그에서 자연어 질의 예시를 최대 3개 생성."""
+    out: list[str] = []
+    t = (title or "").strip()
+    if t:
+        out.append(f"{t} 어떻게 사용해?")
+    first_tag = next((x for x in (tags or []) if isinstance(x, str) and x.strip()), None)
+    if first_tag:
+        out.append(f"{first_tag}에 대해 알려줘")
+    if t:
+        out.append(f"{t} 관련 자료 보여줘")
+    return out[:3]
+
+
+def _apply_agent_discovery_defaults(
+    meta: dict[str, Any],
+    *,
+    overrides: dict[str, Any] | None = None,
+    data_type_name: str,
+    title: str,
+    tags: list[str],
+    section_count: int,
+    table_count: int,
+    figure_count: int,
+) -> None:
+    """meta dict 에 Migration 0007 의 4개 필드를 in-place 채운다.
+
+    이미 ``meta`` 에 값이 있거나 ``overrides`` 에서 명시 제공된 경우 그 값을 우선.
+    """
+    overrides = overrides or {}
+
+    # agent_hints
+    if "agent_hints" in overrides and overrides["agent_hints"] is not None:
+        meta["agent_hints"] = overrides["agent_hints"]
+    elif meta.get("agent_hints") is None:
+        meta["agent_hints"] = _default_agent_hints(
+            data_type_name=data_type_name,
+            tags=tags,
+            section_count=section_count,
+            table_count=table_count,
+            figure_count=figure_count,
+        )
+
+    # related_record_ids — 자동 추론 없음, 수동 큐레이션 only.
+    if "related_record_ids" in overrides and overrides["related_record_ids"] is not None:
+        meta["related_record_ids"] = list(overrides["related_record_ids"])
+    elif "related_record_ids" not in meta:
+        meta["related_record_ids"] = []
+
+    # query_examples
+    if "query_examples" in overrides and overrides["query_examples"] is not None:
+        meta["query_examples"] = list(overrides["query_examples"])
+    elif not meta.get("query_examples"):
+        meta["query_examples"] = _default_query_examples(title=title, tags=tags)
+
+    # access_pattern
+    if "access_pattern" in overrides and overrides["access_pattern"]:
+        meta["access_pattern"] = overrides["access_pattern"]
+    elif not meta.get("access_pattern"):
+        meta["access_pattern"] = "occasional"
+
+
+# ---------------------------------------------------------------------------
+# Bug A-3 — summary / tags 자동 추출 (extractive)
+#
+# 외부 NLP 라이브러리 의존 없이 본문에서 요약 후보 / 키워드 후보를 뽑아낸다.
+# CLI 의 --summary / --tags 가 명시되지 않은 문서에서도 RAG hit-rate 에
+#필요한 최소한의 신호를 채워주는 게 목적이다.
+# ---------------------------------------------------------------------------
+
+import re as _re
+
+_KO_STOPWORDS: set[str] = {
+    "및", "이", "그", "저", "것", "수", "등", "또는", "그리고", "하는",
+    "하다", "이다", "있다", "없다", "되다", "위해", "통해", "있는", "없는",
+    "하지만", "그러나", "더", "또", "또한", "다른", "같은", "이러한",
+    "그러한", "어떤", "어떻게", "왜", "누가", "언제", "어디", "무엇", "이런",
+}
+_EN_STOPWORDS: set[str] = {
+    "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
+    "of", "with", "by", "from", "as", "is", "are", "was", "were", "be",
+    "been", "being", "have", "has", "had", "do", "does", "did", "will",
+    "would", "could", "should", "may", "might", "must", "shall", "can",
+    "this", "that", "these", "those", "i", "you", "he", "she", "it",
+    "we", "they", "them", "their", "our", "my", "your", "his", "her",
+    "its", "not", "no", "yes",
+}
+_ALL_STOPWORDS = _KO_STOPWORDS | _EN_STOPWORDS
+
+# RAKE 분리자 — 한/영 구두점 + 공백.
+_PHRASE_SPLIT_RE = _re.compile(
+    r"[\s,;:\.!\?\(\)\[\]\{\}\"'`~/\\\|<>=\+\*\&\^%\$#@…·•※→←↑↓"
+    r"，。、；：「」『』（）【】《》〈〉]+"
+)
+
+
+def _flatten_paragraph_texts(sections: list[Any]) -> list[str]:
+    """sections 트리에서 paragraph/list_item 텍스트만 평탄화 추출."""
+    out: list[str] = []
+
+    def walk(nodes: list[Any]) -> None:
+        for s in nodes:
+            for b in getattr(s, "blocks", []) or []:
+                if getattr(b, "type", None) in ("paragraph", "list_item"):
+                    txt = getattr(b, "text", None)
+                    if txt:
+                        out.append(txt)
+            walk(getattr(s, "children", []) or [])
+
+    walk(sections)
+    return out
+
+
+def _section_paragraph_texts(section: Any, limit: int) -> list[str]:
+    """단일 section 의 첫 N 개 paragraph 블록 텍스트만 반환."""
+    out: list[str] = []
+    for b in getattr(section, "blocks", []) or []:
+        if getattr(b, "type", None) == "paragraph":
+            txt = getattr(b, "text", None)
+            if txt and txt.strip():
+                out.append(txt.strip())
+                if len(out) >= limit:
+                    break
+    return out
+
+
+def _truncate_at_sentence(text: str, limit: int) -> str:
+    """limit 글자 안에서 가장 마지막 문장 종결자에서 자른다.
+
+    ``다.`` (한국어) / ``.`` / ``!`` / ``?`` 어느 것이든 OK.
+    경계가 없으면 limit 위치에서 hard-cut.
+    """
+    if len(text) <= limit:
+        return text
+    window = text[:limit]
+    # 한국어 "다." 우선 — 가장 늦은 위치를 찾는다.
+    cut = -1
+    for marker in ("다.", "요.", "함.", "음."):
+        idx = window.rfind(marker)
+        if idx >= 0:
+            cut = max(cut, idx + len(marker))
+    # 일반 종결자.
+    for ch in (".", "!", "?"):
+        idx = window.rfind(ch)
+        if idx >= 0:
+            cut = max(cut, idx + 1)
+    if cut > 0 and cut >= int(limit * 0.4):
+        return window[:cut].rstrip()
+    return window.rstrip()
+
+
+def _extract_summary_from_sections(
+    sections: list[Any], limit: int = 500
+) -> str:
+    """sections 트리에서 추출형 summary 1 개를 만든다.
+
+    1. section[0] 의 첫 3 개 paragraph 블록을 우선 사용.
+    2. 비어 있으면, 다른 섹션의 paragraph 첫 1 개로 fallback.
+    3. 공백 1 개로 join → strip → limit 글자에서 문장 경계 컷.
+    """
+    if not sections:
+        return ""
+    paras = _section_paragraph_texts(sections[0], limit=3)
+    if not paras:
+        # fallback: 어느 섹션이든 첫 1 개 paragraph.
+        for s in sections:
+            paras = _section_paragraph_texts(s, limit=1)
+            if paras:
+                break
+            for child in getattr(s, "children", []) or []:
+                paras = _section_paragraph_texts(child, limit=1)
+                if paras:
+                    break
+            if paras:
+                break
+    if not paras:
+        return ""
+    joined = " ".join(p.strip() for p in paras if p and p.strip()).strip()
+    if not joined:
+        return ""
+    return _truncate_at_sentence(joined, limit)
+
+
+def _extract_tags_from_sections(
+    sections: list[Any], top_n: int = 8
+) -> list[str]:
+    """RAKE-style 키워드 추출. 외부 라이브러리 없이 동작.
+
+    ① 본문 paragraph 모두 모아 lowercase.
+    ② 구두점/공백으로 phrase 분리, 각 phrase 안에서 stopword 만나면 또 분리.
+    ③ phrase = 단어 1~4 개. 각 단어에 대해 freq, deg 계산.
+       deg[w] = 그 단어가 등장한 phrase 의 평균 phrase length 합.
+       score[phrase] = sum_word(deg[w] / freq[w]).
+       (RAKE 표준 변형 — phrase 가 길수록 가산점.)
+    ④ 점수 상위 phrase 후보를 뽑은 후 길이/all-stopword/all-numeric 필터.
+    ⑤ substring/exact 중복 제거 → top_n 개 반환.
+    """
+    if not sections:
+        return []
+
+    paragraphs = _flatten_paragraph_texts(sections)
+    if not paragraphs:
+        return []
+
+    # python-rake 가 있으면 우선 사용 — 단, 임포트가 실패하면 fallback.
+    try:  # pragma: no cover - optional dep
+        import RAKE  # type: ignore
+        rake = RAKE.Rake(list(_ALL_STOPWORDS))
+        ranked = rake.run(" ".join(paragraphs).lower(), maxWords=4, minFrequency=1)
+        return _post_filter_tags([p for p, _s in ranked], top_n)
+    except Exception:
+        pass
+
+    # ------ minimal RAKE ------
+    text = " ".join(paragraphs).lower()
+    # phrase 후보 — 비단어 분리자로 split, 그 안에서 stopword 또 분리.
+    raw_phrases: list[list[str]] = []
+    for chunk in _PHRASE_SPLIT_RE.split(text):
+        words = [w for w in chunk.strip().split() if w]
+        cur: list[str] = []
+        for w in words:
+            if w in _ALL_STOPWORDS or w.isdigit():
+                if cur:
+                    raw_phrases.append(cur)
+                    cur = []
+                continue
+            cur.append(w)
+        if cur:
+            raw_phrases.append(cur)
+
+    # phrase 길이 1~4 만 채택.
+    phrases = [p for p in raw_phrases if 1 <= len(p) <= 4]
+    if not phrases:
+        return []
+
+    # freq / deg 계산 (RAKE 표준).
+    freq: dict[str, int] = {}
+    deg: dict[str, int] = {}
+    for p in phrases:
+        plen = len(p)
+        for w in p:
+            freq[w] = freq.get(w, 0) + 1
+            deg[w] = deg.get(w, 0) + (plen - 1)
+    word_score: dict[str, float] = {}
+    for w, f in freq.items():
+        word_score[w] = (deg[w] + f) / max(f, 1)
+
+    # phrase 점수 = 단어 점수 합. 동일 phrase 는 합쳐서 카운트.
+    phrase_score: dict[str, float] = {}
+    for p in phrases:
+        key = " ".join(p)
+        phrase_score[key] = phrase_score.get(key, 0.0) + sum(
+            word_score.get(w, 0.0) for w in p
+        )
+
+    ranked = sorted(phrase_score.items(), key=lambda kv: kv[1], reverse=True)
+    # 길이 2~4 우선, 길이 1 (단어 1개) 도 허용은 하되 후순위.
+    multi = [p for p, _s in ranked if 2 <= len(p.split()) <= 4]
+    single = [p for p, _s in ranked if len(p.split()) == 1]
+    candidates = multi + single
+    return _post_filter_tags(candidates, top_n)
+
+
+def _post_filter_tags(candidates: list[str], top_n: int) -> list[str]:
+    """공통 후처리: stopword/all-numeric/너무 짧은 토큰 필터 + dedup."""
+    out: list[str] = []
+    seen_lower: set[str] = set()
+    for raw in candidates:
+        if not raw:
+            continue
+        phrase = raw.strip()
+        if not phrase:
+            continue
+        words = phrase.split()
+        if not (1 <= len(words) <= 4):
+            continue
+        # all-numeric / all-stopword 거르기.
+        if all(w.isdigit() for w in words):
+            continue
+        if all(w in _ALL_STOPWORDS for w in words):
+            continue
+        # 너무 짧은 1글자 영어 토큰 제거.
+        if len(phrase) < 2:
+            continue
+        low = phrase.lower()
+        if low in seen_lower:
+            continue
+        # substring dedup — 기존 항목이 이번 phrase 를 포함하면 skip.
+        if any(low in s or s in low for s in seen_lower):
+            continue
+        seen_lower.add(low)
+        out.append(phrase)
+        if len(out) >= top_n:
+            break
+    return out
+
+
 @dataclass
 class ConverterOptions:
     division: str
@@ -792,6 +1106,17 @@ class Converter:
         created = (core.created or datetime.now(tz=timezone.utc)).strftime("%Y-%m-%d")
         modified = (core.modified or datetime.now(tz=timezone.utc)).strftime("%Y-%m-%d")
 
+        # Bug A-3: --summary / --tags 가 빠진 docx 라도 본문에서 추출.
+        summary_override = (self.meta_overrides.get("summary") or "").strip()
+        if summary_override:
+            summary = summary_override
+        else:
+            summary = _extract_summary_from_sections(self.section_root)
+
+        tags_override = list(self.meta_overrides.get("tags") or [])
+        auto_tags = _extract_tags_from_sections(self.section_root, top_n=8)
+        merged_tags = list(dict.fromkeys(tags_override + auto_tags))[:20]
+
         meta: dict[str, Any] = {
             "doc_id": self.doc_id,
             "title": title,
@@ -803,11 +1128,26 @@ class Converter:
             "author": author,
             "department": f"{self.opts.division}-{self.opts.team}",
             "version": "1.0",
-            "tags": self.meta_overrides.get("tags", []),
-            "summary": self.meta_overrides.get("summary", ""),
+            "tags": merged_tags,
+            "summary": summary,
         }
         if "agent_scope" in self.meta_overrides:
             meta["agent_scope"] = self.meta_overrides["agent_scope"]
+
+        # Migration 0007: agent-discovery 자동 기본값.
+        section_count = len(self.section_root)
+        table_count = len(self.tables)
+        figure_count = len(self.figures)
+        _apply_agent_discovery_defaults(
+            meta,
+            overrides=self.meta_overrides,
+            data_type_name="Word 문서",
+            title=str(title),
+            tags=meta["tags"],
+            section_count=section_count,
+            table_count=table_count,
+            figure_count=figure_count,
+        )
 
         if not meta["tags"]:
             self.warnings.append("[TAGS] 마커 없음 → tags 비어 있음")

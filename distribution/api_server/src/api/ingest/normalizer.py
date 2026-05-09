@@ -127,6 +127,27 @@ def _extract_doc(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
             or raw.get("access_pattern")
             or "occasional"
         ),
+        # Extended classification metadata (Migration 0006) — meta 우선, 없으면 raw.
+        "classification": meta.get("classification") or raw.get("classification"),
+        "status": meta.get("status") or raw.get("status"),
+        "domain": meta.get("domain") or raw.get("domain"),
+        "subject_keywords": list(
+            meta.get("subject_keywords") or raw.get("subject_keywords") or []
+        ),
+        "source_system": meta.get("source_system") or raw.get("source_system"),
+        "language": meta.get("language") or raw.get("language") or "ko",
+        "parent_record_id": (
+            meta.get("parent_record_id") or raw.get("parent_record_id")
+        ),
+        "derivation": meta.get("derivation") or raw.get("derivation"),
+        # quality_score 는 0 이 유효값이므로 명시적 None 검사.
+        "quality_score": (
+            meta.get("quality_score")
+            if meta.get("quality_score") is not None
+            else raw.get("quality_score")
+        ),
+        "valid_from": meta.get("valid_from") or raw.get("valid_from"),
+        "valid_until": meta.get("valid_until") or raw.get("valid_until"),
     }
 
     # content 는 DOC 본문(meta/toc/sections/figures/tables/sources) 자체.
@@ -232,6 +253,27 @@ def _common_fields(raw: dict[str, Any], default_title: str = "") -> dict[str, An
             or meta.get("access_pattern")
             or "occasional"
         ),
+        # Extended classification metadata (Migration 0006) — raw 우선, 없으면 meta.
+        "classification": raw.get("classification") or meta.get("classification"),
+        "status": raw.get("status") or meta.get("status"),
+        "domain": raw.get("domain") or meta.get("domain"),
+        "subject_keywords": list(
+            raw.get("subject_keywords") or meta.get("subject_keywords") or []
+        ),
+        "source_system": raw.get("source_system") or meta.get("source_system"),
+        "language": raw.get("language") or meta.get("language") or "ko",
+        "parent_record_id": (
+            raw.get("parent_record_id") or meta.get("parent_record_id")
+        ),
+        "derivation": raw.get("derivation") or meta.get("derivation"),
+        # quality_score 는 0 이 유효값이므로 명시적 None 검사.
+        "quality_score": (
+            raw.get("quality_score")
+            if raw.get("quality_score") is not None
+            else meta.get("quality_score")
+        ),
+        "valid_from": raw.get("valid_from") or meta.get("valid_from"),
+        "valid_until": raw.get("valid_until") or meta.get("valid_until"),
     }
 
 
@@ -301,6 +343,19 @@ def normalize(raw: dict[str, Any]) -> RecordIn:
         related_record_ids=common.get("related_record_ids", []),
         query_examples=common.get("query_examples", []),
         access_pattern=common.get("access_pattern", "occasional"),
+        # Extended classification metadata (Migration 0006). 누락된 값은 모델
+        # 기본값(internal/draft/ko/original) 또는 None 으로 흘려보낸다.
+        classification=common.get("classification") or "internal",
+        status=common.get("status") or "draft",
+        domain=common.get("domain"),
+        subject_keywords=common.get("subject_keywords") or [],
+        source_system=common.get("source_system"),
+        language=common.get("language") or "ko",
+        parent_record_id=common.get("parent_record_id"),
+        derivation=common.get("derivation") or "original",
+        quality_score=common.get("quality_score"),
+        valid_from=common.get("valid_from"),
+        valid_until=common.get("valid_until"),
     )
     return record
 

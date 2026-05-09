@@ -31,6 +31,7 @@ from converter.models import (
     Section,
     Table,
 )
+from converter.core import _apply_agent_discovery_defaults
 
 # md_converter 의 공통 헬퍼를 그대로 재사용 (헤딩 번호 / 캡션 / URL 추정).
 from md_converter.parser import (
@@ -651,6 +652,24 @@ class HtmlConverter:
 
         for k, v in (self.opts.extra_meta or {}).items():
             meta[k] = v
+
+        # Migration 0007: agent-discovery 자동 기본값.
+        overrides_for_agent: dict[str, Any] = {}
+        for k in ("agent_hints", "related_record_ids", "query_examples", "access_pattern"):
+            if k in hm and hm.get(k) is not None:
+                overrides_for_agent[k] = hm[k]
+            if k in (self.opts.extra_meta or {}):
+                overrides_for_agent[k] = self.opts.extra_meta[k]
+        _apply_agent_discovery_defaults(
+            meta,
+            overrides=overrides_for_agent,
+            data_type_name="HTML 문서",
+            title=str(title),
+            tags=meta["tags"],
+            section_count=len(self.section_root),
+            table_count=len(self.tables),
+            figure_count=len(self.figures),
+        )
 
         if not meta["tags"]:
             self.warnings.append("head meta / CLI 에 tags 없음 → tags 비어 있음")
