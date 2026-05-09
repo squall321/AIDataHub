@@ -26,6 +26,8 @@
 
 작은 AI 가 이 시스템을 사용해야 한다면 [`/api/discover`](http://localhost:8000/api/discover) 와 [`/api/docs/agent-guide?size=small`](http://localhost:8000/api/docs/agent-guide?size=small) 를 먼저 호출하면 된다.
 
+> **다른 AI agent 가 직결할 거라면 → [`agent_pack/`](./agent_pack/) 폴더부터.** API URL 하드코딩된 자체 완결형 가이드 (README + CONFIG + api_reference_compact + schema_reference + patterns + 6 examples). 이 폴더만 들고 가도 즉시 사용 가능.
+
 ---
 
 ## 1. 변환 규칙 — 6개 포맷 한 번에 보기
