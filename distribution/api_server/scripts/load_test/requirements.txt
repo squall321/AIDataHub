@@ -1,0 +1,3 @@
+# Load testing — dev dependency only (NOT in production runtime).
+# Install separately: `pip install -r scripts/load_test/requirements.txt`
+locust>=2.20.0

@@ -1,14 +1,26 @@
 {
   "name": "ai-data-hub-uploader",
   "displayName": "AI Data Hub Uploader",
-  "description": "Drag and drop documents into AI Data Hub from VS Code.",
-  "version": "0.0.1",
+  "description": "Drag-and-drop documents (.docx/.pdf/.pptx/.md/.xlsx) into your AI Data Hub backend with one click.",
+  "version": "0.1.0",
   "publisher": "squall321",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
     "url": "https://github.com/squall321/AIDataHubExtension.git"
   },
+  "bugs": {
+    "url": "https://github.com/squall321/AIDataHubExtension/issues"
+  },
+  "homepage": "https://github.com/squall321/AIDataHubExtension#readme",
+  "keywords": [
+    "ai",
+    "rag",
+    "uploader",
+    "data-hub",
+    "fastapi",
+    "drag-and-drop"
+  ],
   "engines": {
     "vscode": "^1.85.0"
   },

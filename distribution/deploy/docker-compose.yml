@@ -1,0 +1,70 @@
+version: "3.9"
+
+# ===========================================================================
+# AI Data Hub — 원터치 셋업용 docker-compose
+#
+# 사용:
+#   cd deploy && bash install.sh        (Linux/macOS)
+#   cd deploy && install.bat            (Windows + Docker Desktop)
+#
+# 컨테이너:
+#   - postgres : pgvector/pgvector:pg16  (pgvector 확장 사전 설치된 PG 16)
+#   - api      : FastAPI + uvicorn (alembic upgrade → seed → 기동)
+#
+# 영속 볼륨:
+#   - postgres_data    : DB 파일
+#   - attachments_data : 첨부 바이너리 (figures/attachments)
+# ===========================================================================
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: aidh_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aidh
+      POSTGRES_USER: aidh
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aidh_change_me}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aidh -d aidh"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: aidh_api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://aidh:${POSTGRES_PASSWORD:-aidh_change_me}@postgres:5432/aidh
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      API_RELOAD: "false"
+      AUTH_REQUIRED: ${AUTH_REQUIRED:-false}
+      BOOTSTRAP_API_KEY: ${BOOTSTRAP_API_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-hash}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AUTO_EMBED_ON_INSERT: "true"
+      ATTACHMENTS_DIR: /data/attachments
+      FIGURES_DIR: /data/figures
+      BUILD_SHA: ${BUILD_SHA:-deploy}
+    volumes:
+      - attachments_data:/data
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["bash", "/app/deploy/entrypoint.sh"]
+
+volumes:
+  postgres_data:
+  attachments_data:

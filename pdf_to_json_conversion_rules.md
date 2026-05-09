@@ -249,7 +249,7 @@ PDF `/Info` 딕셔너리(`pypdf.PdfReader.metadata`) 의 필드를 다음과 같
 
 ### 8.2 CLI 우선순위
 
-CLI `--division/--team/--year/--seq/--agents/--tags` 는 PDF 메타보다 **우선**이다. PDF /Info 에 의존하면 안 되는 정책 필드 (사업부/팀 코드 등) 는 CLI 에서만 받는다.
+CLI `--division/--team/--year/--seq/--agents/--tags` 는 PDF 메타보다 **우선**이다. PDF /Info 에 의존하면 안 되는 정책 필드 (팀/그룹 코드 등) 는 CLI 에서만 받는다.
 
 ---
 
@@ -388,8 +388,8 @@ python -m pdf_converter input.pdf \
 
 | 플래그 | 설명 | 기본값 |
 |--------|------|-------|
-| `--division` | 사업부 코드 (대문자) | (필수) |
-| `--team` | 팀 코드 (대문자) | (필수) |
+| `--division` | 팀 코드 (대문자) | (필수) |
+| `--team` | 그룹 코드 (대문자) | (필수) |
 | `--year` | 연도 (YYYY) | (필수) |
 | `--seq` | 순번 | 1 |
 | `--output-dir` | 출력 폴더 | `./output` |

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>KooRemapper IGA 변환 가이드 (HTML 표준 예제)</title>
+  <meta name="description"
+        content="KooRemapper의 NURBS 기반 IGA 변환 절차·옵션·검증 방법을 정리한 표준 HTML 예제이다. h1~h3·table·img·code·blockquote·list 의 모든 매핑을 한 파일에 시연한다.">
+  <meta name="author" content="HE/CAE 팀">
+  <meta name="keywords" content="IGA, NURBS, KooRemapper, sample, standard, html">
+  <meta name="agents" content="iga-analyst, cae-reporter, doc-curator">
+  <meta name="classification" content="internal">
+  <meta name="status" content="review">
+  <meta name="domain" content="cae">
+  <meta name="language" content="ko">
+  <meta name="doc_type" content="manual">
+  <meta name="version" content="1.0">
+  <meta name="created" content="2026-04-15">
+  <meta name="modified" content="2026-05-08">
+</head>
+<body>
+
+<h1>1. 개요</h1>
+
+<p>이 문서는 KooRemapper 의 IGA(Isogeometric Analysis) 변환 결과를 검토한
+표준 HTML 노트이다. <a href="../../html_to_json_conversion_rules.md">html_to_json_conversion_rules.md</a>
+의 작성 원칙(head meta · 번호형 헤딩 · table · img · code · blockquote · list)을
+한 파일 안에서 모두 시연한다.</p>
+
+<h2>1.1 배경</h2>
+
+<p>기존 FE(Finite Element) 해석은 곡률이 큰 영역에서 메시 의존성이 컸다.
+NURBS 기반 IGA 는 형상 표현과 해석 기저를 동일한 NURBS 로 통일하므로,
+재메시 없이 정밀도를 끌어올릴 수 있다. 이론적 배경은
+<a href="https://example.com/hughes-iga">Hughes 등(2005)</a>을 참조한다.</p>
+
+<h2>1.2 적용 대상</h2>
+
+<p>다음 조건에서 IGA 재해석이 권장된다.</p>
+
+<ul>
+  <li>곡률이 큰 박판/쉘 구조 (필렛, 노치 주변)</li>
+  <li>FE 응력 결과의 메시 수렴성이 의심되는 영역</li>
+  <li>NURBS 기하 정의가 이미 존재하는 부품 (CAD 원본 활용)</li>
+</ul>
+
+<p>권장하지 않는 경우는 다음과 같다.</p>
+
+<ol>
+  <li>단순 직육면체 부품 — FE 로 충분.</li>
+  <li>비선형 접촉이 지배적인 해석 — 현재 IGA 변환기 미지원.</li>
+  <li>동적 충돌 시뮬레이션 — 명시 시간 적분 미지원.</li>
+</ol>
+
+<h1>2. 변환 절차</h1>
+
+<h2>2.1 입력 준비</h2>
+
+<p>NURBS 정의를 담은 <code>.k</code> 파일과 매핑 대상 FE 결과(<code>.inp</code>,
+<code>.cdb</code>)를 준비한다. 경계 조건은 별도 <code>.json</code>
+매니페스트에 기술한다.</p>
+
+<pre><code class="language-python">from kooremapper import Remapper, RemapOptions
+
+opts = RemapOptions(
+    offset_mm=4.0,
+    target_order=3,
+    preserve_continuity="C2",
+)
+remapper = Remapper(opts)
+remapper.load_geometry("bracket.k")
+remapper.load_field("bracket_fe.inp")
+</code></pre>
+
+<h2>2.2 옵션 결정</h2>
+
+<p><code>offset_mm</code> 은 NURBS 박스가 FE mesh 를 감싸는 두께이다.
+값이 작으면 경계 정확도가 떨어지고, 값이 크면 박스가 인접 부품과 간섭한다.
+기본값(4 mm)은 자동차 부품 두께 1.5~3.0 mm 범위에서 검증되었다.</p>
+
+<blockquote>
+  <p>주의: <code>offset_mm</code> 을 부품 최소 두께의 절반 이하로 두면
+  NURBS 가 두께 방향으로 충분히 펼쳐지지 않아 응력 보간 오차가 커진다.</p>
+</blockquote>
+
+<h2>2.3 매핑 실행</h2>
+
+<p>매핑은 결정론적이며 동일 입력에 대해 동일 결과를 보장한다.
+실행 시간은 노드 수에 거의 선형으로 비례한다.</p>
+
+<pre><code class="language-bash">python -m kooremapper --in bracket.k --field bracket_fe.inp --out bracket.iga
+</code></pre>
+
+<h1>3. 표 기준</h1>
+
+<table>
+  <caption>Table 1: KooRemapper 단계별 입력·출력</caption>
+  <thead>
+    <tr>
+      <th>단계</th>
+      <th>입력</th>
+      <th>출력</th>
+      <th>소요 시간(s)</th>
+      <th>비고</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td><code>.k</code></td><td>NURBS 객체</td><td>0.5</td><td>형상 로딩</td></tr>
+    <tr><td>2</td><td>NURBS, <code>.inp</code></td><td>매핑 객체</td><td>1.2</td><td>옵션 검증 포함</td></tr>
+    <tr><td>3</td><td>매핑 객체</td><td><code>.iga</code></td><td>8.7</td><td>노드 50k 기준</td></tr>
+    <tr><td>4</td><td><code>.iga</code></td><td>검증 리포트</td><td>0.3</td><td>응력 비교 자동화</td></tr>
+  </tbody>
+</table>
+
+<p>HTML 표는 <code>&lt;caption&gt;</code> 태그로 캡션을 직접 명시할 수 있다.
+변환기는 이를 그대로 <code>tables[N].caption</code> 으로 사용한다.</p>
+
+<h1>4. 성능</h1>
+
+<h2>4.1 측정 결과</h2>
+
+<p>브라켓 부품(노드 50,000) 기준 실행 시간을 측정하였다.</p>
+
+<figure>
+  <img src="nurbs_box.png"
+       alt="NURBS 박스 다이어그램 — FE mesh 를 감싸는 직육면체(offset=4 mm)">
+  <figcaption>Figure 1: NURBS 박스 모식도 — FE mesh 의 외곽을 4 mm 오프셋으로 둘러싸고, 박스 내부 좌표를 NURBS 매개변수 (u,v,w) 로 변환한다.</figcaption>
+</figure>
+
+<p><code>&lt;figure&gt;</code> + <code>&lt;figcaption&gt;</code> 패턴이
+가장 권장된다. 변환기는 figcaption 의 텍스트를 캡션으로 사용한다.
+이 패턴이 없으면 <code>img alt</code> 가 캡션으로 사용된다.</p>
+
+<h2>4.2 한계</h2>
+
+<p>다음 항목은 현재 변환기가 처리하지 못한다.</p>
+
+<ul>
+  <li>C0 연속만 보장되는 trimmed surface — C2 강제 시 경고 발생</li>
+  <li>비균일 기저(non-uniform knot vector) — 자동 균등화로 처리하나 정밀도 손실</li>
+  <li>다중 패치 간 경계 — 수동 매핑 필요</li>
+</ul>
+
+<h1>5. 검증 체크리스트</h1>
+
+<p>운영 전 다음 항목을 모두 통과해야 한다.</p>
+
+<ul>
+  <li>FE 대비 최대 응력 오차 ≤ 1%</li>
+  <li>변형 형상 일치 (정성적 시각 확인)</li>
+  <li>경계 조건 노드 수 보존</li>
+  <li>질량 총합 보존 (10⁻⁶ 이내)</li>
+  <li>결과 <code>.iga</code> 파일이 LS-DYNA 로 재해석 가능</li>
+</ul>
+
+<h1>6. 결론</h1>
+
+<p>표준 작성 규칙(head meta · 번호형 헤딩 · table+caption · figure+figcaption ·
+code+language · blockquote · list)을 따르면 변환기가 이 문서를 손실 없이
+JSON 으로 추출한다. 본 예제의 변환 결과는
+<code>examples/standard/converted/</code> 에서 확인한다.</p>
+
+</body>
+</html>

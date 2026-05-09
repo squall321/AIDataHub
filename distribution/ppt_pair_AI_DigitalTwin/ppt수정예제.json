@@ -1,0 +1,996 @@
+{
+  "schema_version": "1.0",
+  "meta": {
+    "doc_id": "DOC-HE-CAE-2026-009012",
+    "title": "구조 시뮬레이션 정합성 고도화 Vision",
+    "source_format": "pptx",
+    "source_file": "ppt수정예제.pptx",
+    "doc_type": "slide",
+    "created": "2024-05-11",
+    "modified": "2026-05-08",
+    "author": "국진 박",
+    "department": "HE-CAE",
+    "version": "1.0",
+    "tags": [],
+    "summary": "Figure 7. 차원의 저주(Curse of Dimensionality) 개념"
+  },
+  "toc": [
+    {
+      "id": "1",
+      "level": 1,
+      "title": "AI와 빅데이터 시대 :\u000b 고품질 데이터와 디지털 트윈을 통한 시뮬레이션 혁신"
+    },
+    {
+      "id": "1",
+      "level": 1,
+      "title": "2023년 국내 AI 도입 및 활용 조사 (1/2)"
+    },
+    {
+      "id": "1.1",
+      "level": 2,
+      "title": "AI 도입 및 활용 현황"
+    },
+    {
+      "id": "1",
+      "level": 1,
+      "title": "2023년 국내 AI 도입 및 활용 조사 (2/2)"
+    },
+    {
+      "id": "1.2",
+      "level": 2,
+      "title": "AI 활용 시 가장 큰 어려움은 \"데이터와 인력“"
+    },
+    {
+      "id": "2",
+      "level": 1,
+      "title": "데이터 마이닝의 중요성"
+    },
+    {
+      "id": "2.1",
+      "level": 2,
+      "title": "AI·데이터 처리의 핵심 개념"
+    },
+    {
+      "id": "2.1.1",
+      "level": 3,
+      "title": "SISO (Single Input, Single Output)"
+    },
+    {
+      "id": "2.1.2",
+      "level": 3,
+      "title": "MIMO (Multiple Input, Multiple Output)"
+    },
+    {
+      "id": "2.1.3",
+      "level": 3,
+      "title": "GIGO (Garbage Input, Garbage Output)"
+    },
+    {
+      "id": "3",
+      "level": 1,
+      "title": "빅데이터 분석의 난점 (1/7)"
+    },
+    {
+      "id": "3.1",
+      "level": 2,
+      "title": "데이터 품질 문제"
+    },
+    {
+      "id": "3.2",
+      "level": 2,
+      "title": "고차원 데이터 처리"
+    },
+    {
+      "id": "3.3",
+      "level": 2,
+      "title": "모델 투명성 문제"
+    },
+    {
+      "id": "3",
+      "level": 1,
+      "title": "빅데이터 분석의 난점 (2/7)"
+    },
+    {
+      "id": "3.1",
+      "level": 2,
+      "title": "데이터 품질 문제"
+    },
+    {
+      "id": "3.1.1",
+      "level": 3,
+      "title": "Data Warehouse VS Data Lake"
+    },
+    {
+      "id": "3",
+      "level": 1,
+      "title": "빅데이터 분석의 난점 (3/7)"
+    },
+    {
+      "id": "3.1",
+      "level": 2,
+      "title": "데이터 품질 문제"
+    },
+    {
+      "id": "3.1.2",
+      "level": 3,
+      "title": "종래의 데이터 수집 과정"
+    },
+    {
+      "id": "3",
+      "level": 1,
+      "title": "빅데이터 분석의 난점 (4/7)"
+    },
+    {
+      "id": "3.1",
+      "level": 2,
+      "title": "데이터 품질 문제"
+    },
+    {
+      "id": "3.1.3",
+      "level": 3,
+      "title": "데이터 레이크의 활용"
+    },
+    {
+      "id": "3",
+      "level": 1,
+      "title": "빅데이터 분석의 난점 (5/7)"
+    },
+    {
+      "id": "3",
+      "level": 1,
+      "title": "빅데이터 분석의 난점 (6/7)"
+    },
+    {
+      "id": "3.2",
+      "level": 2,
+      "title": "고차원 데이터 처리"
+    },
+    {
+      "id": "3.2.1",
+      "level": 3,
+      "title": "시뮬레이션과 AI의 계산 구조 비교"
+    },
+    {
+      "id": "3",
+      "level": 1,
+      "title": "빅데이터 분석의 난점 (7/7)"
+    },
+    {
+      "id": "3.3",
+      "level": 2,
+      "title": "모델 투명성 문제"
+    },
+    {
+      "id": "3.3.1",
+      "level": 3,
+      "title": "모델 복잡성/비선형 상호작용"
+    },
+    {
+      "id": "3.3.2",
+      "level": 3,
+      "title": "변수의 의존성"
+    }
+  ],
+  "sections": [
+    {
+      "id": "1",
+      "level": 1,
+      "title": "AI와 빅데이터 시대 :\u000b 고품질 데이터와 디지털 트윈을 통한 시뮬레이션 혁신",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "AI와 빅데이터 시대 : 고품질 데이터와 디지털 트윈을 통한 시뮬레이션 혁신"
+        }
+      ],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": []
+    },
+    {
+      "id": "1",
+      "level": 1,
+      "title": "2023년 국내 AI 도입 및 활용 조사 (1/2)",
+      "blocks": [],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": [
+        {
+          "id": "1.1",
+          "level": 2,
+          "title": "AI 도입 및 활용 현황",
+          "blocks": [
+            {
+              "type": "list_item",
+              "text": "국내 기업 약 41%가 AI 활용 또는 파일럿 진행",
+              "marker": "  •"
+            },
+            {
+              "type": "list_item",
+              "text": "추가 도입 예정 기업 포함 시 과반 이상이 AI 추진",
+              "marker": "  •"
+            },
+            {
+              "type": "list_item",
+              "text": "생성형 AI 확산으로 AI 관심과 투자 증가",
+              "marker": "  •"
+            },
+            {
+              "type": "list_item",
+              "text": "AI가 기업 업무 혁신의 핵심 기술로 확대 중",
+              "marker": "  •"
+            },
+            {
+              "type": "figure",
+              "ref": "DOC-HE-CAE-2026-009012-F001"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 1. 2023 국내 AI 도입 및 활용 현황 조사 | 인사이트리포트 | 삼성SDS"
+            }
+          ],
+          "figure_refs": [
+            "DOC-HE-CAE-2026-009012-F001"
+          ],
+          "table_refs": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "1",
+      "level": 1,
+      "title": "2023년 국내 AI 도입 및 활용 조사 (2/2)",
+      "blocks": [],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": [
+        {
+          "id": "1.2",
+          "level": 2,
+          "title": "AI 활용 시 가장 큰 어려움은 \"데이터와 인력“",
+          "blocks": [
+            {
+              "type": "list_item",
+              "text": "데이터 품질·부족 문제와 AI 전문 인력 부족이 가장 큰 장애 요인",
+              "marker": "  •"
+            },
+            {
+              "type": "list_item",
+              "text": "기술 선정, 인프라, 비용 부담 등도 주요 어려움으로 나타남",
+              "marker": "  •"
+            },
+            {
+              "type": "figure",
+              "ref": "DOC-HE-CAE-2026-009012-F002"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 2. 기업의 AI 도입 장애 요인"
+            }
+          ],
+          "figure_refs": [
+            "DOC-HE-CAE-2026-009012-F002"
+          ],
+          "table_refs": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "2",
+      "level": 1,
+      "title": "데이터 마이닝의 중요성",
+      "blocks": [],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": [
+        {
+          "id": "2.1",
+          "level": 2,
+          "title": "AI·데이터 처리의 핵심 개념",
+          "blocks": [],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "2.1.1",
+          "level": 3,
+          "title": "SISO (Single Input, Single Output)",
+          "blocks": [
+            {
+              "type": "list_item",
+              "text": "하나의 입력으로 하나의 결과를 생성하는 단순 구조",
+              "marker": "    •"
+            },
+            {
+              "type": "list_item",
+              "text": "기본적인 Control System, Simulation, Neural Network 모델에 활용",
+              "marker": "    •"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "2.1.2",
+          "level": 3,
+          "title": "MIMO (Multiple Input, Multiple Output)",
+          "blocks": [
+            {
+              "type": "list_item",
+              "text": "여러 입력을 종합하여 다양한 결과를 생성하는 복합 구조",
+              "marker": "    •"
+            },
+            {
+              "type": "list_item",
+              "text": "실제 산업용 Control System, CAE Simulation, Digital Twin, Neural Network의 대표적 구조",
+              "marker": "    •"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "2.1.3",
+          "level": 3,
+          "title": "GIGO (Garbage Input, Garbage Output)",
+          "blocks": [
+            {
+              "type": "list_item",
+              "text": "입력 데이터 품질이 낮으면 결과도 신뢰할 수 없다는 원칙",
+              "marker": "    •"
+            },
+            {
+              "type": "list_item",
+              "text": "AI·Simulation·제어 시스템 전반에서 데이터 품질의 중요성을 의미",
+              "marker": "    •"
+            },
+            {
+              "type": "paragraph",
+              "text": "System"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 3. SISO System"
+            },
+            {
+              "type": "paragraph",
+              "text": "System"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 4. MIMO System"
+            },
+            {
+              "type": "figure",
+              "ref": "DOC-HE-CAE-2026-009012-F003"
+            },
+            {
+              "type": "paragraph",
+              "text": "System"
+            },
+            {
+              "type": "figure",
+              "ref": "DOC-HE-CAE-2026-009012-F004"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 5. GIGO System"
+            }
+          ],
+          "figure_refs": [
+            "DOC-HE-CAE-2026-009012-F003",
+            "DOC-HE-CAE-2026-009012-F004"
+          ],
+          "table_refs": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "level": 1,
+      "title": "빅데이터 분석의 난점 (1/7)",
+      "blocks": [],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": [
+        {
+          "id": "3.1",
+          "level": 2,
+          "title": "데이터 품질 문제",
+          "blocks": [
+            {
+              "type": "list_item",
+              "text": "- 노이즈, 결측치, 중복된 데이터로 인한 분석 신뢰성 저하",
+              "marker": "  •"
+            },
+            {
+              "type": "list_item",
+              "text": "- 데이터의 일관성 및 정합성 부족으로 인한 전처리 복잡성 증가",
+              "marker": "  •"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "3.2",
+          "level": 2,
+          "title": "고차원 데이터 처리",
+          "blocks": [
+            {
+              "type": "list_item",
+              "text": "- 연산 비용 증가 및 해석 어려움, 효율적인 차원 축소 필요",
+              "marker": "  •"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "3.3",
+          "level": 2,
+          "title": "모델 투명성 문제",
+          "blocks": [
+            {
+              "type": "list_item",
+              "text": "- 복잡한 모델일수록 결과 해석이 난해함",
+              "marker": "  •"
+            },
+            {
+              "type": "list_item",
+              "text": "- 투명성과 신뢰성을 확보하기 위한 기술 필요",
+              "marker": "  •"
+            },
+            {
+              "type": "list_item",
+              "text": "- 데이터 정보량의 부족",
+              "marker": "  •"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "level": 1,
+      "title": "빅데이터 분석의 난점 (2/7)",
+      "blocks": [],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": [
+        {
+          "id": "3.1",
+          "level": 2,
+          "title": "데이터 품질 문제",
+          "blocks": [],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "3.1.1",
+          "level": 3,
+          "title": "Data Warehouse VS Data Lake",
+          "blocks": [
+            {
+              "type": "list_item",
+              "text": "Data Warehouse : 정형화·정제된 데이터를 저장하여 분석과 보고에 최적화된 구조",
+              "marker": "  •"
+            },
+            {
+              "type": "list_item",
+              "text": "Data Lake : 정형·비정형 데이터를 원본 그대로 저장하여 AI·빅데이터 활용에 적합한 구조",
+              "marker": "  •"
+            },
+            {
+              "type": "figure",
+              "ref": "DOC-HE-CAE-2026-009012-F005"
+            },
+            {
+              "type": "paragraph",
+              "text": "Figure 6. Data Warehouse 와 Data Lake"
+            }
+          ],
+          "figure_refs": [
+            "DOC-HE-CAE-2026-009012-F005"
+          ],
+          "table_refs": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "level": 1,
+      "title": "빅데이터 분석의 난점 (3/7)",
+      "blocks": [],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": [
+        {
+          "id": "3.1",
+          "level": 2,
+          "title": "데이터 품질 문제",
+          "blocks": [],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "3.1.2",
+          "level": 3,
+          "title": "종래의 데이터 수집 과정",
+          "blocks": [
+            {
+              "type": "list_item",
+              "text": "불량 및 문제 대응 중심으로 이루어진 종래 데이터 관리 구조",
+              "marker": "    •"
+            },
+            {
+              "type": "table",
+              "ref": "DOC-HE-CAE-2026-009012-T001"
+            },
+            {
+              "type": "paragraph",
+              "text": "Table 1. 전통적 데이터 수집 및 활용 프로세스"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "DOC-HE-CAE-2026-009012-T001"
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "level": 1,
+      "title": "빅데이터 분석의 난점 (4/7)",
+      "blocks": [],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": [
+        {
+          "id": "3.1",
+          "level": 2,
+          "title": "데이터 품질 문제",
+          "blocks": [],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "3.1.3",
+          "level": 3,
+          "title": "데이터 레이크의 활용",
+          "blocks": [
+            {
+              "type": "list_item",
+              "text": "문제 발생 이전부터 데이터를 지속적으로 축적하고, 발생한 이슈를 데이터 기반 분석·활용으로 연결하는 선제적 데이터 활용 구조",
+              "marker": "  •"
+            },
+            {
+              "type": "paragraph",
+              "text": "Table 2. 데이터 레이크 기반 문제 분석 및 활용 체계"
+            },
+            {
+              "type": "table",
+              "ref": "DOC-HE-CAE-2026-009012-T002"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "DOC-HE-CAE-2026-009012-T002"
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "level": 1,
+      "title": "빅데이터 분석의 난점 (5/7)",
+      "blocks": [
+        {
+          "type": "figure",
+          "ref": "DOC-HE-CAE-2026-009012-F006"
+        },
+        {
+          "type": "paragraph",
+          "text": "Figure 7. 차원의 저주(Curse of Dimensionality) 개념"
+        }
+      ],
+      "figure_refs": [
+        "DOC-HE-CAE-2026-009012-F006"
+      ],
+      "table_refs": [],
+      "children": []
+    },
+    {
+      "id": "3",
+      "level": 1,
+      "title": "빅데이터 분석의 난점 (6/7)",
+      "blocks": [],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": [
+        {
+          "id": "3.2",
+          "level": 2,
+          "title": "고차원 데이터 처리",
+          "blocks": [],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "3.2.1",
+          "level": 3,
+          "title": "시뮬레이션과 AI의 계산 구조 비교",
+          "blocks": [
+            {
+              "type": "list_item",
+              "text": "3.2.1.1 계산 복잡도와 수렴 특성 기반의 해석 방법 비교",
+              "marker": "    •"
+            },
+            {
+              "type": "list_item",
+              "text": "시뮬레이션과 AI는 계산 복잡도와 수렴 안정성이 핵심 요소",
+              "marker": "    •"
+            },
+            {
+              "type": "list_item",
+              "text": "Explicit/Implicit 및 Neural Network 구조에 따라 계산량과 성능이 결정됨",
+              "marker": "    •"
+            },
+            {
+              "type": "list_item",
+              "text": "Δt, 파라미터 수, 연산 구조가 HPC·AI 시스템 규모와 효율성에 큰 영향 줌",
+              "marker": "    •"
+            },
+            {
+              "type": "table",
+              "ref": "DOC-HE-CAE-2026-009012-T003"
+            },
+            {
+              "type": "paragraph",
+              "text": "Table 3. 계산 방법론 구조화 예시"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [
+            "DOC-HE-CAE-2026-009012-T003"
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "level": 1,
+      "title": "빅데이터 분석의 난점 (7/7)",
+      "blocks": [],
+      "figure_refs": [],
+      "table_refs": [],
+      "children": [
+        {
+          "id": "3.3",
+          "level": 2,
+          "title": "모델 투명성 문제",
+          "blocks": [
+            {
+              "type": "list_item",
+              "text": "- 복잡한 시스템 분석, 투명성 및 신뢰성 확보의 어려움",
+              "marker": "  •"
+            },
+            {
+              "type": "list_item",
+              "text": "DOE 기반의 최적화 방법들과 AI/ML의 잠재적 리스크",
+              "marker": "  •"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "3.3.1",
+          "level": 3,
+          "title": "모델 복잡성/비선형 상호작용",
+          "blocks": [
+            {
+              "type": "list_item",
+              "text": "- 변수의 비선형적인 민감도",
+              "marker": "    •"
+            },
+            {
+              "type": "list_item",
+              "text": "- 모델의 복잡성을 확인할 수 없는 경우(AI/ML) 분석의 정합성 감소",
+              "marker": "    •"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        },
+        {
+          "id": "3.3.2",
+          "level": 3,
+          "title": "변수의 의존성",
+          "blocks": [
+            {
+              "type": "list_item",
+              "text": "- 상호의존 변수들의 관계 불명하여 모델의 투명도 감소",
+              "marker": "    •"
+            }
+          ],
+          "figure_refs": [],
+          "table_refs": [],
+          "children": []
+        }
+      ]
+    }
+  ],
+  "figures": [
+    {
+      "id": "DOC-HE-CAE-2026-009012-F001",
+      "number": 1,
+      "caption": "Figure 1. 2023 국내 AI 도입 및 활용 현황 조사 | 인사이트리포트 | 삼성SDS",
+      "section_ref": "1",
+      "image_path": "DOC-HE-CAE-2026-009012/F001.png"
+    },
+    {
+      "id": "DOC-HE-CAE-2026-009012-F002",
+      "number": 2,
+      "caption": "Figure 2. 기업의 AI 도입 장애 요인",
+      "section_ref": "1",
+      "image_path": "DOC-HE-CAE-2026-009012/F002.png"
+    },
+    {
+      "id": "DOC-HE-CAE-2026-009012-F003",
+      "number": 3,
+      "caption": "Figure 3: Cartoon Trash Can Stock Illustrations – 7,821 Cartoon Trash ...",
+      "section_ref": "2",
+      "image_path": "DOC-HE-CAE-2026-009012/F003.jpg"
+    },
+    {
+      "id": "DOC-HE-CAE-2026-009012-F004",
+      "number": 4,
+      "caption": "Figure 4: Cartoon Trash Can Stock Illustrations – 7,821 Cartoon Trash ...",
+      "section_ref": "2",
+      "image_path": "DOC-HE-CAE-2026-009012/F004.jpg"
+    },
+    {
+      "id": "DOC-HE-CAE-2026-009012-F005",
+      "number": 5,
+      "caption": "Figure 5: DE] 빅데이터 저장소(Data Storage)",
+      "section_ref": "3",
+      "image_path": "DOC-HE-CAE-2026-009012/F005.png"
+    },
+    {
+      "id": "DOC-HE-CAE-2026-009012-F006",
+      "number": 6,
+      "caption": "Figure 6: 고차원 데이터와 차원의 저주(High-dimensional data and curse of dimensionality)",
+      "section_ref": "3",
+      "image_path": "DOC-HE-CAE-2026-009012/F006.png"
+    }
+  ],
+  "tables": [
+    {
+      "id": "DOC-HE-CAE-2026-009012-T001",
+      "number": 1,
+      "caption": "Table 1: 슬라이드 3 표",
+      "section_ref": "3",
+      "headers": [
+        "Problem",
+        "Schema/Logic",
+        "Data Asset",
+        "Usage"
+      ],
+      "rows": [
+        [
+          "낙하 파손",
+          "낙하 높이 예측 알고리즘",
+          "낙하 높이 데이터",
+          "파손 시 낙하 이력 확인"
+        ],
+        [
+          "Warpage",
+          "Warpage Max 기준",
+          "Warpage 전수 데이터",
+          "Spec Out 집계"
+        ],
+        [
+          "FPCB Crack",
+          "Folding Count 알고리즘",
+          "Folding 이력 데이터",
+          "Folding 횟수별 불량 분석"
+        ]
+      ]
+    },
+    {
+      "id": "DOC-HE-CAE-2026-009012-T002",
+      "number": 2,
+      "caption": "Table 2: 슬라이드 3 표",
+      "section_ref": "3",
+      "headers": [
+        "Data Lake 구축",
+        "문제 발생",
+        "데이터 분석 및 탐색",
+        "데이터 활용"
+      ],
+      "rows": [
+        [
+          "낙하 이력 센서 데이터 집계",
+          "낙하 크랙 문제 발생",
+          "낙하 이력 디지털트윈 분석 진행",
+          "낙하 원인 확인"
+        ],
+        [
+          "Warpage 분포 전수 데이터 확보",
+          "Warpage 불량 발생",
+          "Warpage 전수 데이터 분석",
+          "불량 모드 확인"
+        ],
+        [
+          "폴딩 시간·횟수·온도 등 센서 데이터 기록",
+          "폴더블폰 FPCB 크랙 발생",
+          "Folding 경향성 분석",
+          "Folding 환경 조건 분석"
+        ]
+      ]
+    },
+    {
+      "id": "DOC-HE-CAE-2026-009012-T003",
+      "number": 3,
+      "caption": "Table 3: 슬라이드 3 표",
+      "section_ref": "3",
+      "headers": [
+        "Domain",
+        "Method",
+        "Subtype",
+        "Complexity",
+        "Stability / Δt",
+        "특징"
+      ],
+      "rows": [
+        [
+          "Simulation",
+          "Explicit",
+          "Central Difference",
+          "O(n)",
+          "매우 작은 Δt 필요",
+          "빠르지만 조건부 안정"
+        ],
+        [
+          "Simulation",
+          "Implicit",
+          "Newton-Raphson",
+          "O(n³) 또는 O(n² log n)",
+          "큰 Δt 가능",
+          "안정적이나 계산량 큼"
+        ],
+        [
+          "Machine Learning",
+          "Fully Connected",
+          "Dense Layer",
+          "O(B×N×M)",
+          "N/A",
+          "뉴런 연결 기반"
+        ],
+        [
+          "Machine Learning",
+          "Forward Pass",
+          "Inference",
+          "O(P)",
+          "N/A",
+          "파라미터 수 비례"
+        ]
+      ]
+    }
+  ],
+  "sources": [],
+  "attachments": [
+    {
+      "id": "DOC-HE-CAE-2026-009012-A001",
+      "number": 1,
+      "kind": "figure",
+      "caption": "Figure 1. 2023 국내 AI 도입 및 활용 현황 조사 | 인사이트리포트 | 삼성SDS",
+      "section_ref": "1",
+      "file_name": "A001.png",
+      "file_path": "DOC-HE-CAE-2026-009012/A001.png",
+      "mime_type": "image/png",
+      "size_bytes": 80108,
+      "hash_sha256": "8edef0a1e8a7abe5240bd121c8d5e5b4df90ca2756baaf4a8471ebf574786cc3",
+      "extra": {
+        "figure_ref": "DOC-HE-CAE-2026-009012-F001"
+      }
+    },
+    {
+      "id": "DOC-HE-CAE-2026-009012-A002",
+      "number": 2,
+      "kind": "figure",
+      "caption": "Figure 2. 기업의 AI 도입 장애 요인",
+      "section_ref": "1",
+      "file_name": "A002.png",
+      "file_path": "DOC-HE-CAE-2026-009012/A002.png",
+      "mime_type": "image/png",
+      "size_bytes": 86746,
+      "hash_sha256": "25e9d13ccedfd8a8086871eee90588730be03df8abd6ce51621b673f5895740f",
+      "extra": {
+        "figure_ref": "DOC-HE-CAE-2026-009012-F002"
+      }
+    },
+    {
+      "id": "DOC-HE-CAE-2026-009012-A003",
+      "number": 3,
+      "kind": "figure",
+      "caption": "Figure 3: Cartoon Trash Can Stock Illustrations – 7,821 Cartoon Trash ...",
+      "section_ref": "2",
+      "file_name": "A003.jpg",
+      "file_path": "DOC-HE-CAE-2026-009012/A003.jpg",
+      "mime_type": "image/jpeg",
+      "size_bytes": 65833,
+      "hash_sha256": "9d10d3e56f9a9eb5e085fd95aa8ef426987e738e2b1f52317caac7b913c48fe8",
+      "extra": {
+        "figure_ref": "DOC-HE-CAE-2026-009012-F003"
+      }
+    },
+    {
+      "id": "DOC-HE-CAE-2026-009012-A004",
+      "number": 4,
+      "kind": "figure",
+      "caption": "Figure 4: Cartoon Trash Can Stock Illustrations – 7,821 Cartoon Trash ...",
+      "section_ref": "2",
+      "file_name": "A004.jpg",
+      "file_path": "DOC-HE-CAE-2026-009012/A004.jpg",
+      "mime_type": "image/jpeg",
+      "size_bytes": 65833,
+      "hash_sha256": "9d10d3e56f9a9eb5e085fd95aa8ef426987e738e2b1f52317caac7b913c48fe8",
+      "extra": {
+        "figure_ref": "DOC-HE-CAE-2026-009012-F004"
+      }
+    },
+    {
+      "id": "DOC-HE-CAE-2026-009012-A005",
+      "number": 5,
+      "kind": "figure",
+      "caption": "Figure 5: DE] 빅데이터 저장소(Data Storage)",
+      "section_ref": "3",
+      "file_name": "A005.png",
+      "file_path": "DOC-HE-CAE-2026-009012/A005.png",
+      "mime_type": "image/png",
+      "size_bytes": 102460,
+      "hash_sha256": "9bbb5b392f4b957efba1c734fa6a58aeff156c7fc515378d492e230c105dacff",
+      "extra": {
+        "figure_ref": "DOC-HE-CAE-2026-009012-F005"
+      }
+    },
+    {
+      "id": "DOC-HE-CAE-2026-009012-A006",
+      "number": 6,
+      "kind": "figure",
+      "caption": "Figure 6: 고차원 데이터와 차원의 저주(High-dimensional data and curse of dimensionality)",
+      "section_ref": "3",
+      "file_name": "A006.png",
+      "file_path": "DOC-HE-CAE-2026-009012/A006.png",
+      "mime_type": "image/png",
+      "size_bytes": 975031,
+      "hash_sha256": "33c3491ad5d1dd506fcd0f00b16875e9d6e9e6b655c85cf186420bc05881d217",
+      "extra": {
+        "figure_ref": "DOC-HE-CAE-2026-009012-F006"
+      }
+    }
+  ]
+}

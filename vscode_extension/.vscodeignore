@@ -9,4 +9,7 @@ tsconfig.json
 **/tsconfig.json
 **/*.map
 **/*.ts
+*.vsix
+USER_GUIDE.md
 !out/**/*.js
+!media/**

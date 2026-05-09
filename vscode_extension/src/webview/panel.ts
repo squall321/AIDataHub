@@ -104,17 +104,54 @@ export class UploaderPanel {
         // Surface final outcome as a VS Code toast so it's visible even if
         // the user navigates away from the panel.
         if (msg.ok) {
+          const status = msg.status ? ` (${msg.status})` : '';
           void vscode.window.showInformationMessage(
-            `AI Data Hub: uploaded ${msg.recordId ?? 'record'}`,
+            `AI Data Hub: uploaded ${msg.recordId ?? 'record'}${status}`,
           );
+        } else if (msg.httpStatus === 401) {
+          // Auth failed → offer re-entry of API key right from the toast.
+          const choice = await vscode.window.showErrorMessage(
+            'AI Data Hub: API key invalid (401). Re-enter your key?',
+            'Re-enter API key',
+            'Cancel',
+          );
+          if (choice === 'Re-enter API key') {
+            await this.promptForApiKey();
+          }
         } else {
+          const detail = msg.requestId ? ` [request_id=${msg.requestId}]` : '';
           void vscode.window.showErrorMessage(
-            `AI Data Hub upload failed: ${msg.error ?? 'unknown error'}`,
+            `AI Data Hub upload failed: ${msg.error ?? 'unknown error'}${detail}`,
           );
         }
         return;
       }
+      case 'promptApiKey': {
+        await this.promptForApiKey();
+        return;
+      }
     }
+  }
+
+  /**
+   * Prompt the user to re-enter their API key (used after 401 errors).
+   * Stores the new key in SecretStorage and notifies the webview.
+   */
+  private async promptForApiKey(): Promise<void> {
+    const newKey = await vscode.window.showInputBox({
+      title: 'AI Data Hub — API Key',
+      prompt: 'Enter your API key. It will be stored in VS Code SecretStorage.',
+      password: true,
+      ignoreFocusOut: true,
+    });
+    if (newKey === undefined) return; // user cancelled
+    if (newKey.trim().length === 0) {
+      await this.store.clearApiKey();
+    } else {
+      await this.store.setApiKey(newKey.trim());
+    }
+    const snap = await this.store.snapshot();
+    this.post({ type: 'config', ...snap });
   }
 
   private async testConnection(

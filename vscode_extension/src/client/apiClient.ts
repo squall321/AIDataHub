@@ -116,4 +116,24 @@ export class ApiClient {
     if (!res.ok) throw await parseError(res);
     return (await res.json()) as IngestResponse;
   }
+
+  /**
+   * `/api/convert/` — DRY-RUN. Same payload as ingest, but the backend only
+   * runs the converter and returns the resulting JSON without touching the DB.
+   * Useful for previewing the parsed metadata/title/summary.
+   */
+  async convertOnly(file: Blob, filename: string, fields: Record<string, string>): Promise<unknown> {
+    const fd = new FormData();
+    fd.append('file', file, filename);
+    for (const [k, v] of Object.entries(fields)) {
+      if (v !== undefined && v !== null && v !== '') fd.append(k, v);
+    }
+    const res = await fetch(joinUrl(this.baseUrl, '/api/convert/'), {
+      method: 'POST',
+      headers: this.headers(),
+      body: fd,
+    });
+    if (!res.ok) throw await parseError(res);
+    return await res.json();
+  }
 }

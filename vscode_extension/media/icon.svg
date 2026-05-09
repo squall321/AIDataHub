@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <rect width="128" height="128" rx="20" fill="#0f3460"/>
+  <!-- Cloud + arrow up motif -->
+  <path d="M40 78 a18 18 0 0 1 8 -34 a22 22 0 0 1 42 4 a14 14 0 0 1 0 28 z"
+        fill="#16c79a" stroke="#0f3460" stroke-width="3"/>
+  <path d="M64 56 l0 30 m-12 -18 l12 -12 l12 12"
+        stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <text x="64" y="112" text-anchor="middle"
+        font-family="Segoe UI, system-ui, sans-serif" font-size="14" font-weight="700" fill="#e9ecef">AIDH</text>
+</svg>

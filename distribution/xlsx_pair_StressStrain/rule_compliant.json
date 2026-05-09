@@ -1,0 +1,222 @@
+{
+  "data_id": "DATA-HE-CAE-2026-008002",
+  "schema_version": "data.v1",
+  "caption": "Stress_Strain_Curve",
+  "division": "HE",
+  "team": "CAE",
+  "year": 2026,
+  "headers": [
+    "Strain",
+    "Stress",
+    "Region"
+  ],
+  "rows": [
+    [
+      0.0,
+      0.0,
+      "Elastic"
+    ],
+    [
+      0.00025,
+      50.0,
+      "Elastic"
+    ],
+    [
+      0.0005,
+      100.0,
+      "Elastic"
+    ],
+    [
+      0.00075,
+      150.0,
+      "Elastic"
+    ],
+    [
+      0.001,
+      200.0,
+      "Elastic"
+    ],
+    [
+      0.00125,
+      250.0,
+      "Yield"
+    ],
+    [
+      0.002,
+      255.0,
+      "Yield"
+    ],
+    [
+      0.0035,
+      260.0,
+      "Yield"
+    ],
+    [
+      0.005,
+      270.0,
+      "Yield"
+    ],
+    [
+      0.0075,
+      285.0,
+      "Strain Hardening"
+    ],
+    [
+      0.01,
+      300.0,
+      "Strain Hardening"
+    ],
+    [
+      0.015,
+      325.0,
+      "Strain Hardening"
+    ],
+    [
+      0.02,
+      345.0,
+      "Strain Hardening"
+    ],
+    [
+      0.03,
+      370.0,
+      "Strain Hardening"
+    ],
+    [
+      0.04,
+      388.0,
+      "Strain Hardening"
+    ],
+    [
+      0.05,
+      402.0,
+      "Strain Hardening"
+    ],
+    [
+      0.06,
+      414.0,
+      "Strain Hardening"
+    ],
+    [
+      0.07,
+      423.0,
+      "Strain Hardening"
+    ],
+    [
+      0.08,
+      430.0,
+      "Strain Hardening"
+    ],
+    [
+      0.09,
+      436.0,
+      "Strain Hardening"
+    ],
+    [
+      0.1,
+      441.0,
+      "Strain Hardening"
+    ],
+    [
+      0.11,
+      444.0,
+      "Strain Hardening"
+    ],
+    [
+      0.12,
+      447.0,
+      "Strain Hardening"
+    ],
+    [
+      0.13,
+      449.0,
+      "Strain Hardening"
+    ],
+    [
+      0.14,
+      450.0,
+      "Strain Hardening"
+    ],
+    [
+      0.15,
+      450.0,
+      "UTS"
+    ],
+    [
+      0.16,
+      448.0,
+      "Necking"
+    ],
+    [
+      0.17,
+      444.0,
+      "Necking"
+    ],
+    [
+      0.18,
+      438.0,
+      "Necking"
+    ],
+    [
+      0.19,
+      425.0,
+      "Necking"
+    ],
+    [
+      0.2,
+      410.0,
+      "Fracture"
+    ]
+  ],
+  "row_count": 31,
+  "column_count": 3,
+  "source": {
+    "sheet": "Stress_Strain_Curve",
+    "kind": "xlsx"
+  },
+  "generated_at": "2026-05-08T16:32:40.471272+00:00",
+  "units": [
+    "-",
+    "MPa",
+    null
+  ],
+  "warnings": [
+    "_META: unknown sheet-level field 'specimen' (allowed: ['caveats', 'condition', 'date', 'description', 'equipment', 'method', 'notes', 'operator'])",
+    "_META: unknown sheet-level field 'material' (allowed: ['caveats', 'condition', 'date', 'description', 'equipment', 'method', 'notes', 'operator'])"
+  ],
+  "meta": {
+    "title": "Stress-Strain Curve — SS400 가정 데이터",
+    "domain": "material-test",
+    "summary": "SS400 저탄소강 인장시험 가정 데이터 (E=200GPa, σ_y=250MPa, σ_u=450MPa, ε_f=0.20).",
+    "tags": [
+      "SS400",
+      "StressStrain",
+      "Tensile",
+      "Steel",
+      "CAE"
+    ],
+    "author": "material-reviewer",
+    "agents": [
+      "material-reviewer",
+      "cae-reporter"
+    ],
+    "classification": "internal",
+    "status": "approved",
+    "language": "ko",
+    "source_system": "(가정 데이터)"
+  },
+  "context": {
+    "description": "변형률-응력 곡선",
+    "method": "ASTM E8/E8M 가정",
+    "condition": "상온 25℃, 인장속도 5 mm/min",
+    "specimen": "직경 12.5mm, GL 50mm",
+    "material": "SS400 (저탄소강)"
+  },
+  "column_descriptions": {
+    "Strain": "공칭 변형률 (engineering strain)",
+    "Stress": "공칭 응력 (engineering stress)",
+    "Region": "변형 영역 (Elastic/Yield/Strain Hardening/UTS/Necking/Fracture)"
+  },
+  "units_map": {
+    "Stress": "MPa"
+  }
+}

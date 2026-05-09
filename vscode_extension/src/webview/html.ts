@@ -424,6 +424,7 @@ function clientScript(): string {
 
       <div class="toolbar">
         <button id="btn-send">Send to Backend</button>
+        <button id="btn-dryrun" class="secondary" title="Run converter only — no DB write">Send DRY-RUN</button>
       </div>
       <div id="form-status" class="status err" style="display:none"></div>
     \`;
@@ -450,6 +451,16 @@ function clientScript(): string {
       const errors = validateForm(values, opts);
       paintErrors(errors);
       if (errors.size > 0) return;
+      state.upload.dryRun = false;
+      go('sending');
+      startUpload(values);
+    });
+    on('btn-dryrun', 'click', () => {
+      const values = collectForm({ tagsState, agentsState, subjectState });
+      const errors = validateForm(values, opts);
+      paintErrors(errors);
+      if (errors.size > 0) return;
+      state.upload.dryRun = true;
       go('sending');
       startUpload(values);
     });
@@ -610,7 +621,8 @@ function clientScript(): string {
     if (values.valid_from)  fd.append('valid_from', values.valid_from);
     if (values.valid_until) fd.append('valid_until', values.valid_until);
 
-    const url = baseUrl.replace(/\\/+$/, '') + '/api/convert/ingest';
+    const path = state.upload.dryRun ? '/api/convert/' : '/api/convert/ingest';
+    const url  = baseUrl.replace(/\\/+$/, '') + path;
     const xhr = new XMLHttpRequest();
     state.upload.xhr = xhr;
     xhr.open('POST', url, true);
@@ -632,15 +644,26 @@ function clientScript(): string {
       if (xhr.status >= 200 && xhr.status < 300 && body) {
         state.upload.response = body;
         state.upload.error = null;
-        send({ type: 'uploadResult', ok: true, recordId: body.record_id });
+        if (state.upload.dryRun) {
+          // DRY-RUN: don't surface a "uploaded" toast; just show the preview.
+        } else {
+          send({ type: 'uploadResult', ok: true, recordId: body.record_id, status: body.status });
+        }
       } else {
         const code = body && body.error && body.error.code ? body.error.code : ('HTTP_' + xhr.status);
         const msg  = body && body.error && body.error.message
                        ? body.error.message
                        : (body && body.detail ? (typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)) : (xhr.responseText || xhr.statusText));
-        state.upload.error = { code, message: msg };
+        const requestId = body && body.error && body.error.request_id ? body.error.request_id : undefined;
+        state.upload.error = { code, message: msg, requestId, httpStatus: xhr.status };
         state.upload.response = null;
-        send({ type: 'uploadResult', ok: false, error: '['+code+'] '+msg });
+        send({
+          type: 'uploadResult',
+          ok: false,
+          httpStatus: xhr.status,
+          requestId,
+          error: '['+code+'] '+msg,
+        });
       }
       go('result');
     });
@@ -660,7 +683,20 @@ function clientScript(): string {
   // ------- Result -------------------------------------------------------
   function renderResult(){
     const wrap = el('div');
-    if (state.upload.response) {
+    if (state.upload.response && state.upload.dryRun) {
+      // DRY-RUN preview — render the converter's JSON output verbatim.
+      const r = state.upload.response;
+      const safe = escapeHtml(JSON.stringify(r, null, 2));
+      wrap.innerHTML = \`
+        <h1>🔬 DRY-RUN preview</h1>
+        <p class="muted">Converter ran successfully. Nothing was written to the database.</p>
+        <pre style="max-height:380px; overflow:auto; padding:10px; background:rgba(128,128,128,0.08); border-radius:4px; font-size:11px;">\${safe}</pre>
+        <div class="toolbar">
+          <button id="btn-back-form" class="secondary">Back to form</button>
+          <button id="btn-again">Start over</button>
+        </div>
+      \`;
+    } else if (state.upload.response) {
       const r = state.upload.response;
       wrap.innerHTML = \`
         <h1>✅ Uploaded</h1>
@@ -676,19 +712,25 @@ function clientScript(): string {
       \`;
     } else {
       const e = state.upload.error || { code: 'UNKNOWN', message: 'Unknown error' };
+      const is401 = e.httpStatus === 401 || (e.code || '').toUpperCase().indexOf('API_KEY') !== -1;
+      const reqId = e.requestId ? \`<div class="k">Request ID</div><div><code>\${escapeHtml(e.requestId)}</code></div>\` : '';
       wrap.innerHTML = \`
         <h1>❌ Upload failed</h1>
         <div class="kv">
           <div class="k">Code</div><div><code>\${escapeHtml(e.code)}</code></div>
           <div class="k">Reason</div><div>\${escapeHtml(e.message)}</div>
+          \${reqId}
         </div>
         <div class="toolbar">
-          <button id="btn-again">Back</button>
+          \${is401 ? '<button id="btn-reauth">Re-enter API Key</button>' : ''}
+          <button id="btn-again" class="secondary">Back</button>
         </div>
       \`;
     }
     root.appendChild(wrap);
-    on('btn-again', 'click', () => { state.file = null; go('drop'); });
+    on('btn-again',     'click', () => { state.file = null; go('drop'); });
+    on('btn-back-form', 'click', () => go('form'));
+    on('btn-reauth',    'click', () => send({ type: 'promptApiKey' }));
   }
 
   // ------------------------------------------------------------ DOM utils

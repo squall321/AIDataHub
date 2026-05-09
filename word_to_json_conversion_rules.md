@@ -615,7 +615,7 @@ def sha256_of_file(path, chunk=65536):
 권장 흐름:
 
 ```
-1. 변환 실행 시 사용자가 사업부·팀·연도 인자 제공:
+1. 변환 실행 시 사용자가 팀·그룹·연도 인자 제공:
    converter.py iga_guide.docx --division HE --team CAE --year 2026
 
 2. 변환기가 PostgreSQL에 다음 쿼리:
