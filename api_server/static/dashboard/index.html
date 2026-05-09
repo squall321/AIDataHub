@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>ai-data-api · Dashboard</title>
+  <meta name="viewport" content="width=1280">
+  <link rel="stylesheet" href="dashboard.css">
+  <link rel="icon" href="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%231f4f8b'/%3E%3Ctext x='32' y='42' font-family='Arial' font-size='28' font-weight='700' fill='white' text-anchor='middle'%3EA%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">A</div>
+    <div class="brand-text">
+      <div class="brand-title">ai-data-api</div>
+      <div class="brand-sub">Document → JSON → RAG-ready store</div>
+    </div>
+  </div>
+  <span class="spacer"></span>
+  <div class="api-key-box">
+    <label for="api-key-input">X-API-Key</label>
+    <input id="api-key-input" type="password" placeholder="(optional · saved in browser)" autocomplete="off">
+    <button id="api-key-save" class="btn">저장</button>
+    <button id="api-key-clear" class="btn ghost">삭제</button>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button data-tab="status" class="active"><span class="tab-num">01</span>상태</button>
+  <button data-tab="catalog"><span class="tab-num">02</span>카탈로그</button>
+  <button data-tab="search"><span class="tab-num">03</span>검색</button>
+  <button data-tab="groups"><span class="tab-num">04</span>그룹·분류</button>
+  <button data-tab="docs"><span class="tab-num">05</span>API 가이드</button>
+</nav>
+
+<main>
+
+  <!-- ============================================================ -->
+  <!-- Section 1: 상태 -->
+  <!-- ============================================================ -->
+  <section class="panel active" data-panel="status">
+    <div class="panel-head">
+      <div>
+        <h2>백엔드 상태</h2>
+        <p class="panel-sub">/api/system/health · /api/discover 결과 요약</p>
+      </div>
+      <button id="status-refresh" class="btn ghost icon-btn" title="새로고침">↻ 새로고침</button>
+    </div>
+
+    <div id="status-hero" class="hero"></div>
+    <div id="status-cards" class="cards"></div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- Section 2: 카탈로그 -->
+  <!-- ============================================================ -->
+  <section class="panel" data-panel="catalog">
+    <div class="panel-head">
+      <div>
+        <h2>레코드 카탈로그</h2>
+        <p class="panel-sub">필터 조건으로 record 목록을 조회. 행 클릭 → 상세 펼침.</p>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <label class="field">
+        <span class="field-label">data_type</span>
+        <input id="cat-data-type" type="text" placeholder="DOC / DATA / REPORT" size="14">
+      </label>
+      <label class="field">
+        <span class="field-label">classification</span>
+        <input id="cat-classification" type="text" placeholder="(client filter)" size="14">
+      </label>
+      <label class="field">
+        <span class="field-label">tags</span>
+        <input id="cat-tags" type="text" placeholder="IGA, NURBS (콤마 구분)" size="22">
+      </label>
+      <label class="field">
+        <span class="field-label">agent</span>
+        <input id="cat-agent" type="text" placeholder="iga_assistant" size="20">
+      </label>
+      <div class="actions">
+        <button id="cat-refresh" class="btn">조회</button>
+      </div>
+    </div>
+
+    <div id="cat-table-wrap"></div>
+    <div id="cat-paginator" class="paginator"></div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- Section 3: 검색 -->
+  <!-- ============================================================ -->
+  <section class="panel" data-panel="search">
+    <div class="panel-head">
+      <div>
+        <h2>검색</h2>
+        <p class="panel-sub">semantic (e5_small 0.92↑) · fts (PostgreSQL tsvector) · tag (정확 매칭)</p>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <label class="field">
+        <span class="field-label">모드</span>
+        <select id="search-mode">
+          <option value="semantic">semantic</option>
+          <option value="fts" selected>fts</option>
+          <option value="tag">tag</option>
+        </select>
+      </label>
+      <label class="field grow">
+        <span class="field-label">q (semantic / fts)</span>
+        <input id="search-q" type="text" placeholder="예: 응력 변형률 곡선">
+      </label>
+      <label class="field">
+        <span class="field-label">tags (mode=tag)</span>
+        <input id="search-tags" type="text" placeholder="IGA, NURBS" size="22">
+      </label>
+      <label class="field">
+        <span class="field-label">limit</span>
+        <input id="search-limit" type="number" value="20" min="1" max="100" style="width:70px;">
+      </label>
+      <div class="actions">
+        <button id="search-run" class="btn">검색</button>
+      </div>
+    </div>
+
+    <div id="search-result"></div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- Section 4: 그룹 / 분류 -->
+  <!-- ============================================================ -->
+  <section class="panel" data-panel="groups">
+    <div class="panel-head">
+      <div>
+        <h2>의미 그룹 · 분류</h2>
+        <p class="panel-sub">자동 클러스터링 + tag/data_type/agent 카탈로그</p>
+      </div>
+      <button id="groups-tax-refresh" class="btn ghost">분류 새로고침</button>
+    </div>
+
+    <h3 class="section-h3">POST /api/groups/auto — 자동 클러스터링</h3>
+    <div class="filter-bar">
+      <label class="field grow">
+        <span class="field-label">q</span>
+        <input id="groups-q" type="text" placeholder="자연어 질의 (한/영)">
+      </label>
+      <label class="field">
+        <span class="field-label">n_groups</span>
+        <input id="groups-n" type="number" value="3" min="1" max="20" style="width:70px;">
+      </label>
+      <label class="field">
+        <span class="field-label">top_k</span>
+        <input id="groups-topk" type="number" value="50" min="1" max="200" style="width:70px;">
+      </label>
+      <div class="actions">
+        <button id="groups-run" class="btn">그룹화 실행</button>
+      </div>
+    </div>
+    <div id="groups-result"></div>
+
+    <h3 class="section-h3" style="margin-top:32px;">분류 카탈로그</h3>
+    <div class="two-col">
+      <div>
+        <h4 class="mini-h">태그</h4>
+        <div id="tax-tags"></div>
+      </div>
+      <div>
+        <h4 class="mini-h">data_type</h4>
+        <div id="tax-dt"></div>
+        <h4 class="mini-h" style="margin-top:18px;">agent</h4>
+        <div id="tax-agents"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- Section 5: API 가이드 (인터랙티브 Explorer) -->
+  <!-- ============================================================ -->
+  <section class="panel docs-panel" data-panel="docs">
+    <div class="panel-head">
+      <div>
+        <h2>API 가이드</h2>
+        <p class="panel-sub">openapi.json 기반 인터랙티브 Explorer. 좌: 카테고리·엔드포인트 / 우: 명세·시도하기.</p>
+      </div>
+      <div class="actions">
+        <a class="btn ghost" href="/docs" target="_blank" rel="noopener">↗ Swagger UI</a>
+        <a class="btn ghost" href="/api/discover" target="_blank" rel="noopener">↗ /api/discover</a>
+        <a class="btn ghost" href="/api/docs/llm.txt" target="_blank" rel="noopener">↗ llm.txt</a>
+      </div>
+    </div>
+
+    <div class="docs-toolbar">
+      <input id="docs-search" type="text" placeholder="🔍 endpoint 검색 (path / summary / tag)" class="docs-search">
+      <span class="docs-meta" id="docs-meta">로드 중...</span>
+    </div>
+
+    <div class="docs-shell">
+      <aside class="docs-side" id="docs-side"></aside>
+      <article class="docs-detail" id="docs-detail">
+        <div class="docs-empty">
+          <div class="docs-empty-mark">⌘</div>
+          <h3>좌측에서 endpoint 선택</h3>
+          <p>각 항목은 method · 경로 · 요약 · 파라미터 · 시도하기 (Try) · 실시간 응답을 함께 표시합니다.</p>
+          <div class="docs-quicklinks">
+            <button class="btn ghost" data-quick="/api/discover">/api/discover</button>
+            <button class="btn ghost" data-quick="/api/system/health">/api/system/health</button>
+            <button class="btn ghost" data-quick="/api/search">/api/search</button>
+            <button class="btn ghost" data-quick="/api/records">/api/records</button>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <details class="docs-llm">
+      <summary>📄 LLM 가이드 텍스트 (markdown · 모델 사이즈 별)</summary>
+      <div class="filter-bar">
+        <label class="field">
+          <span class="field-label">size</span>
+          <select id="docs-size">
+            <option value="tiny">tiny (1B–3B)</option>
+            <option value="small" selected>small (3B–7B)</option>
+            <option value="medium">medium (13B–70B)</option>
+            <option value="large">large (frontier)</option>
+          </select>
+        </label>
+        <div class="actions">
+          <button id="docs-load" class="btn">/api/docs/agent-guide 로드</button>
+        </div>
+      </div>
+      <div id="docs-output">
+        <div class="state">[로드] 클릭 시 markdown 본문이 여기에 표시됩니다.</div>
+      </div>
+    </details>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <span>ai-data-api · vanilla HTML/CSS/JS · openapi-driven</span>
+  <span class="spacer"></span>
+  <span id="footer-build">build · -</span>
+</footer>
+
+<script src="dashboard.js"></script>
+</body>
+</html>

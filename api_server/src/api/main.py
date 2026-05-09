@@ -3,9 +3,11 @@
 라우터 등록은 `api.routes.register_routers(app)` 가 담당한다.
 """
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .config import settings
@@ -39,6 +41,21 @@ app.add_middleware(
 
 # 도메인 라우터 등록
 register_routers(app)
+
+# ---------------------------------------------------------------------------
+# /dashboard — 정적 SPA 마운트 (단일 페이지 vanilla JS 대시보드).
+# 위치: ``api_server/static/dashboard/`` (api_server/src/api/main.py 기준
+# parent.parent.parent). 디렉토리가 없으면 마운트를 건너뛰어 기존 동작 보전.
+# ---------------------------------------------------------------------------
+DASHBOARD_DIR = (
+    Path(__file__).resolve().parent.parent.parent / "static" / "dashboard"
+)
+if DASHBOARD_DIR.exists():
+    app.mount(
+        "/dashboard",
+        StaticFiles(directory=str(DASHBOARD_DIR), html=True),
+        name="dashboard",
+    )
 
 
 @app.get("/", tags=["system"])
