@@ -65,3 +65,27 @@ out/
 
 # Stray Windows junctions
 NVIDIA Corporation/
+
+# Local Claude Code state
+.claude/
+
+# Unrelated tool dumps
+antigravity/
+
+# Large test pair binary corpora (regenerated locally; not for repo)
+word_pairs/
+pptx_pairs/
+real_world_pptx/
+rule_compliant_pptx/
+pdf_pairs/
+xlsx_pairs/
+
+# Distribution build artifact (rebuilt from distribution/ on demand)
+AI_Data_Distribution.zip
+
+# Ingest data folders (per-deployment user content)
+api_server/attachments/
+api_server/figures/
+
+# Stray editor copy
+ai_data_strategy_deck copy.html
