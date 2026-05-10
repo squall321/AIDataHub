@@ -27,8 +27,8 @@ API_KEY: str | None = os.environ.get("AIDH_API_KEY")
 
 def upload_and_ingest(
     file_path: str,
-    division: str,
     team: str,
+    group: str,
     year: int,
     seq: int,
     *,
@@ -48,7 +48,7 @@ def upload_and_ingest(
     boundary = "----aidh-pack-boundary"
     body = bytearray()
     fields: list[tuple[str, str]] = [
-        ("division", division), ("team", team),
+        ("team", team), ("group", group),
         ("year", str(year)), ("seq", str(seq)),
         ("classification", classification),
     ]
@@ -101,8 +101,8 @@ def upload_and_ingest(
 def main() -> int:
     p = argparse.ArgumentParser(description="Ingest a document into AI Data Hub")
     p.add_argument("file", help="input file (.docx/.pptx/.xlsx/.md/.html/.pdf)")
-    p.add_argument("--division", required=True, help="대문자 (예: HE)")
-    p.add_argument("--team", required=True, help="대문자 (예: CAE)")
+    p.add_argument("--team", required=True, help="대문자 (예: HE)")
+    p.add_argument("--group", required=True, help="대문자 (예: CAE)")
     p.add_argument("--year", type=int, required=True)
     p.add_argument("--seq", type=int, required=True)
     p.add_argument("--agents", default="", help="콤마 구분")
@@ -119,8 +119,8 @@ def main() -> int:
     try:
         result = upload_and_ingest(
             args.file,
-            division=args.division,
             team=args.team,
+            group=args.group,
             year=args.year,
             seq=args.seq,
             agents=[a.strip() for a in args.agents.split(",") if a.strip()] or None,

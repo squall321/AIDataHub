@@ -1761,7 +1761,7 @@ tr:hover td{background:var(--light);}
     <h4>① CLI (운영자 / 자동화)</h4>
     <p style="font-family:'Consolas','Menlo',monospace;font-size:.78rem;color:#86efac;">
 $ python -m converter file.docx \<br/>
-&nbsp;&nbsp;--division HE --team CAE --year 2026 --seq 1<br/>
+&nbsp;&nbsp;--team HE --group CAE --year 2026 --seq 1<br/>
 $ python -m api.ingest output/HE-CAE-2026-000001.json
     </p>
    </div>
@@ -2115,7 +2115,7 @@ $ python -m api.ingest output/HE-CAE-2026-000001.json
   <div class="wf-step" style="border-color:var(--teal);">
    <span class="wf-n" style="background:var(--teal);">2</span>
    <div class="wf-t" style="color:var(--teal);">메타 폼</div>
-   <div class="wf-d"><code>/api/meta/options</code> 캐시 옵션 → division/team/year/seq · tags · agents · status · language 입력.</div>
+   <div class="wf-d"><code>/api/meta/options</code> 캐시 옵션 → team/group/year/seq · tags · agents · status · language 입력.</div>
   </div>
   <div class="wf-arrow">›</div>
   <div class="wf-step" style="border-color:var(--purple);">
@@ -2143,7 +2143,7 @@ $ python -m api.ingest output/HE-CAE-2026-000001.json
   </div>
   <div class="card">
    <h4>P6 — 메타 옵션 캐시</h4>
-   <p><code>/api/meta/options</code> 5분 메모리 캐시 → division/team 셀렉트박스 즉시 표시.</p>
+   <p><code>/api/meta/options</code> 5분 메모리 캐시 → team/group 셀렉트박스 즉시 표시.</p>
   </div>
   <div class="card" style="grid-column:span 3;">
    <h4>P7 — vsix 패키징 + 설치 가이드</h4>
@@ -2259,7 +2259,7 @@ $ python -m api.ingest output/HE-CAE-2026-000001.json
   <div class="card teal">
    <h4>확장성 (Migration 0009)</h4>
    <ul>
-    <li><strong>Auto-seq</strong> — division/team/year 조합 → seq 자동 할당. 적재자 번호 충돌 무관</li>
+    <li><strong>Auto-seq</strong> — team/group/year 조합 → seq 자동 할당. 적재자 번호 충돌 무관</li>
     <li><strong>Batch ingest</strong> — <code>POST /api/convert/ingest/batch</code> 다중 파일 단일 멀티파트 업로드</li>
     <li><strong>Async job queue</strong> — 대용량 PDF/PPT 변환 = background job, <code>GET /api/jobs/{id}</code> 폴링</li>
     <li><strong>Auto-embedding trigger</strong> — INSERT 시 <code>auto_embed_on_insert=true</code> → 백필 큐 자동 등록</li>
