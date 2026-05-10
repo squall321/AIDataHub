@@ -1,12 +1,17 @@
 /**
  * Webview HTML/CSS/JS shell.
  *
- * Single-document SPA with 4 screens (welcome, drop, form, sending, result)
- * controlled by a tiny state machine. Vanilla JS — no bundler needed.
+ * v0.4.0 — three-tab layout:
+ *   - Upload  : original-file ingest (state machine: drop → form → sending → result)
+ *   - Bundle  : pre-converted JSON+resources zip ingest
+ *   - Search  : semantic / fts / tag search + record detail viewer + discover panel
  *
- * Webview ↔ Host messages are described in `protocol.ts`. We re-encode the
- * message types as runtime strings here since we can't import TS types into
- * a string-embedded script.
+ * Each tab is a self-contained mini state machine. The "Settings" gear in the
+ * header still opens the welcome (connection) screen.
+ *
+ * Vanilla JS — no bundler, no framework. Webview ↔ Host messages live in
+ * `protocol.ts`. We re-encode the message type strings here at runtime since
+ * we cannot import TS types into a string-embedded script.
  */
 
 export function renderHtml(): string {
@@ -29,6 +34,11 @@ export function renderHtml(): string {
 <body>
   <header>
     <div class="title">AI Data Hub Uploader</div>
+    <nav id="tabnav" class="tabnav" style="display:none">
+      <button class="tab" data-tab="upload">Upload</button>
+      <button class="tab" data-tab="bundle">Bundle</button>
+      <button class="tab" data-tab="search">Search</button>
+    </nav>
     <div class="actions">
       <button id="btn-settings" class="ghost" title="Settings">⚙</button>
     </div>
@@ -56,11 +66,31 @@ header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 18px;
   border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.25));
+  gap: 16px;
 }
 header .title { font-weight: 600; font-size: 14px; }
-main { padding: 24px; max-width: 720px; margin: 0 auto; }
+.tabnav { display: flex; gap: 2px; flex: 1; }
+.tabnav .tab {
+  padding: 6px 14px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  cursor: pointer;
+  font-size: 13px;
+  opacity: 0.7;
+}
+.tabnav .tab:hover { background: rgba(128,128,128,0.08); opacity: 0.95; }
+.tabnav .tab.active {
+  border-bottom-color: var(--vscode-focusBorder);
+  opacity: 1;
+  font-weight: 600;
+}
+main { padding: 24px; max-width: 860px; margin: 0 auto; }
 h1 { font-size: 18px; margin: 0 0 8px; }
 h2 { font-size: 14px; margin: 18px 0 8px; opacity: 0.85; font-weight: 600; }
+h3 { font-size: 13px; margin: 12px 0 6px; opacity: 0.85; font-weight: 600; }
 p.subtle { color: var(--vscode-descriptionForeground); margin-top: 0; }
 
 label { display: block; margin: 12px 0 4px; font-size: 12px; opacity: 0.85; }
@@ -93,16 +123,18 @@ button.secondary {
   color: var(--vscode-button-secondaryForeground);
 }
 button.ghost { background: transparent; color: var(--vscode-foreground); padding: 4px 8px; }
+button.tiny { padding: 2px 8px; font-size: 11px; }
 
 .row { display: flex; gap: 8px; align-items: stretch; }
 .row > * { flex: 1; }
 .row.tight { gap: 6px; }
 
-.toolbar { display: flex; gap: 8px; margin-top: 16px; }
+.toolbar { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
 
 .status { margin-top: 16px; padding: 8px 12px; border-radius: 2px; }
 .status.ok  { background: rgba(0,160,0,0.15); color: var(--vscode-testing-iconPassed, #4caf50); }
 .status.err { background: rgba(200,0,0,0.15); color: var(--vscode-errorForeground, #f44336); }
+.status.warn{ background: rgba(220,150,0,0.15); color: var(--vscode-editorWarning-foreground, #ffb84d); }
 .status.info{ background: rgba(50,130,255,0.12); color: var(--vscode-foreground); }
 
 .dropzone {
@@ -161,8 +193,90 @@ button.ghost { background: transparent; color: var(--vscode-foreground); padding
 .field-error { color: var(--vscode-errorForeground); font-size: 11px; margin-top: 2px; min-height: 14px; }
 .hint { font-size: 12px; color: var(--vscode-descriptionForeground); margin-top: 12px; }
 .muted { color: var(--vscode-descriptionForeground); }
-.kv { display: grid; grid-template-columns: 110px 1fr; gap: 4px 12px; font-size: 12px; }
+.kv { display: grid; grid-template-columns: 130px 1fr; gap: 4px 12px; font-size: 12px; }
 .kv .k { opacity: 0.7; }
+
+details.advanced {
+  margin-top: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.25));
+  border-radius: 3px;
+  background: rgba(128,128,128,0.04);
+}
+details.advanced summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 12px;
+  opacity: 0.85;
+  padding: 2px 0;
+}
+details.advanced[open] summary { margin-bottom: 6px; }
+
+/* search results */
+.results { margin-top: 12px; }
+.result-row {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.18));
+  cursor: pointer;
+}
+.result-row:hover { background: rgba(128,128,128,0.06); }
+.result-row .top { display: flex; gap: 8px; align-items: baseline; }
+.result-row .rid {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+  color: var(--vscode-textLink-foreground);
+}
+.result-row .score {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+.result-row .title { font-weight: 600; }
+.result-row .snippet { font-size: 12px; color: var(--vscode-descriptionForeground); margin-top: 4px; }
+.result-row .tags { margin-top: 4px; }
+.result-row .tags .chip { font-size: 10px; padding: 1px 6px; }
+
+.facet-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.facet-pill {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(128,128,128,0.15);
+  cursor: pointer;
+}
+.facet-pill:hover { background: rgba(128,128,128,0.28); }
+.facet-pill.active { background: var(--vscode-focusBorder); color: var(--vscode-button-foreground); }
+
+pre.json {
+  max-height: 360px; overflow: auto;
+  padding: 10px;
+  background: rgba(128,128,128,0.08);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.warn-box {
+  padding: 8px 12px;
+  border-radius: 3px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+.warn-box.miss { background: rgba(200,0,0,0.10); color: var(--vscode-errorForeground); }
+.warn-box.extra { background: rgba(220,150,0,0.12); color: var(--vscode-editorWarning-foreground, #ffb84d); }
+.warn-box ul { margin: 4px 0 0 16px; padding: 0; }
+.warn-box li { font-family: var(--vscode-editor-font-family, monospace); font-size: 11px; }
+
+.discover-card {
+  border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.25));
+  border-radius: 4px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.discover-card .big-num { font-size: 22px; font-weight: 600; }
+.discover-card .label { font-size: 11px; opacity: 0.7; }
 `;
 }
 
@@ -172,16 +286,54 @@ function clientScript(): string {
   const vscode = acquireVsCodeApi();
   const root = document.getElementById('root');
   const headerSettingsBtn = document.getElementById('btn-settings');
+  const tabnav = document.getElementById('tabnav');
 
   // ------------------------------------------------------------ State
   const state = {
-    screen: 'welcome',          // welcome | drop | form | sending | result
+    tab: 'upload',              // upload | bundle | search
+    showWelcome: true,          // forced when not connected
     config: { baseUrl: '', hasApiKey: false, connected: false },
     options: null,              // MetaOptions
     optionsError: null,
-    file: null,                 // { file: File, dataType: string }
-    upload: { progress: 0, error: null, response: null },
+    // Upload tab
+    upload: {
+      screen: 'drop',           // drop | form | sending | result
+      file: null,               // { file: File, dataType: string }
+      progress: 0,
+      error: null,
+      response: null,
+      dryRun: false,
+      pendingValues: null,
+      autoFilled: null,         // 0007 fields fetched after upload
+    },
+    // Bundle tab
+    bundle: {
+      screen: 'drop',           // drop | sending | result
+      file: null,               // File (.zip)
+      progress: 0,
+      error: null,
+      response: null,
+    },
+    // Search tab
+    search: {
+      mode: 'semantic',
+      q: '',
+      results: null,            // SearchResponse | null
+      facets: null,             // FacetedSearchResponse.facets
+      filters: {},              // applied facet filters
+      error: null,
+      loading: false,
+      detail: null,             // FullRecord | null
+      detailError: null,
+      detailLoading: false,
+      discover: null,           // DiscoverResponse | null
+      discoverError: null,
+      discoverLoading: false,
+    },
   };
+
+  let _reqIdSeq = 1;
+  const _pendingReq = new Map();
 
   // ------------------------------------------------------------ Helpers
   function send(msg){ vscode.postMessage(msg); }
@@ -209,19 +361,46 @@ function clientScript(): string {
     return state.options.supported_extensions.some(ext => lc.endsWith(ext));
   }
 
-  function go(screen){ state.screen = screen; render(); }
+  function setTab(t){ state.tab = t; render(); }
+
+  function rpc(type, extra){
+    return new Promise((resolve, reject) => {
+      const reqId = _reqIdSeq++;
+      _pendingReq.set(reqId, { resolve, reject });
+      send(Object.assign({ type, reqId }, extra || {}));
+      // 30s timeout safety
+      setTimeout(() => {
+        if (_pendingReq.has(reqId)) {
+          _pendingReq.delete(reqId);
+          reject(new Error('Request timed out'));
+        }
+      }, 30000);
+    });
+  }
 
   // ------------------------------------------------------------ Renderer
   function render(){
     root.innerHTML = '';
-    if (state.screen === 'welcome') return renderWelcome();
-    if (state.screen === 'drop')    return renderDrop();
-    if (state.screen === 'form')    return renderForm();
-    if (state.screen === 'sending') return renderSending();
-    if (state.screen === 'result')  return renderResult();
+    if (state.showWelcome) {
+      tabnav.style.display = 'none';
+      renderWelcome();
+      return;
+    }
+    tabnav.style.display = 'flex';
+    paintTabs();
+    if (state.tab === 'upload') renderUploadTab();
+    else if (state.tab === 'bundle') renderBundleTab();
+    else if (state.tab === 'search') renderSearchTab();
   }
 
-  // ------- Welcome (Settings) -----------------------------------------
+  function paintTabs(){
+    const tabs = tabnav.querySelectorAll('.tab');
+    tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === state.tab));
+  }
+
+  // ====================================================================
+  // Welcome (Settings)
+  // ====================================================================
   function renderWelcome(){
     const wrap = el('div');
     wrap.innerHTML = \`
@@ -252,15 +431,26 @@ function clientScript(): string {
   }
 
   function setStatus(kind, text){
-    const el = document.getElementById('status');
-    if (!el) return;
-    el.className = 'status ' + kind;
-    el.textContent = text;
-    el.style.display = text ? 'block' : 'none';
+    const s = document.getElementById('status');
+    if (!s) return;
+    s.className = 'status ' + kind;
+    s.textContent = text;
+    s.style.display = text ? 'block' : 'none';
   }
 
-  // ------- DropZone -----------------------------------------------------
-  function renderDrop(){
+  // ====================================================================
+  // UPLOAD tab — original-file ingest (drop → form → sending → result)
+  // ====================================================================
+  function renderUploadTab(){
+    const sc = state.upload.screen;
+    if (sc === 'drop')    return renderUploadDrop();
+    if (sc === 'form')    return renderUploadForm();
+    if (sc === 'sending') return renderUploadSending();
+    if (sc === 'result')  return renderUploadResult();
+  }
+  function goUpload(screen){ state.upload.screen = screen; render(); }
+
+  function renderUploadDrop(){
     const wrap = el('div');
     const supportedHint = state.options ? state.options.supported_extensions.join(' · ') : '.docx · .pdf · .pptx · .md · .xlsx';
     const maxMb = state.options ? state.options.max_upload_mb : 50;
@@ -279,7 +469,7 @@ function clientScript(): string {
     const dz = document.getElementById('dropzone');
     const picker = document.getElementById('picker');
     document.getElementById('pick').addEventListener('click', (e)=>{ e.preventDefault(); picker.click(); });
-    picker.addEventListener('change', () => { if (picker.files && picker.files[0]) acceptFile(picker.files[0]); });
+    picker.addEventListener('change', () => { if (picker.files && picker.files[0]) acceptUploadFile(picker.files[0]); });
 
     dz.addEventListener('dragover', (e) => {
       e.preventDefault();
@@ -293,23 +483,26 @@ function clientScript(): string {
       e.preventDefault();
       dz.classList.remove('over'); dz.classList.remove('bad');
       const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (f) acceptFile(f);
+      if (f) acceptUploadFile(f);
     });
   }
 
-  function acceptFile(file){
+  function acceptUploadFile(file){
     if (!isExtAllowed(file.name)) {
-      alertToast('Unsupported file type: ' + file.name);
+      flashDropBad('dropzone', 'Unsupported file type: ' + file.name);
       return;
     }
     const dataType = detectDataType(file.name) || 'OTHER';
-    state.file = { file, dataType };
-    state.upload = { progress: 0, error: null, response: null };
-    go('form');
+    state.upload.file = { file: file, dataType: dataType };
+    state.upload.progress = 0;
+    state.upload.error = null;
+    state.upload.response = null;
+    state.upload.autoFilled = null;
+    goUpload('form');
   }
 
-  function alertToast(msg){
-    const dz = document.getElementById('dropzone');
+  function flashDropBad(id, msg){
+    const dz = document.getElementById(id);
     if (dz) {
       dz.classList.add('bad');
       setTimeout(()=>dz.classList.remove('bad'), 900);
@@ -317,8 +510,7 @@ function clientScript(): string {
     console.warn(msg);
   }
 
-  // ------- Metadata Form -----------------------------------------------
-  function renderForm(){
+  function renderUploadForm(){
     if (!state.options) {
       const wrap = el('div');
       wrap.innerHTML = '<p class="muted">Loading metadata options…</p>';
@@ -326,8 +518,8 @@ function clientScript(): string {
       send({ type: 'fetchOptions' });
       return;
     }
-    const f = state.file.file;
-    const dt = state.file.dataType;
+    const f = state.upload.file.file;
+    const dt = state.upload.file.dataType;
     const opts = state.options;
 
     const wrap = el('div');
@@ -364,37 +556,15 @@ function clientScript(): string {
         </div>
       </div>
 
-      <h2>Classification</h2>
-      <div class="row">
-        <div>
-          <label>Classification</label>
-          <select id="i-classification">\${selectOptions(opts.classifications, 'internal')}</select>
-        </div>
-        <div>
-          <label>Status</label>
-          <select id="i-status">\${selectOptions(opts.statuses, 'draft')}</select>
-        </div>
-        <div>
-          <label>Domain</label>
-          <input id="i-domain" type="text" placeholder="e.g. battery, iga" />
-        </div>
-        <div>
-          <label>Language</label>
-          <select id="i-language">\${selectOptions(opts.languages, 'ko')}</select>
-        </div>
-      </div>
-
       <h2>Discoverability</h2>
       <label>Tags</label>
       <div id="chips-tags" class="chips"></div>
-      <label>Agents (compatible with \${dt})</label>
+      <label>Agent scope (compatible with \${dt})</label>
       <select id="i-agent-add"><option value="">— add agent —</option>
         \${opts.agents.filter(a => !a.data_types || a.data_types.length === 0 || a.data_types.includes(dt))
                      .map(a => '<option value="'+escapeHtml(a.agent_type)+'">'+escapeHtml(a.name)+' ('+escapeHtml(a.agent_type)+')</option>').join('')}
       </select>
       <div id="chips-agents" class="chips" style="margin-top:6px"></div>
-      <label>Subject keywords</label>
-      <div id="chips-subject" class="chips"></div>
 
       <h2>Override (optional)</h2>
       <label>Title (leave empty to use auto-extract)</label>
@@ -402,25 +572,67 @@ function clientScript(): string {
       <label>Summary</label>
       <textarea id="i-summary"></textarea>
 
-      <h2>Quality (optional)</h2>
-      <div class="row">
-        <div>
-          <label>Quality score (0–100)</label>
-          <input id="i-quality" type="number" min="0" max="100" />
+      <details class="advanced" id="adv-section">
+        <summary>Advanced metadata (Migration 0006) — classification, lifecycle, provenance</summary>
+
+        <h3>Classification &amp; lifecycle</h3>
+        <div class="row">
+          <div>
+            <label>Classification</label>
+            <select id="i-classification">\${selectOptions(opts.classifications, 'internal')}</select>
+          </div>
+          <div>
+            <label>Status</label>
+            <select id="i-status">\${selectOptions(opts.statuses, 'draft')}</select>
+          </div>
+          <div>
+            <label>Domain</label>
+            <input id="i-domain" type="text" placeholder="e.g. battery, iga" />
+          </div>
+          <div>
+            <label>Language</label>
+            <select id="i-language">
+              <option value="">auto</option>
+              \${opts.languages.map(v => '<option value="'+escapeHtml(v)+'">'+escapeHtml(v)+'</option>').join('')}
+            </select>
+          </div>
         </div>
-        <div>
-          <label>Derivation</label>
-          <select id="i-derivation">\${selectOptions(opts.derivations, 'original')}</select>
+
+        <h3>Provenance</h3>
+        <div class="row">
+          <div>
+            <label>Derivation</label>
+            <select id="i-derivation">\${selectOptions(opts.derivations, 'original')}</select>
+          </div>
+          <div>
+            <label>Source system</label>
+            <input id="i-source-system" type="text" placeholder="e.g. confluence, sharepoint" />
+          </div>
+          <div>
+            <label>Parent record ID</label>
+            <input id="i-parent" type="text" placeholder="DOC-..." />
+          </div>
         </div>
-        <div>
-          <label>Valid from</label>
-          <input id="i-valid-from" type="date" />
+
+        <label>Subject keywords (comma-separated)</label>
+        <div id="chips-subject" class="chips"></div>
+
+        <h3>Quality &amp; validity</h3>
+        <div class="row">
+          <div>
+            <label>Quality score (0–100)</label>
+            <input id="i-quality" type="number" min="0" max="100" />
+          </div>
+          <div>
+            <label>Valid from</label>
+            <input id="i-valid-from" type="date" />
+          </div>
+          <div>
+            <label>Valid until</label>
+            <input id="i-valid-until" type="date" />
+          </div>
         </div>
-        <div>
-          <label>Valid until</label>
-          <input id="i-valid-until" type="date" />
-        </div>
-      </div>
+      </details>
 
       <div class="toolbar">
         <button id="btn-send">Send to Backend</button>
@@ -445,14 +657,14 @@ function clientScript(): string {
     }
     divEl.addEventListener('change', refillTeams);
 
-    on('btn-remove', 'click', () => { state.file = null; go('drop'); });
+    on('btn-remove', 'click', () => { state.upload.file = null; goUpload('drop'); });
     on('btn-send', 'click', () => {
       const values = collectForm({ tagsState, agentsState, subjectState });
       const errors = validateForm(values, opts);
       paintErrors(errors);
       if (errors.size > 0) return;
       state.upload.dryRun = false;
-      go('sending');
+      goUpload('sending');
       startUpload(values);
     });
     on('btn-dryrun', 'click', () => {
@@ -461,7 +673,7 @@ function clientScript(): string {
       paintErrors(errors);
       if (errors.size > 0) return;
       state.upload.dryRun = true;
-      go('sending');
+      goUpload('sending');
       startUpload(values);
     });
   }
@@ -475,7 +687,6 @@ function clientScript(): string {
     c.appendChild(input);
 
     function repaint(){
-      // Remove all existing chip nodes (keep the input at the end)
       [...c.querySelectorAll('.chip')].forEach(n => n.remove());
       items.forEach((v, i) => {
         const chip = document.createElement('span');
@@ -541,6 +752,8 @@ function clientScript(): string {
       derivation: val('i-derivation'),
       valid_from: val('i-valid-from'),
       valid_until: val('i-valid-until'),
+      source_system: val('i-source-system'),
+      parent_record_id: val('i-parent'),
     };
   }
 
@@ -552,8 +765,7 @@ function clientScript(): string {
     if (!Number.isFinite(v.seq) || v.seq < 1 || v.seq > 999999) errors.set('seq', '1–999999');
     if (v.quality_score !== null && (v.quality_score < 0 || v.quality_score > 100)) errors.set('quality', '0–100');
     if (v.valid_from && v.valid_until && v.valid_from > v.valid_until) errors.set('valid', 'from > until');
-    // file size
-    if (state.file && opts.max_upload_mb && state.file.file.size > opts.max_upload_mb * 1024 * 1024) {
+    if (state.upload.file && opts.max_upload_mb && state.upload.file.file.size > opts.max_upload_mb * 1024 * 1024) {
       errors.set('file', 'File exceeds max ' + opts.max_upload_mb + ' MB');
     }
     return errors;
@@ -561,8 +773,8 @@ function clientScript(): string {
 
   function paintErrors(errors){
     ['division','team','year','seq'].forEach(k => {
-      const el = document.getElementById('e-'+k);
-      if (el) el.textContent = errors.get(k) || '';
+      const e = document.getElementById('e-'+k);
+      if (e) e.textContent = errors.get(k) || '';
     });
     const fs = document.getElementById('form-status');
     if (errors.size === 0) { fs.style.display='none'; fs.textContent=''; return; }
@@ -574,15 +786,14 @@ function clientScript(): string {
     fs.style.display = 'block';
   }
 
-  // ------- Sending screen ----------------------------------------------
-  function renderSending(){
+  function renderUploadSending(){
     const wrap = el('div');
     wrap.innerHTML = \`
       <h1>Sending…</h1>
       <div class="file-card">
         <div class="meta">
-          <div class="name">📂 \${escapeHtml(state.file.file.name)}</div>
-          <div class="sub">\${state.file.dataType} · \${bytesHuman(state.file.file.size)}</div>
+          <div class="name">📂 \${escapeHtml(state.upload.file.file.name)}</div>
+          <div class="sub">\${state.upload.file.dataType} · \${bytesHuman(state.upload.file.file.size)}</div>
         </div>
       </div>
       <div class="progress"><div id="bar"></div></div>
@@ -596,35 +807,42 @@ function clientScript(): string {
   }
 
   function startUpload(values){
-    state.pendingValues = values;
+    state.upload.pendingValues = values;
+    state.upload.kind = 'file';
     send({ type: 'requestUploadCredentials' });
   }
 
   function performUpload(values, baseUrl, apiKey){
     const fd = new FormData();
-    fd.append('file', state.file.file, state.file.file.name);
+    const u = state.upload;
+    fd.append('file', u.file.file, u.file.file.name);
     fd.append('division', values.division);
     fd.append('team', values.team);
     fd.append('year', String(values.year));
     fd.append('seq',  String(values.seq));
-    fd.append('classification', values.classification);
-    fd.append('status', values.status);
+    fd.append('classification', values.classification || 'internal');
+    fd.append('status', values.status || 'draft');
     if (values.domain) fd.append('domain', values.domain);
-    fd.append('language', values.language);
+    if (values.language && values.language !== 'auto') fd.append('language', values.language);
     if (values.tags.length)             fd.append('tags', values.tags.join(','));
+    // server convention: form field stays "agents" (rename only the UI label)
     if (values.agents.length)           fd.append('agents', values.agents.join(','));
     if (values.subject_keywords.length) fd.append('subject_keywords', values.subject_keywords.join(','));
     if (values.title_override)   fd.append('title_override', values.title_override);
     if (values.summary_override) fd.append('summary_override', values.summary_override);
-    fd.append('derivation', values.derivation);
+    if (values.derivation) fd.append('derivation', values.derivation);
     if (values.quality_score !== null && values.quality_score !== undefined) fd.append('quality_score', String(values.quality_score));
     if (values.valid_from)  fd.append('valid_from', values.valid_from);
     if (values.valid_until) fd.append('valid_until', values.valid_until);
+    // Migration 0006 extended fields — server may not yet accept these on /api/convert/ingest;
+    // we still send them so they round-trip when the schema catches up.
+    if (values.source_system)    fd.append('source_system', values.source_system);
+    if (values.parent_record_id) fd.append('parent_record_id', values.parent_record_id);
 
-    const path = state.upload.dryRun ? '/api/convert/' : '/api/convert/ingest';
+    const path = u.dryRun ? '/api/convert/' : '/api/convert/ingest';
     const url  = baseUrl.replace(/\\/+$/, '') + path;
     const xhr = new XMLHttpRequest();
-    state.upload.xhr = xhr;
+    u.xhr = xhr;
     xhr.open('POST', url, true);
     if (apiKey) xhr.setRequestHeader('X-API-Key', apiKey);
     xhr.responseType = 'text';
@@ -642,12 +860,16 @@ function clientScript(): string {
       let body;
       try { body = JSON.parse(xhr.responseText); } catch { body = null; }
       if (xhr.status >= 200 && xhr.status < 300 && body) {
-        state.upload.response = body;
-        state.upload.error = null;
-        if (state.upload.dryRun) {
-          // DRY-RUN: don't surface a "uploaded" toast; just show the preview.
-        } else {
+        u.response = body;
+        u.error = null;
+        if (!u.dryRun) {
           send({ type: 'uploadResult', ok: true, recordId: body.record_id, status: body.status });
+          // Fetch full record so we can show auto-filled 0007 fields.
+          if (body.record_id) {
+            rpc('getRecordRequest', { id: body.record_id })
+              .then((rec) => { state.upload.autoFilled = rec; render(); })
+              .catch(() => { /* ignore — show what we have */ });
+          }
         }
       } else {
         const code = body && body.error && body.error.code ? body.error.code : ('HTTP_' + xhr.status);
@@ -655,8 +877,8 @@ function clientScript(): string {
                        ? body.error.message
                        : (body && body.detail ? (typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)) : (xhr.responseText || xhr.statusText));
         const requestId = body && body.error && body.error.request_id ? body.error.request_id : undefined;
-        state.upload.error = { code, message: msg, requestId, httpStatus: xhr.status };
-        state.upload.response = null;
+        u.error = { code, message: msg, requestId, httpStatus: xhr.status };
+        u.response = null;
         send({
           type: 'uploadResult',
           ok: false,
@@ -665,39 +887,48 @@ function clientScript(): string {
           error: '['+code+'] '+msg,
         });
       }
-      go('result');
+      goUpload('result');
     });
     xhr.addEventListener('error', () => {
-      state.upload.error = { code: 'NETWORK', message: 'Network error' };
+      u.error = { code: 'NETWORK', message: 'Network error' };
       send({ type: 'uploadResult', ok: false, error: 'Network error' });
-      go('result');
+      goUpload('result');
     });
     xhr.addEventListener('abort', () => {
-      state.upload.error = { code: 'ABORTED', message: 'Cancelled by user' };
-      go('drop');
+      u.error = { code: 'ABORTED', message: 'Cancelled by user' };
+      goUpload('drop');
     });
 
     xhr.send(fd);
   }
 
-  // ------- Result -------------------------------------------------------
-  function renderResult(){
+  function renderUploadResult(){
     const wrap = el('div');
-    if (state.upload.response && state.upload.dryRun) {
-      // DRY-RUN preview — render the converter's JSON output verbatim.
-      const r = state.upload.response;
-      const safe = escapeHtml(JSON.stringify(r, null, 2));
+    const u = state.upload;
+    if (u.response && u.dryRun) {
+      const safe = escapeHtml(JSON.stringify(u.response, null, 2));
       wrap.innerHTML = \`
         <h1>🔬 DRY-RUN preview</h1>
         <p class="muted">Converter ran successfully. Nothing was written to the database.</p>
-        <pre style="max-height:380px; overflow:auto; padding:10px; background:rgba(128,128,128,0.08); border-radius:4px; font-size:11px;">\${safe}</pre>
+        <pre class="json">\${safe}</pre>
         <div class="toolbar">
           <button id="btn-back-form" class="secondary">Back to form</button>
           <button id="btn-again">Start over</button>
         </div>
       \`;
-    } else if (state.upload.response) {
-      const r = state.upload.response;
+    } else if (u.response) {
+      const r = u.response;
+      const af = state.upload.autoFilled;
+      const autoBlock = af ? \`
+        <h2>Agent discovery hints (Migration 0007)</h2>
+        <div class="kv">
+          <div class="k">agent_hints</div><div>\${af.agent_hints ? escapeHtml(String(af.agent_hints)) : '<span class="muted">— (auto-fill pending)</span>'}</div>
+          <div class="k">query_examples</div><div>\${Array.isArray(af.query_examples) && af.query_examples.length
+                ? '<ul style="margin:0;padding-left:18px">' + af.query_examples.map(q => '<li>'+escapeHtml(String(q))+'</li>').join('') + '</ul>'
+                : '<span class="muted">—</span>'}</div>
+          <div class="k">access_pattern</div><div>\${escapeHtml(String(af.access_pattern || 'occasional'))}</div>
+        </div>
+      \` : '<p class="muted" style="margin-top:8px">Loading auto-filled hints…</p>';
       wrap.innerHTML = \`
         <h1>✅ Uploaded</h1>
         <div class="kv">
@@ -706,12 +937,14 @@ function clientScript(): string {
           <div class="k">Sections</div><div>\${r.sections_written}</div>
           <div class="k">Title</div><div>\${escapeHtml(r.record.title)}</div>
         </div>
+        \${autoBlock}
         <div class="toolbar">
           <button id="btn-again">Upload Another</button>
+          <button id="btn-view-record" class="secondary">View record</button>
         </div>
       \`;
     } else {
-      const e = state.upload.error || { code: 'UNKNOWN', message: 'Unknown error' };
+      const e = u.error || { code: 'UNKNOWN', message: 'Unknown error' };
       const is401 = e.httpStatus === 401 || (e.code || '').toUpperCase().indexOf('API_KEY') !== -1;
       const reqId = e.requestId ? \`<div class="k">Request ID</div><div><code>\${escapeHtml(e.requestId)}</code></div>\` : '';
       wrap.innerHTML = \`
@@ -728,13 +961,565 @@ function clientScript(): string {
       \`;
     }
     root.appendChild(wrap);
-    on('btn-again',     'click', () => { state.file = null; go('drop'); });
-    on('btn-back-form', 'click', () => go('form'));
+    on('btn-again',     'click', () => { state.upload.file = null; state.upload.autoFilled = null; goUpload('drop'); });
+    on('btn-back-form', 'click', () => goUpload('form'));
     on('btn-reauth',    'click', () => send({ type: 'promptApiKey' }));
+    on('btn-view-record','click', () => {
+      const r = state.upload.response;
+      if (r && r.record_id) {
+        state.tab = 'search';
+        state.search.detail = null;
+        state.search.detailLoading = true;
+        render();
+        rpc('getRecordRequest', { id: r.record_id })
+          .then((rec) => { state.search.detail = rec; state.search.detailLoading = false; render(); })
+          .catch((err) => { state.search.detailError = String(err.message || err); state.search.detailLoading = false; render(); });
+      }
+    });
   }
 
-  // ------------------------------------------------------------ DOM utils
-  function el(tag){ const x = document.createElement(tag); return x; }
+  // ====================================================================
+  // BUNDLE tab — POST /api/ingest/bundle (zip)
+  // ====================================================================
+  function renderBundleTab(){
+    const sc = state.bundle.screen;
+    if (sc === 'drop')    return renderBundleDrop();
+    if (sc === 'sending') return renderBundleSending();
+    if (sc === 'result')  return renderBundleResult();
+  }
+  function goBundle(s){ state.bundle.screen = s; render(); }
+
+  function renderBundleDrop(){
+    const wrap = el('div');
+    wrap.innerHTML = \`
+      <h1>Upload a pre-converted bundle</h1>
+      <p class="subtle">Drop a <code>.zip</code> containing the converter's JSON output and resource folder. The JSON inside the zip carries all metadata — no form needed.</p>
+      <div id="bdz" class="dropzone">
+        <div class="big">📦</div>
+        <div>Drop a <code>.zip</code> bundle here, or <a href="#" id="bpick">browse…</a></div>
+        <div class="hint">Bundle layout: <code>record.json</code> + resource files, or <code>{doc_id}.json</code> + <code>{doc_id}/</code> folder.</div>
+      </div>
+      <input id="bpicker" type="file" accept=".zip,application/zip" style="display:none" />
+      <p class="hint">Endpoint: <code>POST /api/ingest/bundle</code> — only <code>.zip</code> is accepted client-side. Folders cannot be auto-zipped without an extra dependency.</p>
+    \`;
+    root.appendChild(wrap);
+
+    const dz = document.getElementById('bdz');
+    const picker = document.getElementById('bpicker');
+    document.getElementById('bpick').addEventListener('click', (e) => { e.preventDefault(); picker.click(); });
+    picker.addEventListener('change', () => { if (picker.files && picker.files[0]) acceptBundleFile(picker.files[0]); });
+
+    dz.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      const it = e.dataTransfer && e.dataTransfer.items && e.dataTransfer.items[0];
+      const name = it && it.getAsFile ? (it.getAsFile() || {}).name : '';
+      const ok = !name || name.toLowerCase().endsWith('.zip');
+      dz.classList.toggle('bad', !ok);
+      dz.classList.toggle('over', ok);
+    });
+    dz.addEventListener('dragleave', () => { dz.classList.remove('over'); dz.classList.remove('bad'); });
+    dz.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dz.classList.remove('over'); dz.classList.remove('bad');
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) acceptBundleFile(f);
+    });
+  }
+
+  function acceptBundleFile(file){
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      flashDropBad('bdz', 'Bundle must be a .zip file: ' + file.name);
+      return;
+    }
+    state.bundle.file = file;
+    state.bundle.progress = 0;
+    state.bundle.error = null;
+    state.bundle.response = null;
+    state.upload.kind = 'bundle';
+    goBundle('sending');
+    send({ type: 'requestUploadCredentials' });
+  }
+
+  function renderBundleSending(){
+    const wrap = el('div');
+    const f = state.bundle.file;
+    wrap.innerHTML = \`
+      <h1>Uploading bundle…</h1>
+      <div class="file-card">
+        <div class="meta">
+          <div class="name">📦 \${escapeHtml(f ? f.name : 'bundle.zip')}</div>
+          <div class="sub">\${f ? bytesHuman(f.size) : ''}</div>
+        </div>
+      </div>
+      <div class="progress"><div id="bbar"></div></div>
+      <p id="bpct" class="muted" style="margin-top:8px">0%</p>
+      <div class="toolbar">
+        <button id="btn-bcancel" class="secondary">Cancel</button>
+      </div>
+    \`;
+    root.appendChild(wrap);
+    on('btn-bcancel', 'click', () => { if (state.bundle.xhr) state.bundle.xhr.abort(); });
+  }
+
+  function performBundleUpload(baseUrl, apiKey){
+    const fd = new FormData();
+    fd.append('file', state.bundle.file, state.bundle.file.name);
+    const url = baseUrl.replace(/\\/+$/, '') + '/api/ingest/bundle';
+    const xhr = new XMLHttpRequest();
+    state.bundle.xhr = xhr;
+    xhr.open('POST', url, true);
+    if (apiKey) xhr.setRequestHeader('X-API-Key', apiKey);
+    xhr.responseType = 'text';
+
+    xhr.upload.addEventListener('progress', (e) => {
+      if (!e.lengthComputable) return;
+      const pct = Math.round((e.loaded / e.total) * 100);
+      const bar = document.getElementById('bbar');
+      const p   = document.getElementById('bpct');
+      if (bar) bar.style.width = pct + '%';
+      if (p) p.textContent = pct + '%';
+    });
+
+    xhr.addEventListener('load', () => {
+      let body;
+      try { body = JSON.parse(xhr.responseText); } catch { body = null; }
+      if (xhr.status >= 200 && xhr.status < 300 && body) {
+        state.bundle.response = body;
+        state.bundle.error = null;
+        send({ type: 'uploadResult', ok: true, recordId: body.id, status: 'inserted' });
+      } else {
+        const code = body && body.error && body.error.code ? body.error.code : ('HTTP_' + xhr.status);
+        const msg  = body && body.error && body.error.message
+                       ? body.error.message
+                       : (body && body.detail ? (typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)) : (xhr.responseText || xhr.statusText));
+        const requestId = body && body.error && body.error.request_id ? body.error.request_id : undefined;
+        state.bundle.error = { code, message: msg, requestId, httpStatus: xhr.status };
+        state.bundle.response = null;
+        send({ type: 'uploadResult', ok: false, httpStatus: xhr.status, requestId, error: '['+code+'] '+msg });
+      }
+      goBundle('result');
+    });
+    xhr.addEventListener('error', () => {
+      state.bundle.error = { code: 'NETWORK', message: 'Network error' };
+      send({ type: 'uploadResult', ok: false, error: 'Network error' });
+      goBundle('result');
+    });
+    xhr.addEventListener('abort', () => {
+      state.bundle.error = { code: 'ABORTED', message: 'Cancelled by user' };
+      goBundle('drop');
+    });
+    xhr.send(fd);
+  }
+
+  function renderBundleResult(){
+    const wrap = el('div');
+    if (state.bundle.response) {
+      const r = state.bundle.response;
+      const w = r.warnings || { missing_resources: [], extra_resources: [] };
+      const missingHtml = (w.missing_resources && w.missing_resources.length)
+        ? \`<div class="warn-box miss"><b>Missing resources</b> (referenced by JSON but not in zip):
+             <ul>\${w.missing_resources.map(x => '<li>'+escapeHtml(String(x))+'</li>').join('')}</ul></div>\`
+        : '';
+      const extraHtml = (w.extra_resources && w.extra_resources.length)
+        ? \`<div class="warn-box extra"><b>Unreferenced resources</b> (in zip but not referenced):
+             <ul>\${w.extra_resources.map(x => '<li>'+escapeHtml(String(x))+'</li>').join('')}</ul></div>\`
+        : '';
+      wrap.innerHTML = \`
+        <h1>✅ Bundle ingested</h1>
+        <div class="kv">
+          <div class="k">Record ID</div><div><a href="#" id="lnk-record"><code>\${escapeHtml(r.id)}</code></a></div>
+          <div class="k">Data type</div><div>\${escapeHtml(r.data_type)}</div>
+          <div class="k">Title</div><div>\${escapeHtml(r.title || '')}</div>
+          <div class="k">Figures copied</div><div>\${r.figures_copied}</div>
+          <div class="k">Attachments copied</div><div>\${r.attachments_copied}</div>
+        </div>
+        \${missingHtml}\${extraHtml}
+        <div class="toolbar">
+          <button id="btn-banother">Upload Another</button>
+        </div>
+      \`;
+      root.appendChild(wrap);
+      on('lnk-record', 'click', (e) => {
+        e.preventDefault();
+        state.tab = 'search';
+        state.search.detail = null;
+        state.search.detailLoading = true;
+        render();
+        rpc('getRecordRequest', { id: r.id })
+          .then((rec) => { state.search.detail = rec; state.search.detailLoading = false; render(); })
+          .catch((err) => { state.search.detailError = String(err.message || err); state.search.detailLoading = false; render(); });
+      });
+      on('btn-banother', 'click', () => { state.bundle.file = null; state.bundle.response = null; goBundle('drop'); });
+    } else {
+      const e = state.bundle.error || { code: 'UNKNOWN', message: 'Unknown error' };
+      const is401 = e.httpStatus === 401 || (e.code || '').toUpperCase().indexOf('API_KEY') !== -1;
+      const reqId = e.requestId ? \`<div class="k">Request ID</div><div><code>\${escapeHtml(e.requestId)}</code></div>\` : '';
+      wrap.innerHTML = \`
+        <h1>❌ Bundle failed</h1>
+        <div class="kv">
+          <div class="k">Code</div><div><code>\${escapeHtml(e.code)}</code></div>
+          <div class="k">Reason</div><div>\${escapeHtml(e.message)}</div>
+          \${reqId}
+        </div>
+        <div class="toolbar">
+          \${is401 ? '<button id="btn-breauth">Re-enter API Key</button>' : ''}
+          <button id="btn-banother" class="secondary">Back</button>
+        </div>
+      \`;
+      root.appendChild(wrap);
+      on('btn-breauth',  'click', () => send({ type: 'promptApiKey' }));
+      on('btn-banother', 'click', () => { state.bundle.file = null; state.bundle.error = null; goBundle('drop'); });
+    }
+  }
+
+  // ====================================================================
+  // SEARCH tab — search + record detail + discover
+  // ====================================================================
+  function renderSearchTab(){
+    const wrap = el('div');
+    const s = state.search;
+    const filtersJson = JSON.stringify(s.filters || {});
+    const facetsJson = s.facets ? JSON.stringify(s.facets) : '';
+
+    const facetBars = (s.facets ? renderFacetBars(s.facets, s.filters) : '');
+    const resultsHtml = renderResultRows(s.results);
+
+    let detailHtml = '';
+    if (s.detailLoading) {
+      detailHtml = '<p class="muted">Loading record…</p>';
+    } else if (s.detailError) {
+      detailHtml = '<div class="status err">'+escapeHtml(s.detailError)+'</div>';
+    } else if (s.detail) {
+      detailHtml = renderRecordDetail(s.detail);
+    }
+
+    let discoverHtml = '';
+    if (s.discoverLoading) discoverHtml = '<p class="muted">Loading discover…</p>';
+    else if (s.discoverError) discoverHtml = '<div class="status err">'+escapeHtml(s.discoverError)+'</div>';
+    else if (s.discover) discoverHtml = renderDiscoverPanel(s.discover);
+
+    wrap.innerHTML = \`
+      <h1>Search &amp; Discovery</h1>
+      <div class="row">
+        <div style="flex:3">
+          <label>Query</label>
+          <input id="s-q" type="text" placeholder="Type a question, keyword, or comma-separated tags" value="\${escapeHtml(s.q)}" />
+        </div>
+        <div>
+          <label>Mode</label>
+          <select id="s-mode">
+            <option value="semantic" \${s.mode==='semantic'?'selected':''}>semantic</option>
+            <option value="fts" \${s.mode==='fts'?'selected':''}>fts</option>
+            <option value="tag" \${s.mode==='tag'?'selected':''}>tag</option>
+          </select>
+        </div>
+      </div>
+      <div class="toolbar">
+        <button id="s-go">Search</button>
+        <button id="s-discover" class="secondary">Discover catalog</button>
+      </div>
+      <details class="advanced" \${(Object.keys(s.filters || {}).length ? 'open' : '')}>
+        <summary>Filters (faceted search)</summary>
+        <div class="row">
+          <div>
+            <label>Data type</label>
+            <input id="f-data-type" type="text" placeholder="DOC,DATA" value="\${escapeHtml(s.filters.data_type || '')}" />
+          </div>
+          <div>
+            <label>Classification</label>
+            <input id="f-classification" type="text" placeholder="internal" value="\${escapeHtml(s.filters.classification || '')}" />
+          </div>
+          <div>
+            <label>Domain</label>
+            <input id="f-domain" type="text" value="\${escapeHtml(s.filters.domain || '')}" />
+          </div>
+          <div>
+            <label>Agent</label>
+            <input id="f-agent" type="text" placeholder="iga-analyst" value="\${escapeHtml(s.filters.agent || '')}" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Tags (CSV, AND)</label>
+            <input id="f-tags" type="text" value="\${escapeHtml(s.filters.tags || '')}" />
+          </div>
+          <div>
+            <label>Status</label>
+            <input id="f-status" type="text" value="\${escapeHtml(s.filters.status || '')}" />
+          </div>
+          <div>
+            <label>Min quality</label>
+            <input id="f-quality" type="number" min="0" max="100" value="\${s.filters.min_quality != null ? String(s.filters.min_quality) : ''}" />
+          </div>
+        </div>
+      </details>
+
+      \${s.error ? '<div class="status err">'+escapeHtml(s.error)+'</div>' : ''}
+      \${s.loading ? '<p class="muted" style="margin-top:8px">Searching…</p>' : ''}
+      \${facetBars}
+      <div class="results">\${resultsHtml}</div>
+      \${detailHtml ? '<hr style="margin:18px 0;border:none;border-top:1px solid var(--vscode-panel-border, rgba(128,128,128,0.25))">' + detailHtml : ''}
+      \${discoverHtml ? '<hr style="margin:18px 0;border:none;border-top:1px solid var(--vscode-panel-border, rgba(128,128,128,0.25))">' + discoverHtml : ''}
+    \`;
+    root.appendChild(wrap);
+
+    on('s-go', 'click', runSearch);
+    const qEl = document.getElementById('s-q');
+    if (qEl) qEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') runSearch(); });
+    on('s-discover', 'click', runDiscover);
+
+    // result row clicks
+    wrap.querySelectorAll('[data-rid]').forEach(node => {
+      node.addEventListener('click', () => {
+        const id = node.getAttribute('data-rid');
+        if (id) loadRecord(id);
+      });
+    });
+    // facet pill clicks
+    wrap.querySelectorAll('.facet-pill').forEach(node => {
+      node.addEventListener('click', () => {
+        const facetKey = node.getAttribute('data-facet');
+        const facetVal = node.getAttribute('data-value');
+        toggleFilter(facetKey, facetVal);
+      });
+    });
+  }
+
+  function readFilterInputs(){
+    const f = {};
+    const grab = (id) => { const v = val(id); if (v) f[id.substring(2).replace(/-/g, '_')] = v; };
+    // f-data-type → data_type, f-classification → classification, etc
+    const map = {
+      'f-data-type': 'data_type',
+      'f-classification': 'classification',
+      'f-domain': 'domain',
+      'f-agent': 'agent',
+      'f-tags': 'tags',
+      'f-status': 'status',
+    };
+    for (const [id, key] of Object.entries(map)) {
+      const v = val(id);
+      if (v) f[key] = v;
+    }
+    const mq = val('f-quality');
+    if (mq) f.min_quality = parseInt(mq, 10);
+    return f;
+  }
+
+  function runSearch(){
+    const q = val('s-q');
+    const mode = val('s-mode') || 'semantic';
+    state.search.mode = mode;
+    state.search.q = q;
+    state.search.error = null;
+    state.search.detail = null;
+    state.search.detailError = null;
+
+    const filters = readFilterInputs();
+    state.search.filters = filters;
+    const useFaceted = Object.keys(filters).length > 0;
+
+    if (!q && mode !== 'tag' && !useFaceted) {
+      state.search.error = 'Enter a query or set at least one filter.';
+      render();
+      return;
+    }
+
+    state.search.loading = true;
+    render();
+    if (useFaceted) {
+      const reqFilters = Object.assign({}, filters);
+      if (q) reqFilters.q = q;
+      if (mode === 'semantic' || mode === 'fts') reqFilters.mode = mode;
+      rpc('searchFacetedRequest', { filters: reqFilters })
+        .then((payload) => {
+          state.search.results = { mode: payload.mode || mode, q: payload.q || q, items: payload.items, total: payload.total };
+          state.search.facets = payload.facets;
+          state.search.loading = false;
+          render();
+        })
+        .catch((err) => {
+          state.search.error = String(err.message || err);
+          state.search.loading = false;
+          render();
+        });
+    } else {
+      rpc('searchRequest', { q, mode, limit: 20 })
+        .then((payload) => {
+          state.search.results = payload;
+          state.search.facets = null;
+          state.search.loading = false;
+          render();
+        })
+        .catch((err) => {
+          state.search.error = String(err.message || err);
+          state.search.loading = false;
+          render();
+        });
+    }
+  }
+
+  function loadRecord(id){
+    state.search.detail = null;
+    state.search.detailError = null;
+    state.search.detailLoading = true;
+    render();
+    rpc('getRecordRequest', { id })
+      .then((rec) => { state.search.detail = rec; state.search.detailLoading = false; render(); })
+      .catch((err) => { state.search.detailError = String(err.message || err); state.search.detailLoading = false; render(); });
+  }
+
+  function runDiscover(){
+    state.search.discover = null;
+    state.search.discoverError = null;
+    state.search.discoverLoading = true;
+    render();
+    rpc('discoverRequest', {})
+      .then((payload) => { state.search.discover = payload; state.search.discoverLoading = false; render(); })
+      .catch((err) => { state.search.discoverError = String(err.message || err); state.search.discoverLoading = false; render(); });
+  }
+
+  function toggleFilter(key, value){
+    if (!key || !value) return;
+    const f = Object.assign({}, state.search.filters || {});
+    if (f[key] === value) delete f[key]; else f[key] = value;
+    state.search.filters = f;
+    runSearch();
+  }
+
+  function renderResultRows(resp){
+    if (!resp || !resp.items) return '';
+    if (!resp.items.length) {
+      return '<p class="muted" style="margin-top:8px">No results.</p>';
+    }
+    const head = '<p class="muted" style="margin:6px 0">'+resp.total+' result(s) — mode: <code>'+escapeHtml(String(resp.mode || ''))+'</code></p>';
+    const rows = resp.items.map(it => {
+      const rid = it.record_id || it.id || '';
+      const title = it.title || it.section_title || '(untitled)';
+      const score = (typeof it.score === 'number') ? it.score.toFixed(3) : '';
+      const snippet = it.snippet || (it.summary || '').slice(0, 240);
+      const tags = Array.isArray(it.tags) ? it.tags : [];
+      return \`<div class="result-row" data-rid="\${escapeHtml(String(rid))}">
+        <div class="top">
+          <span class="rid">\${escapeHtml(String(rid))}</span>
+          <span class="title">\${escapeHtml(String(title))}</span>
+          \${score ? '<span class="score">score '+escapeHtml(score)+'</span>' : ''}
+        </div>
+        \${snippet ? '<div class="snippet">'+escapeHtml(String(snippet))+'</div>' : ''}
+        \${tags.length ? '<div class="tags">'+tags.slice(0,8).map(t => '<span class="chip">'+escapeHtml(String(t))+'</span>').join(' ')+'</div>' : ''}
+      </div>\`;
+    }).join('');
+    return head + rows;
+  }
+
+  function renderFacetBars(facets, applied){
+    const sections = [
+      { key: 'data_type', label: 'Data type' },
+      { key: 'tags', label: 'Tags' },
+      { key: 'domain', label: 'Domain' },
+      { key: 'agent', label: 'Agent' },
+      { key: 'status', label: 'Status' },
+      { key: 'classification', label: 'Classification' },
+    ];
+    const parts = [];
+    for (const s of sections) {
+      const counts = facets[s.key] || {};
+      const entries = Object.entries(counts).slice(0, 8);
+      if (!entries.length) continue;
+      const pills = entries.map(([v, c]) => {
+        const isActive = (applied || {})[s.key] === v;
+        return \`<span class="facet-pill \${isActive?'active':''}" data-facet="\${escapeHtml(s.key)}" data-value="\${escapeHtml(v)}">\${escapeHtml(v)} (\${c})</span>\`;
+      }).join('');
+      parts.push('<div style="margin-top:6px"><span class="muted" style="font-size:11px">'+escapeHtml(s.label)+':</span> <span class="facet-bar">'+pills+'</span></div>');
+    }
+    return parts.join('');
+  }
+
+  function renderRecordDetail(rec){
+    const tags = Array.isArray(rec.tags) ? rec.tags : [];
+    const agents = Array.isArray(rec.agents) ? rec.agents : [];
+    const sections = (rec.content && Array.isArray(rec.content.sections)) ? rec.content.sections : [];
+    const ah = rec.agent_hints ? escapeHtml(String(rec.agent_hints)) : '';
+    const qe = Array.isArray(rec.query_examples) && rec.query_examples.length
+      ? '<ul style="margin:0;padding-left:18px">'+rec.query_examples.map(q => '<li>'+escapeHtml(String(q))+'</li>').join('')+'</ul>'
+      : '<span class="muted">—</span>';
+    const sectionsHtml = sections.length
+      ? '<ul style="margin:0;padding-left:18px;font-size:12px">' + sections.slice(0, 30).map(s => {
+          const lvl = (s.level != null) ? ('L'+s.level+' ') : '';
+          return '<li>'+escapeHtml(lvl)+'<b>'+escapeHtml(s.title || s.section_id || '')+'</b> <span class="muted">('+(s.figure_refs?s.figure_refs.length:0)+'fig / '+(s.table_refs?s.table_refs.length:0)+'tbl)</span></li>';
+        }).join('') + '</ul>'
+      : '<span class="muted">—</span>';
+    return \`
+      <h2>Record \${escapeHtml(rec.id)}</h2>
+      <div class="kv">
+        <div class="k">Title</div><div>\${escapeHtml(rec.title || '')}</div>
+        <div class="k">Data type</div><div>\${escapeHtml(rec.data_type || '')}</div>
+        <div class="k">Division/Team</div><div>\${escapeHtml(rec.division || '')} / \${escapeHtml(rec.team || '')}</div>
+        <div class="k">Year/Seq</div><div>\${rec.year ?? ''} / \${rec.seq ?? ''}</div>
+        <div class="k">Classification</div><div>\${escapeHtml(rec.classification || '—')}</div>
+        <div class="k">Status</div><div>\${escapeHtml(rec.status || '—')}</div>
+        <div class="k">Domain</div><div>\${escapeHtml(rec.domain || '—')}</div>
+        <div class="k">Language</div><div>\${escapeHtml(rec.language || '—')}</div>
+        <div class="k">Quality</div><div>\${rec.quality_score != null ? rec.quality_score : '—'}</div>
+        <div class="k">Tags</div><div>\${tags.length ? tags.map(t => '<span class="chip">'+escapeHtml(String(t))+'</span>').join(' ') : '<span class="muted">—</span>'}</div>
+        <div class="k">Agent scope</div><div>\${agents.length ? agents.map(t => '<span class="chip">'+escapeHtml(String(t))+'</span>').join(' ') : '<span class="muted">—</span>'}</div>
+        <div class="k">agent_hints</div><div>\${ah || '<span class="muted">—</span>'}</div>
+        <div class="k">query_examples</div><div>\${qe}</div>
+        <div class="k">access_pattern</div><div>\${escapeHtml(rec.access_pattern || '—')}</div>
+        <div class="k">Sections</div><div>\${sectionsHtml}</div>
+      </div>
+      <p class="muted" style="margin-top:6px;font-size:11px">summary: \${escapeHtml((rec.summary || '').slice(0, 400))}</p>
+    \`;
+  }
+
+  function renderDiscoverPanel(d){
+    const tags = computeTopTags(d);
+    const tagsHtml = tags.length
+      ? tags.map(([t, c]) => '<span class="chip">'+escapeHtml(t)+' ('+c+')</span>').join(' ')
+      : '<span class="muted">—</span>';
+    const byType = d.by_data_type || {};
+    const typeRows = Object.entries(byType).map(([k, v]) => '<div><span class="muted">'+escapeHtml(k)+'</span> <b>'+v+'</b></div>').join('');
+    const agentRows = (Array.isArray(d.agents) ? d.agents : []).slice(0, 6)
+      .map(a => '<li><b>'+escapeHtml(a.name||a.agent_type)+'</b> <span class="muted">('+(a.record_count||0)+' records)</span></li>').join('');
+    return \`
+      <h2>Discover catalog</h2>
+      <div class="discover-card">
+        <div class="big-num">\${d.total_records}</div>
+        <div class="label">total records</div>
+        <div class="row" style="margin-top:8px">\${typeRows || '<span class="muted">—</span>'}</div>
+      </div>
+      <h3>Top agents</h3>
+      <ul style="margin:0 0 8px 18px">\${agentRows || '<li class="muted">—</li>'}</ul>
+      <h3>Top tags</h3>
+      <div>\${tagsHtml}</div>
+    \`;
+  }
+
+  function computeTopTags(d){
+    if (Array.isArray(d.top_tags) && d.top_tags.length) {
+      return d.top_tags.slice(0, 20).map(t => [t.tag || String(t), t.count || 0]);
+    }
+    // fallback — derive from agents.common_tags
+    const counts = {};
+    if (Array.isArray(d.agents)) {
+      for (const a of d.agents) {
+        for (const t of (a.common_tags || [])) {
+          counts[t] = (counts[t] || 0) + 1;
+        }
+      }
+    }
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 20);
+  }
+
+  // ====================================================================
+  // Inbound / boot
+  // ====================================================================
+  // Tab switching
+  tabnav.querySelectorAll('.tab').forEach(t => {
+    t.addEventListener('click', () => setTab(t.dataset.tab));
+  });
+
+  function el(tag){ return document.createElement(tag); }
   function val(id){ const e = document.getElementById(id); return e ? (e.value || '') : ''; }
   function on(id, ev, fn){ const e = document.getElementById(id); if (e) e.addEventListener(ev, fn); }
   function selectOptions(values, dflt){
@@ -746,16 +1531,18 @@ function clientScript(): string {
       .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
 
-  // ------------------------------------------------------------ Header
-  headerSettingsBtn.addEventListener('click', () => go('welcome'));
+  headerSettingsBtn.addEventListener('click', () => { state.showWelcome = true; render(); });
 
-  // ------------------------------------------------------------ Inbound
   window.addEventListener('message', (event) => {
     const m = event.data;
     if (m.type === 'config') {
       state.config = { baseUrl: m.baseUrl, hasApiKey: m.hasApiKey, connected: m.connected };
-      if (state.screen === 'welcome' && m.connected) { go('drop'); send({ type: 'fetchOptions' }); return; }
-      if (!m.connected && state.screen !== 'welcome') { go('welcome'); return; }
+      if (m.connected) {
+        state.showWelcome = false;
+        if (!state.options) send({ type: 'fetchOptions' });
+      } else {
+        state.showWelcome = true;
+      }
       render();
     } else if (m.type === 'connection') {
       if (m.ok) {
@@ -769,17 +1556,33 @@ function clientScript(): string {
       render();
     } else if (m.type === 'uploadCredentials') {
       if (!m.ok) {
-        state.upload.error = { code: 'NO_CRED', message: m.error || 'No credentials' };
-        go('result');
+        const err = { code: 'NO_CRED', message: m.error || 'No credentials' };
+        if (state.upload.kind === 'bundle') {
+          state.bundle.error = err;
+          goBundle('result');
+        } else {
+          state.upload.error = err;
+          goUpload('result');
+        }
         return;
       }
-      const v = state.pendingValues;
-      state.pendingValues = null;
-      performUpload(v, m.baseUrl || '', m.apiKey || '');
+      if (state.upload.kind === 'bundle') {
+        performBundleUpload(m.baseUrl || '', m.apiKey || '');
+      } else {
+        const v = state.upload.pendingValues;
+        state.upload.pendingValues = null;
+        performUpload(v, m.baseUrl || '', m.apiKey || '');
+      }
+    } else if (m.type === 'searchResponse' || m.type === 'searchFacetedResponse'
+               || m.type === 'getRecordResponse' || m.type === 'discoverResponse') {
+      const p = _pendingReq.get(m.reqId);
+      if (!p) return;
+      _pendingReq.delete(m.reqId);
+      if (m.ok) p.resolve(m.payload);
+      else p.reject(new Error(m.error || 'request failed'));
     }
   });
 
-  // Boot
   send({ type: 'ready' });
 })();
 `;

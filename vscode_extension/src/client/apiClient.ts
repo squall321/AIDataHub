@@ -1,6 +1,12 @@
 import type {
+  BundleUploadResponse,
+  DiscoverResponse,
+  FacetedSearchFilters,
+  FacetedSearchResponse,
+  FullRecord,
   IngestResponse,
   MetaOptions,
+  SearchResponse,
   SystemHealth,
   VerifyKeyResponse,
 } from './types';
@@ -135,5 +141,98 @@ export class ApiClient {
     });
     if (!res.ok) throw await parseError(res);
     return await res.json();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Bundle — POST /api/ingest/bundle
+  // ---------------------------------------------------------------------------
+  /**
+   * Upload a pre-converted JSON+resources zip bundle.
+   * `zipBlob` is the raw .zip bytes; `filename` ends in `.zip`.
+   */
+  async uploadBundle(zipBlob: Blob, filename: string): Promise<BundleUploadResponse> {
+    const fd = new FormData();
+    fd.append('file', zipBlob, filename);
+    const res = await fetch(joinUrl(this.baseUrl, '/api/ingest/bundle'), {
+      method: 'POST',
+      headers: this.headers(),
+      body: fd,
+    });
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as BundleUploadResponse;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Search — /api/search and /api/search/faceted
+  // ---------------------------------------------------------------------------
+  /**
+   * Single-mode search.
+   *  - mode=`fts` / `semantic` → uses `q`
+   *  - mode=`tag` → `q` is treated as comma-separated tag list
+   */
+  async search(
+    q: string,
+    mode: 'semantic' | 'fts' | 'tag' = 'fts',
+    limit = 20,
+  ): Promise<SearchResponse> {
+    const params = new URLSearchParams();
+    params.set('mode', mode);
+    params.set('limit', String(limit));
+    if (mode === 'tag') {
+      // tag mode requires repeated `tags=` query parameters
+      const tags = q
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      for (const t of tags) params.append('tags', t);
+    } else {
+      params.set('q', q);
+    }
+    const res = await fetch(
+      joinUrl(this.baseUrl, `/api/search?${params.toString()}`),
+      { method: 'GET', headers: this.headers() },
+    );
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as SearchResponse;
+  }
+
+  /**
+   * Faceted search (multi-axis filters + facet counts).
+   * Despite the original spec mentioning POST, the backend exposes this as
+   * `GET /api/search/faceted` with all filters as query parameters. We accept
+   * a single object and serialize it.
+   */
+  async searchFaceted(filters: FacetedSearchFilters): Promise<FacetedSearchResponse> {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(filters)) {
+      if (v === undefined || v === null || v === '') continue;
+      params.set(k, String(v));
+    }
+    const res = await fetch(
+      joinUrl(this.baseUrl, `/api/search/faceted?${params.toString()}`),
+      { method: 'GET', headers: this.headers() },
+    );
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as FacetedSearchResponse;
+  }
+
+  /** GET /api/records/{id} — full record detail. */
+  async getRecord(id: string): Promise<FullRecord> {
+    const res = await fetch(
+      joinUrl(this.baseUrl, `/api/records/${encodeURIComponent(id)}`),
+      { method: 'GET', headers: this.headers() },
+    );
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as FullRecord;
+  }
+
+  /** GET /api/discover — system-wide catalog. */
+  async discover(): Promise<DiscoverResponse> {
+    const res = await fetch(joinUrl(this.baseUrl, '/api/discover'), {
+      method: 'GET',
+      headers: this.headers(),
+    });
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as DiscoverResponse;
   }
 }

@@ -6,7 +6,7 @@
 
 ## 한 줄 요약
 
-`ai-data-hub-uploader-0.1.0.vsix` (20,784 B / ~20 KB) 가 빌드/패키징까지 완료된 **즉시 설치 가능한** 상태이며, Welcome → DropZone → Form → Sending(progress) → Result 의 5-screen SPA 가 동작한다. 백엔드 e2e 실 테스트(특히 Cline SR 같은 외부 통합)는 사용자가 직접 검증해야 하고, USER_GUIDE 에 스크린샷이 빠진 것을 제외하면 코드/문서/패키징은 정합성을 갖춘 상태다.
+`ai-data-hub-uploader-0.4.0.vsix` (20,784 B / ~20 KB) 가 빌드/패키징까지 완료된 **즉시 설치 가능한** 상태이며, Welcome → DropZone → Form → Sending(progress) → Result 의 5-screen SPA 가 동작한다. 백엔드 e2e 실 테스트(특히 Cline SR 같은 외부 통합)는 사용자가 직접 검증해야 하고, USER_GUIDE 에 스크린샷이 빠진 것을 제외하면 코드/문서/패키징은 정합성을 갖춘 상태다.
 
 ---
 
@@ -14,7 +14,7 @@
 
 | 항목 | 값 |
 |------|-----|
-| `.vsix` 파일 | `ai-data-hub-uploader-0.1.0.vsix` (20,784 bytes, 2026-05-08 11:13) |
+| `.vsix` 파일 | `ai-data-hub-uploader-0.4.0.vsix` (20,784 bytes, 2026-05-08 11:13) |
 | `name` / `displayName` | `ai-data-hub-uploader` / `AI Data Hub Uploader` |
 | `version` | `0.1.0` (package.json L5) |
 | `publisher` | `squall321` (L6) |
@@ -28,7 +28,7 @@
 **설치 명령** (USER_GUIDE.md L11-13):
 
 ```powershell
-code --install-extension ai-data-hub-uploader-0.1.0.vsix
+code --install-extension ai-data-hub-uploader-0.4.0.vsix
 ```
 
 **Lock 동기화 경고**: `package.json` 은 `0.1.0` 인데 `package-lock.json` 의 self-name 블록은 `0.0.1` 로 남아있음. 설치/실행에는 영향 없지만 다음 빌드 시 `npm install` 로 재정렬 권장.
@@ -214,7 +214,7 @@ out/
 **⚠ 일부 제약 — 즉시 설치/UI 동작은 OK, 백엔드 e2e 만 사용자 검증 필요**
 
 ### ✅ 가능한 것
-- `code --install-extension ai-data-hub-uploader-0.1.0.vsix` 한 줄로 설치.
+- `code --install-extension ai-data-hub-uploader-0.4.0.vsix` 한 줄로 설치.
 - 명령 팔레트에서 3개 명령(open/settings/reset) 사용.
 - 첫 활성화 시 connected=false 라 자동으로 Welcome 패널 오픈 (`extension.ts` L21-23).
 - 5-screen 흐름 (Welcome → Drop → Form → Sending → Result) 코드상 완결.

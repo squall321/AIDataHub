@@ -1,6 +1,14 @@
 # AI Data Hub Uploader — User Guide
 
-A VS Code extension that lets you drag a document (`.docx` / `.pdf` / `.pptx` / `.md` / `.xlsx`) into a panel and push it straight into your AI Data Hub backend (`api_server`). No CLI, no `curl`, no Python.
+A VS Code extension to interact with your AI Data Hub backend (`api_server`) directly from VS Code:
+
+- **Upload tab** — drag a document (`.docx` / `.pdf` / `.pptx` / `.md` / `.html` / `.xlsx`) → server converts → DB 적재. Advanced metadata (classification / status / domain / derivation / valid_from-until / quality_score / language / parent_record_id / subject_keywords / source_system) supported.
+- **Bundle tab** — drop a pre-converted `.zip` (JSON + figures/attachments folder) → `POST /api/ingest/bundle` → server skips conversion, places resources at static mounts.
+- **Search tab** — semantic / fts / tag 검색 + faceted filter (data_type / classification / domain / agent) + record detail viewer + `/api/discover` 전체 카탈로그.
+
+No CLI, no `curl`, no Python.
+
+**Version**: 0.4.0 (2026-05-10) — Bundle + 0006 metadata + Search tabs.
 
 ---
 
@@ -9,7 +17,7 @@ A VS Code extension that lets you drag a document (`.docx` / `.pdf` / `.pptx` / 
 ### From the `.vsix` (recommended)
 
 ```powershell
-code --install-extension ai-data-hub-uploader-0.1.0.vsix
+code --install-extension ai-data-hub-uploader-0.4.0.vsix
 ```
 
 The extension ships with the prebuilt JS in `out/`. No `npm install` required on the user side.

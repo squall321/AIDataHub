@@ -58,6 +58,13 @@ export class UploaderPanel {
     void this.panel.webview.postMessage(msg);
   }
 
+  private async getClient(): Promise<ApiClient | null> {
+    const baseUrl = this.store.getBaseUrl();
+    if (!baseUrl) return null;
+    const apiKey = await this.store.getApiKey();
+    return new ApiClient(baseUrl, apiKey || undefined);
+  }
+
   private async onMessage(msg: WebviewToHost): Promise<void> {
     switch (msg.type) {
       case 'ready':
@@ -128,6 +135,63 @@ export class UploaderPanel {
       }
       case 'promptApiKey': {
         await this.promptForApiKey();
+        return;
+      }
+      // ---- New v0.4.0 routes ----
+      case 'searchRequest': {
+        const client = await this.getClient();
+        if (!client) {
+          this.post({ type: 'searchResponse', reqId: msg.reqId, ok: false, error: 'Not connected' });
+          return;
+        }
+        try {
+          const payload = await client.search(msg.q, msg.mode, msg.limit ?? 20);
+          this.post({ type: 'searchResponse', reqId: msg.reqId, ok: true, payload });
+        } catch (err) {
+          this.post({ type: 'searchResponse', reqId: msg.reqId, ok: false, error: formatError(err) });
+        }
+        return;
+      }
+      case 'searchFacetedRequest': {
+        const client = await this.getClient();
+        if (!client) {
+          this.post({ type: 'searchFacetedResponse', reqId: msg.reqId, ok: false, error: 'Not connected' });
+          return;
+        }
+        try {
+          const payload = await client.searchFaceted(msg.filters);
+          this.post({ type: 'searchFacetedResponse', reqId: msg.reqId, ok: true, payload });
+        } catch (err) {
+          this.post({ type: 'searchFacetedResponse', reqId: msg.reqId, ok: false, error: formatError(err) });
+        }
+        return;
+      }
+      case 'getRecordRequest': {
+        const client = await this.getClient();
+        if (!client) {
+          this.post({ type: 'getRecordResponse', reqId: msg.reqId, ok: false, error: 'Not connected' });
+          return;
+        }
+        try {
+          const payload = await client.getRecord(msg.id);
+          this.post({ type: 'getRecordResponse', reqId: msg.reqId, ok: true, payload });
+        } catch (err) {
+          this.post({ type: 'getRecordResponse', reqId: msg.reqId, ok: false, error: formatError(err) });
+        }
+        return;
+      }
+      case 'discoverRequest': {
+        const client = await this.getClient();
+        if (!client) {
+          this.post({ type: 'discoverResponse', reqId: msg.reqId, ok: false, error: 'Not connected' });
+          return;
+        }
+        try {
+          const payload = await client.discover();
+          this.post({ type: 'discoverResponse', reqId: msg.reqId, ok: true, payload });
+        } catch (err) {
+          this.post({ type: 'discoverResponse', reqId: msg.reqId, ok: false, error: formatError(err) });
+        }
         return;
       }
     }

@@ -45,7 +45,7 @@ DB에는 매우 다양한 종류의 데이터가 추가될 것이다. 우수한 
 ### Track A — VS Code 확장 (Agent 28)
 
 - P4 DropZone Webview · P5 메타데이터 폼 · P6 ingest + SecretStorage · P7 vsix
-- 산출물: `vscode_extension/ai-data-hub-uploader-0.1.0.vsix`, `USER_GUIDE.md`
+- 산출물: `vscode_extension/ai-data-hub-uploader-0.4.0.vsix`, `USER_GUIDE.md`
 
 ### Track B — AI Agent Discovery / RAG ★ (Agent 30)
 

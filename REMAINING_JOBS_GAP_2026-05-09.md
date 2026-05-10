@@ -18,7 +18,7 @@
 | P4 DropZone Webview | **완료** | `vscode_extension/src/webview/html.ts` (793 lines, drag/drop + preview + 확장자 자동 인식 포함) · `panel.ts` (222 lines) | 없음 |
 | P5 메타데이터 폼 | **완료** | `html.ts` 단일 파일에 division/team/year/seq/classification/status/domain/language/tags/agents/quality/valid_range 폼 + 검증 + paintErrors. `OptionsCache` 로 옵션 API 연동 | 없음 |
 | P6 ingest + SecretStorage | **완료** | `html.ts:624` `POST /api/convert/ingest` (FormData + XHR progress 90%/100%) · `configStore.ts` `context.secrets.store/get/delete` 로 SecretStorage 사용 · X-API-Key 헤더 | 없음 |
-| P7 vsix + 가이드 | **완료** | `vscode_extension/ai-data-hub-uploader-0.1.0.vsix` 빌드됨 · `USER_GUIDE.md` 186 lines · `README.md` 존재 | (선택) e2e 시나리오 자동화 — 명세상 unit 테스트는 요구되지 않음 |
+| P7 vsix + 가이드 | **완료** | `vscode_extension/ai-data-hub-uploader-0.4.0.vsix` 빌드됨 · `USER_GUIDE.md` 186 lines · `README.md` 존재 | (선택) e2e 시나리오 자동화 — 명세상 unit 테스트는 요구되지 않음 |
 
 **판정:** Track A 전체 **완료**.
 
