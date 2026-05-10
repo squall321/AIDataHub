@@ -24,7 +24,9 @@ from ..middleware.request_logging import RequestLoggingMiddleware
 from . import (
     agents,
     analytics,
+    attachments,
     auth,
+    bundle,
     convert,
     data,
     discover,
@@ -76,7 +78,9 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(search.router)
     app.include_router(agents.router)
     app.include_router(analytics.router)
+    app.include_router(attachments.router)
     app.include_router(auth.router)
+    app.include_router(bundle.router)
     app.include_router(convert.router)
     app.include_router(jobs.router)
     app.include_router(meta.router)
@@ -100,11 +104,21 @@ def register_routers(app: FastAPI) -> None:
         name="figures",
     )
 
+    # 첨부 바이너리 서빙: /attachments/{doc_id}/A001.{ext}
+    settings.attachments_dir.mkdir(parents=True, exist_ok=True)
+    app.mount(
+        "/attachments",
+        StaticFiles(directory=str(settings.attachments_dir)),
+        name="attachments",
+    )
+
 
 __all__ = [
     "agents",
     "analytics",
+    "attachments",
     "auth",
+    "bundle",
     "convert",
     "data",
     "discover",

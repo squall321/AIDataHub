@@ -176,15 +176,18 @@ d:/Personal/AI_data/
 | 4 | `POST /api/groups/auto` body=`{q, n_groups, top_k}` | 시맨틱 클러스터 |
 | 5 | `GET /api/records/{id}` | 단일 record 전체 본문 |
 
-### 4.2 "이 문서를 적재하려면?" — ingest 모드
+### 4.2 "이 문서를 적재하려면?" — ingest 모드 3가지
 
 | 단계 | 호출 | 비고 |
 |---|---|---|
-| 1 | `POST /api/convert?ingest=false` (multipart upload) | JSON 변환 결과만 반환 (검수용) |
-| 2 | `POST /api/convert/ingest` (multipart upload) | 변환 + 적재 + 자동 임베딩 |
-| 3 | `GET /api/records/{id}` | 적재 결과 검증 |
+| **A** (원본 → 서버 변환) | `POST /api/convert/ingest` (multipart, .docx/.pptx 등) | 가장 간단 — 서버가 변환기 실행 |
+| **B** (검수만) | `POST /api/convert` | JSON 만 반환, DB 적재 안 함 |
+| **C** (사전 변환된 번들) | `POST /api/ingest/bundle` (multipart, .zip) | **JSON + 자원 폴더 통째 zip 업로드** — 변환 skip + figures/attachments 자동 배치 |
+| 검증 | `GET /api/records/{id}` | 적재 결과 확인 |
 
-대안 (CLI): `cd api_server && ingest.bat <파일경로>` — 같은 파이프라인.
+대안 (CLI): `cd api_server && ingest.bat <파일경로>` (서버 머신에서) — A 와 같은 파이프라인.
+
+자세한 패턴: [`agent_pack/patterns.md`](./agent_pack/patterns.md) §13.
 
 ### 4.3 "그룹 / 분류된 문서들만 가져오려면?"
 

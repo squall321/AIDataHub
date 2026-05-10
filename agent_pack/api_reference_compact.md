@@ -109,10 +109,25 @@
 
 | Method | Path | 용도 |
 |---|---|---|
-| POST | `/api/convert` | 파일 업로드 → JSON 반환 (DB 적재 안 함) |
-| POST | `/api/convert/ingest` | 파일 업로드 → 변환 → DB 적재 → 요약 반환 |
+| POST | `/api/convert` | 원본 파일 (.docx 등) 업로드 → JSON 반환 (DB 적재 안 함) |
+| POST | `/api/convert/ingest` | 원본 파일 업로드 → 서버에서 변환 → DB 적재 → 요약 반환 |
 
 multipart/form-data, `file` 필드. `?ocr=true` (PDF), `?detect_multi_tables=true` (Excel) 옵션.
+
+---
+
+## Bundle ingest (사전 변환) — `ingest` 카테고리
+
+| Method | Path | 용도 |
+|---|---|---|
+| POST | `/api/ingest/bundle` | **이미 변환된** JSON + 자원 폴더 ZIP 업로드 → 변환 skip + DB + figures/attachments 자동 배치 |
+
+multipart, `file` 필드 = `.zip`. 두 zip 레이아웃 모두 허용:
+
+- (A) 변환기 출력 컨벤션: `{doc_id}.json` + `{doc_id}/` 폴더 (권장)
+- (B) 평탄: `record.json` + `F001.png` / `A001.csv` ... 같은 위치
+
+응답에 `figures_copied` / `attachments_copied` / `warnings.{missing_resources, extra_resources}` 포함. patterns.md §13.C 참조.
 
 ---
 

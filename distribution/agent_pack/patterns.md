@@ -212,9 +212,9 @@ curl -s "$BASE/api/data/DATA-HE-CAE-2026-000034/aggregate?func=avg&col=stress" |
 
 ---
 
-## 13. 새 문서 적재 (ingest)
+## 13. 새 문서 적재 (ingest) — 3가지 경로
 
-### CLI 변환기 직접 사용 (서버 거치지 않음)
+### A. CLI 변환기 직접 사용 (서버 거치지 않음, 가장 빠름)
 
 ```bash
 cd api_server
@@ -224,7 +224,9 @@ cd api_server
   --tags KooRemapper,IGA --output-dir output
 ```
 
-### HTTP 업로드 → 자동 변환 + 적재
+출력: `output/DOC-HE-CAE-2026-000007.json` + `output/DOC-HE-CAE-2026-000007/F*.png` + ...
+
+### B. HTTP 원본 업로드 → 서버 변환 + 적재
 
 ```bash
 curl -X POST "$BASE/api/convert/ingest" \
@@ -236,6 +238,58 @@ curl -X POST "$BASE/api/convert/ingest" \
   -F "agents=iga-analyst,doc-curator" \
   -F "tags=KooRemapper,IGA"
 ```
+
+서버가 변환기를 직접 실행. 옵션: `?ocr=true` (PDF), `?detect_multi_tables=true` (Excel).
+
+### C. 사전 변환된 ZIP 번들 업로드 (A + B 의 하이브리드)
+
+A 경로로 변환해두고 (또는 작성자가 손으로 만든 JSON), `output/` 폴더를 zip 압축해 업로드:
+
+```bash
+# 변환기 출력 폴더 통째로 zip
+cd output
+zip -r DOC-HE-CAE-2026-000007.zip \
+  DOC-HE-CAE-2026-000007.json \
+  DOC-HE-CAE-2026-000007/
+
+# 업로드
+curl -X POST "$BASE/api/ingest/bundle" \
+  -F "file=@DOC-HE-CAE-2026-000007.zip"
+```
+
+응답:
+
+```jsonc
+{
+  "id": "DOC-HE-CAE-2026-000007",
+  "data_type": "DOC",
+  "title": "...",
+  "figures_copied": 12,
+  "attachments_copied": 3,
+  "warnings": {
+    "missing_resources": [],   // JSON 이 참조하나 zip 에 없는 파일
+    "extra_resources": []      // zip 에 있으나 JSON 이 참조 안 한 파일
+  }
+}
+```
+
+서버가 zip 해제 → `normalize` → DB 적재 → `figures_dir/{doc_id}/` 와 `attachments_dir/{doc_id}/` 에 자원 자동 배치. 정적 마운트 `/figures/{doc_id}/F001.png`, `/attachments/{doc_id}/A001.csv` 로 즉시 서빙.
+
+Python 헬퍼: [`examples/bundle_upload.py`](./examples/bundle_upload.py) — JSON 경로만 주면 자동으로 zip 만들어 업로드.
+
+```bash
+python examples/bundle_upload.py output/DOC-HE-CAE-2026-000007.json
+```
+
+### 언제 어느 경로?
+
+| 상황 | 권장 |
+|---|---|
+| 새 .docx 를 처음 변환 + 적재 | B (HTTP 업로드) |
+| 이미 CLI 로 변환해 둔 폴더 | C (zip 번들) |
+| 대량 일괄 적재 (네트워크 부담) | A (서버 머신에서 CLI) |
+| 변환 결과 검수 → 사후 적재 | C (zip 번들 — 검수된 JSON 그대로) |
+| 작성자가 직접 작성한 JSON (변환기 안 돌림) | C (zip 번들) |
 
 PDF 의 OCR 적용:
 
