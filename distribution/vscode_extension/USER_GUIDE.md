@@ -5,10 +5,13 @@ A VS Code extension to interact with your AI Data Hub backend (`api_server`) dir
 - **Upload tab** — drag a document (`.docx` / `.pdf` / `.pptx` / `.md` / `.html` / `.xlsx`) → server converts → DB 적재. Advanced metadata (classification / status / domain / derivation / valid_from-until / quality_score / language / parent_record_id / subject_keywords / source_system) supported.
 - **Bundle tab** — drop a pre-converted `.zip` (JSON + figures/attachments folder) → `POST /api/ingest/bundle` → server skips conversion, places resources at static mounts.
 - **Search tab** — semantic / fts / tag 검색 + faceted filter (data_type / classification / domain / agent) + record detail viewer + `/api/discover` 전체 카탈로그.
+- **Agents tab (v0.6)** — full CRUD on agent definitions via `/api/agents`: list / view / create / edit / delete. Changes invalidate the Upload tab's agent dropdown cache so newly registered agents become pickable immediately.
 
 No CLI, no `curl`, no Python.
 
-**Version**: 0.4.0 (2026-05-10) — Bundle + 0006 metadata + Search tabs.
+> **What's new in v0.6.0** — fourth tab **Agents** for managing agent definitions inline (no DB shell required). Agent list shows `agent_type` / name / data types / description; click a row to inline-expand the full record with **Edit** / **Delete** / **View records** actions. New / Edit form supports chip-input common tags and a `DOC/DATA/SIM/CAD/LOG/FORM/OTHER` checkbox grid for data types.
+
+**Version**: 0.6.0 (2026-05-11) — Agents CRUD tab added. Previous: 0.5.0 = Bundle + 0006 metadata + Search.
 
 ---
 
@@ -17,7 +20,7 @@ No CLI, no `curl`, no Python.
 ### From the `.vsix` (recommended)
 
 ```powershell
-code --install-extension ai-data-hub-uploader-0.4.0.vsix
+code --install-extension ai-data-hub-uploader-0.6.0.vsix
 ```
 
 The extension ships with the prebuilt JS in `out/`. No `npm install` required on the user side.
@@ -93,15 +96,15 @@ The panel then auto-switches to the **Metadata Form**:
 
 | Group | Fields |
 |-------|--------|
-| Identification (required) | `division`, `team`, `year`, `seq` |
+| Identification (required) | `team`, `group`, `year`, `seq` |
 | Classification | `classification` (default `internal`), `status` (default `draft`), `domain`, `language` (default `ko`) |
 | Discoverability | `tags`, `agents`, `subject_keywords` (chip inputs — Enter or comma to add) |
 | Override (optional) | `title`, `summary` (leave empty = use auto-extracted from the converter) |
 | Quality (optional) | `quality_score` 0–100, `derivation`, `valid_from`, `valid_until` |
 
-- `division → team` cascades: picking a division refills the team list.
+- `team → group` cascades: picking a team refills the group list.
 - `agents` is filtered to those whose `data_types` matches the inferred type (DOC/DATA).
-- `Send to Backend` stays disabled until division / team / year (1990–2100) / seq (1–999999) are valid.
+- `Send to Backend` stays disabled until team / group / year (1990–2100) / seq (1–999999) are valid.
 
 ### DRY-RUN
 
@@ -126,6 +129,42 @@ AI Data Hub: uploaded DOC-HE-CAE-2026-000001 (inserted)
 | 415 | `UNSUPPORTED_FORMAT` — extension not in the backend's allow-list. |
 | 422 | `VALIDATION_ERROR` with the first detail message. |
 | 500 | Generic `CONVERSION_FAILED` — the result screen shows the backend's `request_id` so support can correlate logs. |
+
+---
+
+## 4b. Agents tab (v0.6)
+
+The **Agents** tab manages agent definitions registered with the backend (`/api/agents`). Each agent declares the data types it consumes and a set of common tags; the Upload tab's agent dropdown is filtered by these definitions.
+
+```
+┌────────── Agents ──────────────────────────────────────────────┐
+│  [ Refresh ]   [ + New agent ]                                  │
+│                                                                 │
+│  agent_type        Name              Data types   Description   │
+│  ─────────────────────────────────────────────────────────────  │
+│  iga-analyst       IGA 해석 분석가      DOC DATA      …            │
+│  cae-reviewer      CAE Reviewer       DOC SIM       …            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+| Action | How |
+|--------|-----|
+| **List** | Tab loads `GET /api/agents` on first open. Use **Refresh** to re-fetch. |
+| **View detail** | Click any row → inline panel shows all fields (`agent_type`, `name`, `description`, `common_tags`, `data_types`, `created_at`). |
+| **Create** | Click **+ New agent** → form. Fields: `agent_type` (required, lowercase-hyphen recommended), `name` (required), `description`, `common_tags` (Enter / comma to add chips), `data_types` (checkboxes: DOC / DATA / SIM / CAD / LOG / FORM / OTHER). Save → `POST /api/agents`. |
+| **Edit** | Detail panel → **Edit**. `agent_type` becomes read-only; other fields pre-fill. Save → `PATCH /api/agents/{agent_type}`. |
+| **Delete** | Detail panel → **Delete**. A confirmation prompt appears; on accept → `DELETE /api/agents/{agent_type}`. The catalog entry is removed; existing records remain. |
+| **View records** | Detail panel → **View records →**. Jumps to the Search tab with `agent={agent_type}` filter applied and runs the search. |
+
+After any successful create / update / delete, the meta/options cache is invalidated server-side and on the client, so the Upload tab's filtered agent dropdown reflects the change on its next render.
+
+### Errors
+
+| HTTP | Cause |
+|------|-------|
+| 409  | `agent_type` already exists — pick a different one. |
+| 404  | Agent was deleted in another session — refresh. |
+| 422  | Field validation (empty name, invalid data_type, etc.). |
 
 ---
 

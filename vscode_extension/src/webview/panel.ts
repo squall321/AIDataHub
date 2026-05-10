@@ -194,6 +194,88 @@ export class UploaderPanel {
         }
         return;
       }
+      // ---- v0.6.0 Agents CRUD ----
+      case 'listAgentsRequest': {
+        const client = await this.getClient();
+        if (!client) {
+          this.post({ type: 'listAgentsResponse', reqId: msg.reqId, ok: false, error: 'Not connected' });
+          return;
+        }
+        try {
+          const payload = await client.listAgents();
+          this.post({ type: 'listAgentsResponse', reqId: msg.reqId, ok: true, payload });
+        } catch (err) {
+          this.post({ type: 'listAgentsResponse', reqId: msg.reqId, ok: false, error: formatError(err) });
+        }
+        return;
+      }
+      case 'getAgentRecordsRequest': {
+        const client = await this.getClient();
+        if (!client) {
+          this.post({ type: 'getAgentRecordsResponse', reqId: msg.reqId, ok: false, error: 'Not connected' });
+          return;
+        }
+        try {
+          const payload = await client.getAgentRecords(msg.agentType);
+          this.post({ type: 'getAgentRecordsResponse', reqId: msg.reqId, ok: true, payload });
+        } catch (err) {
+          this.post({ type: 'getAgentRecordsResponse', reqId: msg.reqId, ok: false, error: formatError(err) });
+        }
+        return;
+      }
+      case 'createAgentRequest': {
+        const client = await this.getClient();
+        if (!client) {
+          this.post({ type: 'createAgentResponse', reqId: msg.reqId, ok: false, error: 'Not connected' });
+          return;
+        }
+        try {
+          const payload = await client.createAgent(msg.payload);
+          // Agent list changed → invalidate meta/options cache so Upload tab's
+          // agent dropdown picks up the new entry on next fetchOptions.
+          this.options.clear();
+          this.post({ type: 'createAgentResponse', reqId: msg.reqId, ok: true, payload });
+          this.post({ type: 'optionsInvalidated' });
+        } catch (err) {
+          const status = err instanceof ApiError ? err.status : undefined;
+          this.post({ type: 'createAgentResponse', reqId: msg.reqId, ok: false, error: formatError(err), httpStatus: status });
+        }
+        return;
+      }
+      case 'updateAgentRequest': {
+        const client = await this.getClient();
+        if (!client) {
+          this.post({ type: 'updateAgentResponse', reqId: msg.reqId, ok: false, error: 'Not connected' });
+          return;
+        }
+        try {
+          const payload = await client.patchAgent(msg.agentType, msg.patch);
+          this.options.clear();
+          this.post({ type: 'updateAgentResponse', reqId: msg.reqId, ok: true, payload });
+          this.post({ type: 'optionsInvalidated' });
+        } catch (err) {
+          const status = err instanceof ApiError ? err.status : undefined;
+          this.post({ type: 'updateAgentResponse', reqId: msg.reqId, ok: false, error: formatError(err), httpStatus: status });
+        }
+        return;
+      }
+      case 'deleteAgentRequest': {
+        const client = await this.getClient();
+        if (!client) {
+          this.post({ type: 'deleteAgentResponse', reqId: msg.reqId, ok: false, error: 'Not connected' });
+          return;
+        }
+        try {
+          await client.deleteAgent(msg.agentType);
+          this.options.clear();
+          this.post({ type: 'deleteAgentResponse', reqId: msg.reqId, ok: true, agentType: msg.agentType });
+          this.post({ type: 'optionsInvalidated' });
+        } catch (err) {
+          const status = err instanceof ApiError ? err.status : undefined;
+          this.post({ type: 'deleteAgentResponse', reqId: msg.reqId, ok: false, error: formatError(err), httpStatus: status });
+        }
+        return;
+      }
       case 'openFilePicker': {
         // 드래그-드롭이 webview 안에서 빈 dataTransfer 를 반환할 때 호출됨.
         // VS Code OS 네이티브 파일 다이얼로그를 띄워 사용자가 파일 선택 → fs 로 읽어 webview 로 전달.

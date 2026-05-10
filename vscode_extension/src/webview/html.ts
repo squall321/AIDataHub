@@ -1,10 +1,11 @@
 /**
  * Webview HTML/CSS/JS shell.
  *
- * v0.4.0 — three-tab layout:
+ * v0.6.0 — four-tab layout:
  *   - Upload  : original-file ingest (state machine: drop → form → sending → result)
  *   - Bundle  : pre-converted JSON+resources zip ingest
  *   - Search  : semantic / fts / tag search + record detail viewer + discover panel
+ *   - Agents  : full agent CRUD (list / view / create / edit / delete)
  *
  * Each tab is a self-contained mini state machine. The "Settings" gear in the
  * header still opens the welcome (connection) screen.
@@ -38,6 +39,7 @@ export function renderHtml(): string {
       <button class="tab" data-tab="upload">Upload</button>
       <button class="tab" data-tab="bundle">Bundle</button>
       <button class="tab" data-tab="search">Search</button>
+      <button class="tab" data-tab="agents">Agents</button>
     </nav>
     <div class="actions">
       <button id="btn-settings" class="ghost" title="Settings">⚙</button>
@@ -277,6 +279,68 @@ pre.json {
 }
 .discover-card .big-num { font-size: 22px; font-weight: 600; }
 .discover-card .label { font-size: 11px; opacity: 0.7; }
+
+/* Agents tab table */
+.agents-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 12px;
+}
+.agents-table thead th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 11px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.25));
+  opacity: 0.75;
+}
+.agents-table tbody tr {
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.15));
+  cursor: pointer;
+}
+.agents-table tbody tr:hover { background: rgba(128,128,128,0.06); }
+.agents-table tbody tr.expanded { background: rgba(128,128,128,0.08); }
+.agents-table td { padding: 8px; vertical-align: top; }
+.agents-table td.mono {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+  color: var(--vscode-textLink-foreground);
+  white-space: nowrap;
+}
+.agents-table td.desc {
+  max-width: 320px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--vscode-descriptionForeground);
+}
+.agents-table td .chip { font-size: 10px; padding: 1px 6px; }
+
+.agent-detail {
+  padding: 12px 16px;
+  background: rgba(128,128,128,0.05);
+  border-left: 3px solid var(--vscode-focusBorder);
+  margin: 0 0 12px;
+}
+.agent-detail h3 { margin-top: 0; }
+
+.agent-form {
+  border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.25));
+  border-radius: 4px;
+  padding: 14px 16px;
+  margin-top: 12px;
+}
+.checkbox-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; }
+.checkbox-row label { display: inline-flex; align-items: center; gap: 4px; margin: 0; font-size: 12px; opacity: 1; }
+.checkbox-row input[type="checkbox"] { width: auto; margin: 0; }
+
+.agents-banner {
+  padding: 8px 12px;
+  border-radius: 3px;
+  margin: 8px 0;
+  font-size: 12px;
+}
+.agents-banner.ok { background: rgba(50,180,90,0.18); color: var(--vscode-foreground); }
+.agents-banner.err{ background: rgba(220,60,60,0.18); color: var(--vscode-errorForeground); }
 `;
 }
 
@@ -327,7 +391,7 @@ function clientScript(): string {
 
   // ------------------------------------------------------------ State
   const state = {
-    tab: 'upload',              // upload | bundle | search
+    tab: 'upload',              // upload | bundle | search | agents
     showWelcome: true,          // forced when not connected
     config: { baseUrl: 'http://110.15.177.125:8000', hasApiKey: false, connected: false },
     options: null,              // MetaOptions
@@ -366,6 +430,26 @@ function clientScript(): string {
       discover: null,           // DiscoverResponse | null
       discoverError: null,
       discoverLoading: false,
+    },
+    // Agents tab
+    agents: {
+      screen: 'list',           // list | form
+      editing: null,            // agent_type being edited (null = create-new in form mode)
+      expanded: null,           // agent_type expanded inline in list mode
+      list: null,               // AgentOutT[] | null
+      loading: false,
+      error: null,              // string | null — list-level error
+      banner: null,             // { kind: 'ok'|'err', text: string } | null
+      formValues: {
+        agent_type: '',
+        name: '',
+        description: '',
+        common_tags: [],
+        data_types: [],
+      },
+      formError: null,          // form-level error message (string|null)
+      saving: false,
+      recordsByAgent: {},       // agent_type -> { loading, items, error }
     },
   };
 
@@ -428,6 +512,7 @@ function clientScript(): string {
     if (state.tab === 'upload') renderUploadTab();
     else if (state.tab === 'bundle') renderBundleTab();
     else if (state.tab === 'search') renderSearchTab();
+    else if (state.tab === 'agents') renderAgentsTab();
   }
 
   function paintTabs(){
@@ -1674,6 +1759,359 @@ function clientScript(): string {
   }
 
   // ====================================================================
+  // AGENTS tab — full CRUD against /api/agents
+  // ====================================================================
+  // DATA_TYPE_CHOICES mirrors api_server's literal subset for AgentIn.data_types.
+  // 백엔드 schemas/agent.py 의 DATA_TYPE_CHOICES 와 동일하게 유지.
+  const AGENT_DATA_TYPES = ['DOC', 'DATA', 'SIM', 'CAD', 'LOG', 'FORM', 'OTHER'];
+
+  function renderAgentsTab(){
+    const a = state.agents;
+    // Lazy load list when entering tab with no data.
+    if (a.list === null && !a.loading && !a.error) {
+      reloadAgentsList();
+    }
+    if (a.screen === 'form') return renderAgentsForm();
+    return renderAgentsList();
+  }
+
+  function renderAgentsList(){
+    const a = state.agents;
+    const wrap = el('div');
+    const bannerHtml = a.banner
+      ? '<div class="agents-banner ' + a.banner.kind + '">' + escapeHtml(a.banner.text) + '</div>'
+      : '';
+    const errorHtml = a.error
+      ? '<div class="status err">' + escapeHtml(a.error) + '</div>'
+      : '';
+    const loadingHtml = a.loading ? '<p class="muted" style="margin-top:8px">Loading agents…</p>' : '';
+
+    let bodyHtml = '';
+    if (!a.loading && Array.isArray(a.list)) {
+      if (a.list.length === 0) {
+        bodyHtml = '<p class="muted" style="margin-top:12px">No agents registered yet. Click <b>+ New agent</b> to create one.</p>';
+      } else {
+        const rows = a.list.map(function(ag){
+          const isOpen = a.expanded === ag.agent_type;
+          const dtChips = (ag.data_types || []).map(function(d){
+            return '<span class="chip">' + escapeHtml(d) + '</span>';
+          }).join(' ');
+          const desc = (ag.description || '').trim();
+          const baseRow = '<tr data-agent="' + escapeHtml(ag.agent_type) + '" class="' + (isOpen ? 'expanded' : '') + '">'
+            + '<td class="mono">' + escapeHtml(ag.agent_type) + '</td>'
+            + '<td>' + escapeHtml(ag.name || '') + '</td>'
+            + '<td>' + (dtChips || '<span class="muted">—</span>') + '</td>'
+            + '<td class="desc" title="' + escapeHtml(desc) + '">' + escapeHtml(desc || '—') + '</td>'
+            + '<td><span class="muted">—</span></td>'
+            + '</tr>';
+          const detailRow = isOpen
+            ? '<tr class="expanded-row"><td colspan="5" style="padding:0">' + renderAgentDetailBlock(ag) + '</td></tr>'
+            : '';
+          return baseRow + detailRow;
+        }).join('');
+        bodyHtml = '<table class="agents-table">'
+          + '<thead><tr>'
+          + '<th>agent_type</th><th>Name</th><th>Data types</th><th>Description</th><th>Records</th>'
+          + '</tr></thead>'
+          + '<tbody>' + rows + '</tbody>'
+          + '</table>';
+      }
+    }
+
+    wrap.innerHTML = '<h1>Agents</h1>'
+      + '<p class="subtle">Manage agent definitions used to discover and consume records. Changes refresh the Upload tab\\'s agent dropdown.</p>'
+      + '<div class="toolbar">'
+      + '  <button id="ag-refresh" class="secondary">Refresh</button>'
+      + '  <button id="ag-new">+ New agent</button>'
+      + '</div>'
+      + bannerHtml
+      + errorHtml
+      + loadingHtml
+      + bodyHtml;
+    root.appendChild(wrap);
+
+    on('ag-refresh', 'click', function(){ reloadAgentsList(); });
+    on('ag-new', 'click', function(){ openAgentForm(null); });
+
+    // Row click → toggle expanded inline detail.
+    wrap.querySelectorAll('tr[data-agent]').forEach(function(tr){
+      tr.addEventListener('click', function(ev){
+        // Ignore clicks that originated inside the expanded detail (so inner
+        // buttons don't re-collapse).
+        var t = ev.target;
+        while (t && t !== tr) {
+          if (t.classList && (t.classList.contains('agent-detail') || t.tagName === 'BUTTON' || t.tagName === 'A')) {
+            return;
+          }
+          t = t.parentNode;
+        }
+        var atype = tr.getAttribute('data-agent');
+        state.agents.expanded = (state.agents.expanded === atype) ? null : atype;
+        render();
+      });
+    });
+
+    // Wire detail-block actions (Edit / Delete / View records).
+    wrap.querySelectorAll('[data-action]').forEach(function(node){
+      node.addEventListener('click', function(ev){
+        ev.preventDefault();
+        ev.stopPropagation();
+        var action = node.getAttribute('data-action');
+        var atype = node.getAttribute('data-agent');
+        if (action === 'edit') openAgentForm(atype);
+        else if (action === 'delete') confirmDeleteAgent(atype);
+        else if (action === 'view-records') {
+          state.tab = 'search';
+          state.search.filters = Object.assign({}, state.search.filters || {}, { agent: atype });
+          state.search.q = state.search.q || '';
+          render();
+          runSearch();
+        }
+      });
+    });
+  }
+
+  function renderAgentDetailBlock(ag){
+    var tags = Array.isArray(ag.common_tags) ? ag.common_tags : [];
+    var dts = Array.isArray(ag.data_types) ? ag.data_types : [];
+    var tagHtml = tags.length
+      ? tags.map(function(t){ return '<span class="chip">' + escapeHtml(t) + '</span>'; }).join(' ')
+      : '<span class="muted">—</span>';
+    var dtHtml = dts.length
+      ? dts.map(function(t){ return '<span class="chip">' + escapeHtml(t) + '</span>'; }).join(' ')
+      : '<span class="muted">—</span>';
+    var created = ag.created_at ? escapeHtml(String(ag.created_at)) : '<span class="muted">—</span>';
+    var descSafe = (ag.description || '').trim();
+    return '<div class="agent-detail">'
+      + '<div class="kv">'
+      + '  <div class="k">agent_type</div><div><code>' + escapeHtml(ag.agent_type) + '</code></div>'
+      + '  <div class="k">Name</div><div>' + escapeHtml(ag.name || '') + '</div>'
+      + '  <div class="k">Description</div><div>' + (descSafe ? escapeHtml(descSafe) : '<span class="muted">—</span>') + '</div>'
+      + '  <div class="k">Common tags</div><div>' + tagHtml + '</div>'
+      + '  <div class="k">Data types</div><div>' + dtHtml + '</div>'
+      + '  <div class="k">Created at</div><div>' + created + '</div>'
+      + '</div>'
+      + '<div class="toolbar">'
+      + '  <button data-action="edit" data-agent="' + escapeHtml(ag.agent_type) + '">Edit</button>'
+      + '  <button data-action="delete" data-agent="' + escapeHtml(ag.agent_type) + '" class="secondary">Delete</button>'
+      + '  <a href="#" data-action="view-records" data-agent="' + escapeHtml(ag.agent_type) + '" style="align-self:center;margin-left:6px">View records →</a>'
+      + '</div>'
+      + '</div>';
+  }
+
+  function renderAgentsForm(){
+    var a = state.agents;
+    var fv = a.formValues;
+    var isEdit = !!a.editing;
+    var wrap = el('div');
+    var checkboxes = AGENT_DATA_TYPES.map(function(dt){
+      var checked = fv.data_types.indexOf(dt) !== -1 ? ' checked' : '';
+      return '<label><input type="checkbox" data-dt="' + escapeHtml(dt) + '"' + checked + ' /> ' + escapeHtml(dt) + '</label>';
+    }).join('');
+    var errHtml = a.formError ? '<div class="status err">' + escapeHtml(a.formError) + '</div>' : '';
+    var savingHtml = a.saving ? '<p class="muted" style="margin-top:8px">Saving…</p>' : '';
+
+    wrap.innerHTML = '<h1>' + (isEdit ? 'Edit agent' : 'New agent') + '</h1>'
+      + '<p class="subtle">' + (isEdit
+          ? 'Editing <code>' + escapeHtml(a.editing) + '</code>. <code>agent_type</code> cannot be changed.'
+          : 'Define a new agent. <code>agent_type</code> should be lowercase with hyphens (e.g. <code>iga-analyst</code>).') + '</p>'
+      + '<div class="agent-form">'
+      + '  <label>agent_type *</label>'
+      + '  <input id="af-type" type="text" placeholder="iga-analyst" value="' + escapeHtml(fv.agent_type) + '"' + (isEdit ? ' readonly' : '') + ' />'
+      + '  <label>Name *</label>'
+      + '  <input id="af-name" type="text" placeholder="IGA Analyst" value="' + escapeHtml(fv.name) + '" />'
+      + '  <label>Description</label>'
+      + '  <textarea id="af-desc" rows="3" placeholder="Short blurb shown in the catalog">' + escapeHtml(fv.description) + '</textarea>'
+      + '  <label>Common tags <span class="muted" style="font-size:11px">— Enter or comma to add</span></label>'
+      + '  <div id="af-chips-tags" class="chips"></div>'
+      + '  <label>Data types <span class="muted" style="font-size:11px">— record types this agent consumes</span></label>'
+      + '  <div class="checkbox-row" id="af-dts">' + checkboxes + '</div>'
+      + '</div>'
+      + errHtml
+      + savingHtml
+      + '<div class="toolbar">'
+      + '  <button id="af-save">' + (isEdit ? 'Save changes' : 'Create agent') + '</button>'
+      + '  <button id="af-cancel" class="secondary">Cancel</button>'
+      + '</div>';
+    root.appendChild(wrap);
+
+    // Wire chip input — seed with existing tags.
+    var chips = makeChipsSeeded('af-chips-tags', 'add tag…', fv.common_tags || []);
+
+    // data_types checkboxes — keep state.formValues.data_types in sync.
+    document.querySelectorAll('#af-dts input[type="checkbox"]').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        var dt = cb.getAttribute('data-dt');
+        var arr = state.agents.formValues.data_types.slice();
+        var idx = arr.indexOf(dt);
+        if (cb.checked && idx === -1) arr.push(dt);
+        else if (!cb.checked && idx !== -1) arr.splice(idx, 1);
+        state.agents.formValues.data_types = arr;
+      });
+    });
+
+    on('af-cancel', 'click', function(){
+      state.agents.screen = 'list';
+      state.agents.editing = null;
+      state.agents.formError = null;
+      render();
+    });
+    on('af-save', 'click', function(){
+      // Snapshot inputs into formValues, then submit.
+      var v = state.agents.formValues;
+      v.agent_type = val('af-type').trim();
+      v.name = val('af-name').trim();
+      v.description = val('af-desc');
+      v.common_tags = chips.get();
+      // data_types already kept in sync via checkbox change handler.
+      submitAgentForm();
+    });
+  }
+
+  // Variant of makeChips that seeds initial items.
+  function makeChipsSeeded(containerId, placeholder, seed){
+    var c = document.getElementById(containerId);
+    if (!c) return { get: function(){ return []; } };
+    var items = (seed || []).slice();
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = placeholder;
+
+    function repaint(){
+      c.innerHTML = '';
+      items.forEach(function(v, i){
+        var chip = document.createElement('span');
+        chip.className = 'chip';
+        chip.innerHTML = escapeHtml(v) + ' <span class="x" data-i="' + i + '">✕</span>';
+        chip.querySelector('.x').addEventListener('click', function(){
+          items.splice(i, 1); repaint();
+        });
+        c.appendChild(chip);
+      });
+      c.appendChild(input);
+      input.focus();
+    }
+
+    input.addEventListener('keydown', function(e){
+      if ((e.key === 'Enter' || e.key === ',') && input.value.trim()) {
+        e.preventDefault();
+        var v = input.value.trim().replace(/,$/, '');
+        if (v && items.indexOf(v) === -1) { items.push(v); }
+        input.value = '';
+        repaint();
+      } else if (e.key === 'Backspace' && !input.value && items.length) {
+        items.pop(); repaint();
+      }
+    });
+
+    repaint();
+    return { get: function(){ return items.slice(); } };
+  }
+
+  function openAgentForm(agentType){
+    if (agentType) {
+      // Edit existing — seed from list.
+      var found = (state.agents.list || []).find(function(x){ return x.agent_type === agentType; });
+      if (!found) return;
+      state.agents.editing = agentType;
+      state.agents.formValues = {
+        agent_type: found.agent_type,
+        name: found.name || '',
+        description: found.description || '',
+        common_tags: (found.common_tags || []).slice(),
+        data_types: (found.data_types || []).slice(),
+      };
+    } else {
+      state.agents.editing = null;
+      state.agents.formValues = {
+        agent_type: '', name: '', description: '', common_tags: [], data_types: [],
+      };
+    }
+    state.agents.formError = null;
+    state.agents.screen = 'form';
+    render();
+  }
+
+  function reloadAgentsList(){
+    state.agents.loading = true;
+    state.agents.error = null;
+    render();
+    rpc('listAgentsRequest', {})
+      .then(function(payload){
+        state.agents.list = Array.isArray(payload) ? payload : [];
+        state.agents.loading = false;
+        render();
+      })
+      .catch(function(err){
+        state.agents.error = String((err && err.message) || err);
+        state.agents.loading = false;
+        render();
+      });
+  }
+
+  function submitAgentForm(){
+    var v = state.agents.formValues;
+    if (!v.agent_type) { state.agents.formError = 'agent_type is required.'; render(); return; }
+    if (!v.name) { state.agents.formError = 'name is required.'; render(); return; }
+    state.agents.formError = null;
+    state.agents.saving = true;
+    render();
+    var isEdit = !!state.agents.editing;
+    var payload = {
+      name: v.name,
+      description: v.description || '',
+      common_tags: v.common_tags || [],
+      data_types: v.data_types || [],
+    };
+    var promise;
+    if (isEdit) {
+      promise = rpc('updateAgentRequest', { agentType: state.agents.editing, patch: payload });
+    } else {
+      var createBody = Object.assign({ agent_type: v.agent_type }, payload);
+      promise = rpc('createAgentRequest', { payload: createBody });
+    }
+    promise
+      .then(function(){
+        state.agents.saving = false;
+        state.agents.screen = 'list';
+        state.agents.editing = null;
+        state.agents.banner = { kind: 'ok', text: isEdit ? 'Agent updated.' : 'Agent created.' };
+        // Refresh list — banner persists until next action.
+        reloadAgentsList();
+        // Banner auto-clears after a few seconds.
+        setTimeout(function(){ if (state.agents.banner) { state.agents.banner = null; render(); } }, 3500);
+      })
+      .catch(function(err){
+        state.agents.saving = false;
+        state.agents.formError = String((err && err.message) || err);
+        render();
+      });
+  }
+
+  function confirmDeleteAgent(agentType){
+    // Use a host-side confirmation via postMessage: host shows native warning
+    // dialog. Simpler — embed an inline confirm-only RPC. For minimum surface
+    // area we rely on a JS confirm fallback first; host will also show toast
+    // on result. To match the spec, request host to show confirmation:
+    // (we just call the delete endpoint after a window.confirm — VS Code
+    // webview's confirm() works inside webviews and avoids new message types.)
+    if (!window.confirm('Delete agent "' + agentType + '"? This removes the catalog entry but does not delete records.')) {
+      return;
+    }
+    rpc('deleteAgentRequest', { agentType: agentType })
+      .then(function(){
+        state.agents.expanded = null;
+        state.agents.banner = { kind: 'ok', text: 'Deleted agent ' + agentType + '.' };
+        reloadAgentsList();
+        setTimeout(function(){ if (state.agents.banner) { state.agents.banner = null; render(); } }, 3500);
+      })
+      .catch(function(err){
+        state.agents.banner = { kind: 'err', text: 'Delete failed: ' + String((err && err.message) || err) };
+        render();
+      });
+  }
+
+  // ====================================================================
   // Inbound / boot
   // ====================================================================
   // Tab switching
@@ -1746,12 +2184,19 @@ function clientScript(): string {
         performUpload(v, m.baseUrl || '', m.apiKey || '');
       }
     } else if (m.type === 'searchResponse' || m.type === 'searchFacetedResponse'
-               || m.type === 'getRecordResponse' || m.type === 'discoverResponse') {
+               || m.type === 'getRecordResponse' || m.type === 'discoverResponse'
+               || m.type === 'listAgentsResponse' || m.type === 'getAgentRecordsResponse'
+               || m.type === 'createAgentResponse' || m.type === 'updateAgentResponse'
+               || m.type === 'deleteAgentResponse') {
       const p = _pendingReq.get(m.reqId);
       if (!p) return;
       _pendingReq.delete(m.reqId);
-      if (m.ok) p.resolve(m.payload);
+      if (m.ok) p.resolve(m.payload != null ? m.payload : m);
       else p.reject(new Error(m.error || 'request failed'));
+    } else if (m.type === 'optionsInvalidated') {
+      // Host invalidated meta/options cache (e.g. after an agent CRUD op).
+      // Drop our cached copy so the Upload form fetches fresh on next render.
+      state.options = null;
     } else if (m.type === 'fileLoaded') {
       const p = _pendingReq.get(m.reqId);
       if (!p) return;

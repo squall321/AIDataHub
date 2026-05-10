@@ -4,12 +4,16 @@
  */
 
 import type {
+  AgentInT,
+  AgentOutT,
+  AgentPatchT,
   DiscoverResponse,
   FacetedSearchFilters,
   FacetedSearchResponse,
   FullRecord,
   IngestResponse,
   MetaOptions,
+  SearchItem,
   SearchResponse,
   SystemHealth,
 } from '../client/types';
@@ -38,6 +42,12 @@ export type WebviewToHost =
   | { type: 'searchFacetedRequest'; reqId: number; filters: FacetedSearchFilters }
   | { type: 'getRecordRequest'; reqId: number; id: string }
   | { type: 'discoverRequest'; reqId: number }
+  // ---- v0.6.0 Agents CRUD ----
+  | { type: 'listAgentsRequest'; reqId: number }
+  | { type: 'getAgentRecordsRequest'; reqId: number; agentType: string }
+  | { type: 'createAgentRequest'; reqId: number; payload: AgentInT }
+  | { type: 'updateAgentRequest'; reqId: number; agentType: string; patch: AgentPatchT }
+  | { type: 'deleteAgentRequest'; reqId: number; agentType: string }
   // ---- File picker / drop fallback ----
   /** Webview asks host to open OS file picker when drag-drop yields no File. */
   | { type: 'openFilePicker'; reqId: number; target: 'upload' | 'bundle' }
@@ -70,6 +80,14 @@ export type HostToWebview =
   | { type: 'searchFacetedResponse'; reqId: number; ok: boolean; payload?: FacetedSearchResponse; error?: string }
   | { type: 'getRecordResponse'; reqId: number; ok: boolean; payload?: FullRecord; error?: string }
   | { type: 'discoverResponse'; reqId: number; ok: boolean; payload?: DiscoverResponse; error?: string }
+  // ---- v0.6.0 Agents CRUD responses ----
+  | { type: 'listAgentsResponse'; reqId: number; ok: boolean; payload?: AgentOutT[]; error?: string }
+  | { type: 'getAgentRecordsResponse'; reqId: number; ok: boolean; payload?: SearchItem[]; error?: string }
+  | { type: 'createAgentResponse'; reqId: number; ok: boolean; payload?: AgentOutT; error?: string; httpStatus?: number }
+  | { type: 'updateAgentResponse'; reqId: number; ok: boolean; payload?: AgentOutT; error?: string; httpStatus?: number }
+  | { type: 'deleteAgentResponse'; reqId: number; ok: boolean; agentType?: string; error?: string; httpStatus?: number }
+  // ---- v0.6.0 cache invalidation hint ----
+  | { type: 'optionsInvalidated' }
   // ---- File loaded from host ----
   | {
       type: 'fileLoaded';

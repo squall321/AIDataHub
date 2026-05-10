@@ -130,7 +130,7 @@ d:/Personal/AI_data/
 │   └─ requirements.txt
 │
 ├─ vscode_extension/               ← VS Code 비개발자 GUI 클라이언트
-│   ├─ ai-data-hub-uploader-0.5.0.vsix  (산출물)
+│   ├─ ai-data-hub-uploader-0.6.0.vsix  (산출물)
 │   ├─ USER_GUIDE.md
 │   └─ src/                        ← TypeScript (webview)
 │

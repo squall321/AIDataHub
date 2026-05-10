@@ -1,4 +1,7 @@
 import type {
+  AgentInT,
+  AgentOutT,
+  AgentPatchT,
   BundleUploadResponse,
   DiscoverResponse,
   FacetedSearchFilters,
@@ -7,6 +10,7 @@ import type {
   IngestResponse,
   MetaOptions,
   SearchResponse,
+  SearchItem,
   SystemHealth,
   VerifyKeyResponse,
 } from './types';
@@ -224,6 +228,73 @@ export class ApiClient {
     );
     if (!res.ok) throw await parseError(res);
     return (await res.json()) as FullRecord;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Agents — /api/agents CRUD
+  // ---------------------------------------------------------------------------
+  /** GET /api/agents — list all agents. */
+  async listAgents(): Promise<AgentOutT[]> {
+    const res = await fetch(joinUrl(this.baseUrl, '/api/agents'), {
+      method: 'GET',
+      headers: this.headers(),
+    });
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as AgentOutT[];
+  }
+
+  /** GET /api/agents/{agent_type} — single agent (404 if missing). */
+  async getAgent(agentType: string): Promise<AgentOutT> {
+    const res = await fetch(
+      joinUrl(this.baseUrl, `/api/agents/${encodeURIComponent(agentType)}`),
+      { method: 'GET', headers: this.headers() },
+    );
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as AgentOutT;
+  }
+
+  /** GET /api/agents/{agent_type}/records — records consumed by this agent. */
+  async getAgentRecords(agentType: string): Promise<SearchItem[]> {
+    const res = await fetch(
+      joinUrl(this.baseUrl, `/api/agents/${encodeURIComponent(agentType)}/records`),
+      { method: 'GET', headers: this.headers() },
+    );
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as SearchItem[];
+  }
+
+  /** POST /api/agents — create (201, or 409 on conflict). */
+  async createAgent(body: AgentInT): Promise<AgentOutT> {
+    const res = await fetch(joinUrl(this.baseUrl, '/api/agents'), {
+      method: 'POST',
+      headers: this.headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as AgentOutT;
+  }
+
+  /** PATCH /api/agents/{agent_type} — partial update (404 if missing). */
+  async patchAgent(agentType: string, patch: AgentPatchT): Promise<AgentOutT> {
+    const res = await fetch(
+      joinUrl(this.baseUrl, `/api/agents/${encodeURIComponent(agentType)}`),
+      {
+        method: 'PATCH',
+        headers: this.headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(patch),
+      },
+    );
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as AgentOutT;
+  }
+
+  /** DELETE /api/agents/{agent_type} — 204 on success, 404 if missing. */
+  async deleteAgent(agentType: string): Promise<void> {
+    const res = await fetch(
+      joinUrl(this.baseUrl, `/api/agents/${encodeURIComponent(agentType)}`),
+      { method: 'DELETE', headers: this.headers() },
+    );
+    if (!res.ok && res.status !== 204) throw await parseError(res);
   }
 
   /** GET /api/discover — system-wide catalog. */

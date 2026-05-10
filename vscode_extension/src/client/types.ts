@@ -227,6 +227,34 @@ export interface FullRecord {
 }
 
 // ---------------------------------------------------------------------------
+// Agents CRUD — /api/agents
+// Mirrors api_server's AgentOut / AgentIn / AgentPatch pydantic schemas.
+// ---------------------------------------------------------------------------
+export interface AgentOutT {
+  agent_type: string;             // PK
+  name: string;
+  description: string;
+  common_tags: string[];
+  data_types: string[];           // subset of DOC|DATA|SIM|CAD|LOG|FORM|OTHER
+  created_at: string | null;      // ISO datetime
+}
+
+export interface AgentInT {
+  agent_type: string;             // required
+  name: string;                   // required
+  description?: string;
+  common_tags?: string[];
+  data_types?: string[];
+}
+
+export interface AgentPatchT {
+  name?: string;
+  description?: string;
+  common_tags?: string[];
+  data_types?: string[];
+}
+
+// ---------------------------------------------------------------------------
 // Discover — GET /api/discover
 // ---------------------------------------------------------------------------
 export interface DiscoverAgentEntry {
