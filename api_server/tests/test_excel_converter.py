@@ -53,8 +53,8 @@ def _make_xlsx(tmp_path: Path, sheets: dict[str, list[list]]) -> Path:
 def _opts(tmp_path: Path, **overrides) -> XlsxConverterOptions:
     """기본 옵션 헬퍼."""
     base = dict(
-        division="HE",
-        team="CAE",
+        team="HE",
+        group="CAE",
         year=2026,
         start_seq=1,
         output_dir=tmp_path / "out",

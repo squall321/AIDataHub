@@ -47,14 +47,14 @@ class Record(Base):
     __tablename__ = "records"
     __table_args__ = (
         UniqueConstraint(
-            "data_type", "division", "team", "year", "seq",
+            "data_type", "team", "group", "year", "seq",
             name="uq_records_natural_key",
         ),
     )
     id: Mapped[str] = mapped_column(String(80), primary_key=True)
     data_type: Mapped[str] = mapped_column(String(20), nullable=False)
-    division: Mapped[str] = mapped_column(String(10), nullable=False)
-    team: Mapped[str] = mapped_column(String(20), nullable=False)
+    team: Mapped[str] = mapped_column(String(10), nullable=False)
+    group: Mapped[str] = mapped_column(String(20), nullable=False)
     year: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)

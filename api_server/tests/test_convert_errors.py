@@ -28,8 +28,8 @@ async def test_convert_unsupported_extension_envelope(test_client) -> None:
     """확장자 미지원 → 415 + UNSUPPORTED_FORMAT envelope."""
     files = {"file": ("data.bin", b"\x00\x01\x02\x03", "application/octet-stream")}
     form = {
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": "2026",
         "seq": "1",
     }
@@ -48,8 +48,8 @@ async def test_convert_oversized_envelope(test_client, monkeypatch) -> None:
     big = b"\x00" * (2 * 1024 * 1024)
     files = {"file": ("huge.md", big, "text/markdown")}
     form = {
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": "2026",
         "seq": "1",
     }
@@ -64,9 +64,9 @@ async def test_convert_oversized_envelope(test_client, monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_convert_missing_form_field_envelope(test_client) -> None:
-    """필수 폼 필드(division 등) 누락 → 422 + VALIDATION_ERROR envelope."""
+    """필수 폼 필드(team 등) 누락 → 422 + VALIDATION_ERROR envelope."""
     files = {"file": ("demo.md", b"# hello\n", "text/markdown")}
-    # division / team / year 모두 누락
+    # team / group / year 모두 누락
     form: dict[str, str] = {}
     resp = await test_client.post("/api/convert/", files=files, data=form)
     assert resp.status_code == 422
@@ -81,8 +81,8 @@ async def test_convert_empty_filename_envelope(test_client) -> None:
     """
     files = {"file": ("noext", b"abc", "application/octet-stream")}
     form = {
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": "2026",
         "seq": "1",
     }

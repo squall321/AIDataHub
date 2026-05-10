@@ -49,10 +49,10 @@ Key issuance flow:
 |---|---|---|---|---|
 | `id` | str(80) PK | no | record id, 사람이 읽음 | `DOC-HE-CAE-2026-000001` |
 | `data_type` | str(20) | no | enum: DOC/DATA/SIM/CAD/LOG/FORM/OTHER | `DOC` |
-| `division` | str(10) | no | 사업부 (business unit) 코드 | `HE` |
-| `team` | str(20) | no | 팀 (team) 코드 | `CAE` |
+| `team` | str(10) | no | 팀 (team) 코드 | `HE` |
+| `group` | str(20) | no | 그룹 (group) 코드 | `CAE` |
 | `year` | int | no | 4-digit | `2026` |
-| `seq` | int | no | sequence per (data_type, division, team, year) | `1` |
+| `seq` | int | no | sequence per (data_type, team, group, year) | `1` |
 | `title` | text | no | 제목 (title) | `IGA tensile test report` |
 | `summary` | text | no | 요약 (summary), 기본 "" | `2024 sample IGA results` |
 | `tags` | text[] | no | 태그 배열 (tag array), 기본 `{}` | `{"iga","tensile","2024"}` |
@@ -89,7 +89,7 @@ Key issuance flow:
 | `created_at` | timestamptz | no | 생성 시간 | `2026-01-15T...` |
 | `updated_at` | timestamptz | no | 갱신 시간 (auto onupdate) | `2026-05-09T...` |
 
-Unique constraint: `(data_type, division, team, year, seq)`.
+Unique constraint: `(data_type, team, group, year, seq)`.
 
 ### 3.2 Table `record_sections` — 섹션 (section, RAG chunk)
 
@@ -159,14 +159,14 @@ Binary 위치: `/attachments/{record_id}/A{nnn}.{ext}` (static mount). Figure bi
 ### 4.1 Pattern (정식)
 
 ```
-{DATA_TYPE}-{DIVISION}-{TEAM}-{YEAR}-{SEQ}
+{DATA_TYPE}-{TEAM}-{GROUP}-{YEAR}-{SEQ}
 ```
 
 | 토큰 (token) | 규칙 (rule) | 예 |
 |---|---|---|
 | `DATA_TYPE` | enum: DOC/DATA/SIM/CAD/LOG/FORM/OTHER | `DOC` |
-| `DIVISION` | 2~4 uppercase ASCII | `HE` |
-| `TEAM` | 2~5 uppercase ASCII | `CAE` |
+| `TEAM` | 2~4 uppercase ASCII | `HE` |
+| `GROUP` | 2~5 uppercase ASCII | `CAE` |
 | `YEAR` | 4 digits, 2020..2099 | `2026` |
 | `SEQ` | 6 digits zero-pad, 000001..999999 | `000001` |
 
@@ -175,7 +175,7 @@ Example: `DOC-HE-CAE-2026-000001`
 ### 4.2 Legacy pattern (data_type 누락 — 호환)
 
 ```
-{DIVISION}-{TEAM}-{YEAR}-{SEQ}
+{TEAM}-{GROUP}-{YEAR}-{SEQ}
 ```
 
 Parsed with default `data_type="DOC"`. `normalize_id()` adds prefix.
@@ -189,9 +189,9 @@ Parsed with default `data_type="DOC"`. `normalize_id()` adds prefix.
 
 (레거시: `-F{nnn}` 도 허용)
 
-### 4.4 Known DIVISION / TEAM seed (`api/seed/divisions.py`)
+### 4.4 Known TEAM / GROUP seed (`api/seed/teams.py`)
 
-| DIVISION | TEAMS |
+| TEAM | GROUPS |
 |---|---|
 | HE | CAE, Test, Design |
 | EV | BMS, Battery, Motor |
@@ -214,7 +214,7 @@ Parsed with default `data_type="DOC"`. `normalize_id()` adds prefix.
 | GET | `/api/hints` | 자연어 힌트 | `?context=` | `context, available_contexts, hints` |
 | GET | `/api/docs/llm.txt` | 통합 마크다운 | — | text/plain |
 | POST | `/api/ask` | 자연어 → 결과 | body `{query, limit}` | `interpreted_query, results, total_matched, follow_up_queries` |
-| GET | `/api/records` | 목록 + 필터 | `data_type, division, team, year, agent[], tag[], q, include_deleted, limit, offset` | `items, total, limit, offset` |
+| GET | `/api/records` | 목록 + 필터 | `data_type, team, group, year, agent[], tag[], q, include_deleted, limit, offset` | `items, total, limit, offset` |
 | GET | `/api/records/{id}` | 단건 조회 | `?include_deleted` | full RecordOut |
 | POST | `/api/records` | 생성 (직접 INSERT) | body `RecordIn` | RecordOut (201) |
 | PATCH | `/api/records/{id}` | 부분 수정 | body `{summary?, tags?, agents?, project?, version?}` | RecordOut |
@@ -240,7 +240,7 @@ Parsed with default `data_type="DOC"`. `normalize_id()` adds prefix.
 | GET | `/api/analytics/cross-agent` | 에이전트 간 공유 record | `agents[] (req)` | dict |
 | GET | `/api/analytics/timeline` | 월별 카운트 | `year (req)` | dict |
 | GET | `/api/analytics/usage` | 상위 read_count | `limit` | `items, total, limit` |
-| GET | `/api/meta/options` | UI 옵션 (셀렉트박스) | — | `version, divisions, teams, agents, classifications, statuses, derivations, languages, data_types, supported_extensions, max_upload_mb, allow_custom` |
+| GET | `/api/meta/options` | UI 옵션 (셀렉트박스) | — | `version, teams, groups, agents, classifications, statuses, derivations, languages, data_types, supported_extensions, max_upload_mb, allow_custom` |
 | GET | `/api/taxonomy/tags` | 태그 + 빈도 + data_type 분포 | `q?, min_count?, limit?` | `total, items[{tag,count,data_types,agents}]` |
 | GET | `/api/taxonomy/tags/resolve` | 비공식 → 정식 태그 매핑 (synonym) | `q (req), limit?` | `query, normalized, candidates[{tag,score,method,count}]` |
 | GET | `/api/taxonomy/data-types` | data_type 분포 + 추천 사용 패턴 | — | `items[{data_type,count,description,subtypes,schema_url}]` |
@@ -249,7 +249,7 @@ Parsed with default `data_type="DOC"`. `normalize_id()` adds prefix.
 | GET | `/api/taxonomy/classification` | classification enum + 의미 + 분포 | — | `field, items[{value,description,count}]` |
 | GET | `/api/taxonomy/status` | status enum + 의미 + 분포 | — | `field, items[{value,description,count}]` |
 | GET | `/api/taxonomy/access-pattern` | access_pattern enum + 의미 + 분포 | — | `field, items[{value,description,count}]` |
-| POST | `/api/convert/` | 파일 → JSON (no DB) | multipart `file, division, team, year, seq, tags, agents, classification, domain` | converter dict |
+| POST | `/api/convert/` | 파일 → JSON (no DB) | multipart `file, team, group, year, seq, tags, agents, classification, domain` | converter dict |
 | POST | `/api/convert/ingest` | 파일 → JSON → DB | 위 + `status, language, subject_keywords, derivation, quality_score, valid_from, valid_until, title_override, summary_override, agent_hints, related_record_ids, query_examples, access_pattern, persist_attachments` | `record_id, status, sections_written, assigned_seq, attachments_persisted, record` |
 | POST | `/api/jobs/embed` | 임베딩 backfill | body `{record_id?, record_ids?[]}` | job dict (202) |
 | GET | `/api/jobs/{job_id}` | 잡 상태 | — | job dict |
@@ -411,7 +411,7 @@ mode 비교 — `/api/records/{id}/cluster`:
 ### 8.6 새 record 적재 (ingest new file)
 
 ```
-1. multipart POST /api/convert/ingest               file=<doc.docx>, division=HE, team=CAE, year=2026, seq=0
+1. multipart POST /api/convert/ingest               file=<doc.docx>, team=HE, group=CAE, year=2026, seq=0
                                                     seq=0 면 backend 가 MAX(seq)+1 자동 할당
 2. 응답.record_id 확보
 3. (선택) POST /api/jobs/embed body {"record_id":"<id>"}   임베딩 backfill
@@ -501,7 +501,7 @@ mode 비교 — `/api/records/{id}/cluster`:
 |---|---|---|---|
 | `id` | str | 레코드 ID | `"DOC-HE-CAE-2026-000001"` |
 | `data_type` | str | 콘텐츠 타입 | `"DOC"` |
-| `division`, `team` | str | 분류 키 | `"HE"`, `"CAE"` |
+| `team`, `group` | str | 분류 키 | `"HE"`, `"CAE"` |
 | `year`, `seq` | int | 분류 키 | `2026`, `1` |
 | `title`, `summary` | str | 텍스트 메타 | — |
 | `tags`, `agents` | str[] | 배열 메타 | `["iga"]` |
@@ -691,7 +691,7 @@ SEMANTIC  →  GET  /api/search?mode=semantic&q=...
 AGENT     →  GET  /api/data?agent=iga-analyst&query=...&limit=5
 FILES     →  GET  /api/records/{id}/attachments
 RELATED   →  GET  /api/records/{id}/lineage  +  /api/search?mode=tag&tags=<one>
-INGEST    →  multipart POST /api/convert/ingest  (file + division + team + year + seq=0)
+INGEST    →  multipart POST /api/convert/ingest  (file + team + group + year + seq=0)
 DIFF      →  GET  /api/records/{id}/diff?from=<other_id>
 META      →  GET  /api/meta/options              (UI dropdown values)
 SCHEMA    →  GET  /api/schema                    (machine-readable types)

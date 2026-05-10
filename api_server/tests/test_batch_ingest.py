@@ -74,8 +74,8 @@ async def test_run_batch_dry_run(tmp_path) -> None:
     results = await run_batch(
         files,
         workers=2,
-        division="HE",
-        team="CAE",
+        team="HE",
+        group="CAE",
         year=2026,
         start_seq=1,
         dry_run=True,

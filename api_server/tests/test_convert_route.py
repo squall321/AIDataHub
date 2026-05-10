@@ -83,8 +83,8 @@ async def test_convert_routes_registered(test_client) -> None:
 async def test_convert_unsupported_extension(test_client) -> None:
     files = {"file": ("data.bin", b"\x00\x01\x02\x03", "application/octet-stream")}
     form = {
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": "2026",
         "seq": "1",
     }
@@ -110,8 +110,8 @@ async def test_convert_oversized_file(test_client, monkeypatch) -> None:
         )
     }
     form = {
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": "2026",
         "seq": "1",
     }
@@ -135,8 +135,8 @@ async def test_convert_docx(test_client) -> None:
         )
     }
     form = {
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": "2026",
         "seq": "1",
         "tags": "demo,convert",
@@ -164,8 +164,8 @@ async def test_convert_xlsx(test_client) -> None:
         )
     }
     form = {
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": "2026",
         "seq": "1",
     }
@@ -190,8 +190,8 @@ async def test_convert_md(test_client) -> None:
         )
     }
     form = {
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": "2026",
         "seq": "1",
     }
@@ -217,8 +217,8 @@ async def test_convert_then_ingest_inserts_record(db_client) -> None:
         )
     }
     form = {
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": "2026",
         "seq": "100",
         "tags": "ingest,demo",
@@ -243,8 +243,8 @@ async def test_convert_idempotency_via_ingest(db_client) -> None:
     """
     payload_bytes = _make_md_bytes()
     form = {
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": "2026",
         "seq": "200",
     }
@@ -279,8 +279,8 @@ async def test_ingest_with_full_metadata_overrides(
 
     files = {"file": ("meta_full.md", _make_md_bytes(), "text/markdown")}
     form = {
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": "2026",
         "seq": "300",
         "tags": "iga,offset",
@@ -324,8 +324,8 @@ async def test_ingest_with_full_metadata_overrides(
 async def test_ingest_with_invalid_status_returns_422(db_client) -> None:
     files = {"file": ("bad_status.md", _make_md_bytes(), "text/markdown")}
     form = {
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": "2026",
         "seq": "301",
         "status": "totally-bogus",
@@ -340,8 +340,8 @@ async def test_ingest_with_invalid_status_returns_422(db_client) -> None:
 async def test_ingest_with_invalid_date_returns_422(db_client) -> None:
     files = {"file": ("bad_date.md", _make_md_bytes(), "text/markdown")}
     form = {
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": "2026",
         "seq": "302",
         "valid_from": "2026/05/08",  # ISO 형식 아님
@@ -357,8 +357,8 @@ async def test_ingest_with_quality_score_out_of_range_returns_422(
 ) -> None:
     files = {"file": ("bad_q.md", _make_md_bytes(), "text/markdown")}
     form = {
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": "2026",
         "seq": "303",
         "quality_score": "150",
@@ -378,8 +378,8 @@ async def test_ingest_with_partial_overrides(
 
     files = {"file": ("partial.md", _make_md_bytes(), "text/markdown")}
     form = {
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": "2026",
         "seq": "304",
         # status 만 지정. language/derivation 등은 기본값.
@@ -414,8 +414,8 @@ async def test_ingest_title_override_replaces_extracted_title(
 
     files = {"file": ("over_title.md", _make_md_bytes(), "text/markdown")}
     form = {
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": "2026",
         "seq": "305",
         "title_override": "Manually Curated Title",
@@ -438,8 +438,8 @@ async def test_ingest_invalid_valid_range_returns_422(db_client) -> None:
     """``valid_from > valid_until`` → 422."""
     files = {"file": ("range.md", _make_md_bytes(), "text/markdown")}
     form = {
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": "2026",
         "seq": "306",
         "valid_from": "2027-05-08",

@@ -29,8 +29,8 @@ class RecordSectionOut(_Base):
 class RecordOut(_Base):
     id: str
     data_type: str
-    division: str
     team: str
+    group: str
     year: int
     seq: int
     title: str
@@ -54,8 +54,8 @@ class RecordIn(_Base):
 
     id: str
     data_type: str
-    division: str
     team: str
+    group: str
     year: int
     seq: int
     title: str
@@ -114,7 +114,7 @@ class AgentPatch(_Base):
 # Agent 2 의 정식 스키마와 호환을 유지한다.
 #
 # 주의: ``api.schemas.common.RecordIn`` 은 인제스트(ingest) 입력용으로
-# ``division/team/year/seq`` 를 ``id`` 에서 파싱해 ORM 으로 변환한다.
+# ``team/group/year/seq`` 를 ``id`` 에서 파싱해 ORM 으로 변환한다.
 # 라우터 ``POST /api/records`` 는 명시적으로 분해된 컬럼을 받는 것이
 # 더 정확하므로, 라우터에서는 *이 모듈의 로컬 ``RecordIn``* 을 사용한다.
 # 응답 모델(``RecordOut``)은 ORM-mode (``from_attributes=True``) 가 켜진

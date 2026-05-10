@@ -98,8 +98,8 @@ def detect_format(filename: str) -> SourceFormat:
 class ConvertRequest:
     """라우터에서 디스패처로 전달되는 변환 매개변수."""
 
-    division: str
     team: str
+    group: str
     year: int
     seq: int = 1
     tags: list[str] = field(default_factory=list)
@@ -169,8 +169,8 @@ def convert_file(
             from converter.core import Converter, ConverterOptions
 
             opts = ConverterOptions(
-                division=req.division,
                 team=req.team,
+                group=req.group,
                 year=req.year,
                 seq=req.seq,
                 output_dir=output_dir,
@@ -184,8 +184,8 @@ def convert_file(
             from excel_converter.core import XlsxConverter, XlsxConverterOptions
 
             opts = XlsxConverterOptions(
-                division=req.division,
                 team=req.team,
+                group=req.group,
                 year=req.year,
                 start_seq=req.seq,
                 output_dir=output_dir,
@@ -198,8 +198,8 @@ def convert_file(
             from ppt_converter.core import PptxConverter, PptxConverterOptions
 
             opts = PptxConverterOptions(
-                division=req.division,
                 team=req.team,
+                group=req.group,
                 year=req.year,
                 seq=req.seq,
                 output_dir=output_dir,
@@ -214,8 +214,8 @@ def convert_file(
             from md_converter.core import MarkdownConverter, MarkdownConverterOptions
 
             opts = MarkdownConverterOptions(
-                division=req.division,
                 team=req.team,
+                group=req.group,
                 year=req.year,
                 seq=req.seq,
                 output_dir=output_dir,
@@ -239,8 +239,8 @@ def convert_file(
                 ) from exc
 
             opts = PdfConverterOptions(  # type: ignore[call-arg]
-                division=req.division,
                 team=req.team,
+                group=req.group,
                 year=req.year,
                 seq=req.seq,
                 output_dir=output_dir,

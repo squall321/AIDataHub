@@ -100,7 +100,7 @@ curl 예:
 curl -X POST "http://localhost:8000/api/convert/ingest" `
   -H "X-API-Key: <admin>" `
   -F "file=@AI_data/iga_guide.docx" `
-  -F "division=HE" -F "team=CAE" -F "year=2026" -F "seq=1" `
+  -F "team=HE" -F "group=CAE" -F "year=2026" -F "seq=1" `
   -F "tags=IGA,LS-DYNA" -F "agents=iga-analyst"
 ```
 

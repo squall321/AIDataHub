@@ -82,14 +82,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Skip copying attachment binaries to attachments_dir.",
     )
     p.add_argument(
-        "--division",
+        "--team",
         default="HE",
-        help="Division code applied to all converted files (default HE).",
+        help="Team code applied to all converted files (default HE).",
     )
     p.add_argument(
-        "--team",
+        "--group",
         default="CAE",
-        help="Team code (default CAE).",
+        help="Group code (default CAE).",
     )
     p.add_argument(
         "--year",
@@ -149,8 +149,8 @@ def discover_files(root: Path) -> list[Path]:
 async def _process_one(
     fp: Path,
     *,
-    division: str,
     team: str,
+    group: str,
     year: int,
     start_seq: int,
     output_root: Path,
@@ -188,16 +188,16 @@ async def _process_one(
                 eff_seq = await _next_seq(
                     ses,
                     data_type=inferred_dt,
-                    division=division,
                     team=team,
+                    group=group,
                     year=year,
                 )
         elif eff_seq <= 0:
             eff_seq = 1  # dry-run 폴백.
 
         req = ConvertRequest(
-            division=division,
             team=team,
+            group=group,
             year=year,
             seq=eff_seq,
             output_dir=per_file_out,
@@ -293,8 +293,8 @@ async def run_batch(
     files: list[Path],
     *,
     workers: int,
-    division: str,
     team: str,
+    group: str,
     year: int,
     start_seq: int,
     dry_run: bool,
@@ -316,8 +316,8 @@ async def run_batch(
     tasks = [
         _process_one(
             fp,
-            division=division,
             team=team,
+            group=group,
             year=year,
             start_seq=start_seq,
             output_root=output_root,
@@ -374,8 +374,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             run_batch(
                 files,
                 workers=workers,
-                division=args.division,
                 team=args.team,
+                group=args.group,
                 year=year,
                 start_seq=args.start_seq,
                 dry_run=args.dry_run,

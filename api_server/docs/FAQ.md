@@ -134,7 +134,7 @@ tesseract --version   # 5.x 권장. 한글이면 kor 언어팩도 필요
 | 패널 자체가 안 열림                      | 확장 미활성화                                 | Extensions 패널에서 enable 확인 → VS Code 재시작 |
 | 빈 회색 패널 (Webview 안 뜸)             | Webview 보안 정책 차단                        | VS Code 1.85+ 사용. 사내 보안 정책 점검         |
 | "Auth Failed" 빨간 뱃지                  | API URL 오타 / key 만료 / 사내망 미접속       | 설정 다시 입력 → `verify` 재시도               |
-| Division/Team 셀렉트박스 비어 있음       | `/api/meta/options` 호출 실패                 | 패널 새로고침. 그래도 비면 서버 상태 확인       |
+| Team/Group 셀렉트박스 비어 있음       | `/api/meta/options` 호출 실패                 | 패널 새로고침. 그래도 비면 서버 상태 확인       |
 | Send 시 무한 로딩                        | 대용량 PDF + OCR 처리 중                      | 정상 — 길면 30 초까지 걸린다. 그 이상은 큐 적체  |
 
 VS Code 개발자 도구(`Help → Toggle Developer Tools` → Console 탭) 로 정확한 에러 확인 가능.
@@ -148,7 +148,7 @@ VS Code 개발자 도구(`Help → Toggle Developer Tools` → Console 탭) 로 
 
 ### A) 본문도 바뀐 경우 — 같은 ID 로 재업로드
 
-VS Code 확장에서 **같은 division/team/year/seq 로 새 파일을 보낸다.** content_hash 가 다르면
+VS Code 확장에서 **같은 team/group/year/seq 로 새 파일을 보낸다.** content_hash 가 다르면
 서버가 자동으로 `status: updated` 로 처리하고, version 이 +1 되며 `parent_record_id` 가
 이전 버전을 가리킨다 (lineage chain).
 

@@ -32,7 +32,7 @@ async def test_persist_attachments_default_true(db_client, tmp_path, monkeypatch
     monkeypatch.setattr(settings, "attachments_dir", tmp_path / "attachments", raising=False)
 
     files = {"file": ("att.md", _make_md_bytes(), "text/markdown")}
-    form = {"division": "HE", "team": "CAE", "year": "2026", "seq": "0"}
+    form = {"team": "HE", "group": "CAE", "year": "2026", "seq": "0"}
     resp = await db_client.post("/api/convert/ingest", files=files, data=form)
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -50,8 +50,8 @@ async def test_persist_attachments_disabled(db_client, tmp_path, monkeypatch) ->
 
     files = {"file": ("att.md", _make_md_bytes(), "text/markdown")}
     form = {
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": "2026",
         "seq": "0",
         "persist_attachments": "false",

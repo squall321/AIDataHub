@@ -105,8 +105,8 @@ async def _bump_usage(record_id: str) -> None:
 )
 async def list_records(
     data_type: str | None = Query(None),
-    division: str | None = Query(None),
     team: str | None = Query(None),
+    group: str | None = Query(None),
     year: int | None = Query(None),
     agent: list[str] | None = Query(None),
     tag: list[str] | None = Query(None),
@@ -119,19 +119,19 @@ async def list_records(
     session: AsyncSession = Depends(get_session),
 ) -> RecordListResponse:
     log.info(
-        "list_records: data_type=%s division=%s team=%s year=%s "
+        "list_records: data_type=%s team=%s group=%s year=%s "
         "agents=%s tags=%s q=%s include_deleted=%s limit=%s offset=%s",
-        data_type, division, team, year, agent, tag, q, include_deleted,
+        data_type, team, group, year, agent, tag, q, include_deleted,
         limit, offset,
     )
 
     stmt = select(Record)
     if data_type:
         stmt = stmt.where(Record.data_type == data_type)
-    if division:
-        stmt = stmt.where(Record.division == division)
     if team:
         stmt = stmt.where(Record.team == team)
+    if group:
+        stmt = stmt.where(Record.group == group)
     if year is not None:
         stmt = stmt.where(Record.year == year)
     if not include_deleted:

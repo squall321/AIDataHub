@@ -53,7 +53,7 @@ app.add_middleware(
 ## 2. `GET /api/meta/options` — 클라이언트 메타 옵션 카탈로그
 
 ### 배경
-확장 폼의 `division` / `team` / `agents` / `classification` / `status` / `language` 셀렉트박스는 백엔드가 **권위적인 옵션 목록** 을 내려줘야 일관성을 유지한다.
+확장 폼의 `team` / `group` / `agents` / `classification` / `status` / `language` 셀렉트박스는 백엔드가 **권위적인 옵션 목록** 을 내려줘야 일관성을 유지한다.
 
 ### 위치
 새 파일: `src/api/routes/meta.py`. `src/api/routes/__init__.py` 에서 `app.include_router(meta.router)`.
@@ -65,8 +65,8 @@ GET /api/meta/options
 HTTP 200
 {
   "version": "1.0",
-  "divisions": ["HE", "EV", "PT"],
-  "teams": {
+  "teams": ["HE", "EV", "PT"],
+  "groups": {
     "HE": ["CAE", "Test", "Design"],
     "EV": ["BMS", "Battery"],
     "PT": ["Material"]
@@ -87,8 +87,8 @@ HTTP 200
   "supported_extensions": [".docx", ".pdf", ".pptx", ".md", ".markdown", ".xlsx"],
   "max_upload_mb":  50,
   "allow_custom": {
-    "division": false,
-    "team":     true,
+    "team": false,
+    "group":     true,
     "domain":   true
   }
 }
@@ -98,8 +98,8 @@ HTTP 200
 
 | 키                | 출처                                                                        |
 |-------------------|-----------------------------------------------------------------------------|
-| `divisions`       | `src/api/seed/divisions.py` 신규 정적 리스트 (또는 `records.division` distinct) |
-| `teams`           | 1차: 정적 매핑 dict; 2차: `records` 의 distinct 결과를 머지                   |
+| `teams`       | `src/api/seed/teams.py` 신규 정적 리스트 (또는 `records.team` distinct) |
+| `groups`           | 1차: 정적 매핑 dict; 2차: `records` 의 distinct 결과를 머지                   |
 | `agents`          | `agents` 테이블 SELECT (이미 `/api/agents` 에 존재 — 동일 직렬화 재사용)    |
 | `classifications` | `api.schemas.common.CLASSIFICATIONS`                                        |
 | `statuses`        | `api.schemas.common.STATUSES`                                               |
@@ -154,7 +154,7 @@ POST /api/auth/keys/verify
 HTTP 200
 {
   "ok": true,
-  "key_name": "iga-team-uploader",
+  "key_name": "iga-group-uploader",
   "agent_scopes": ["iga-analyst", "cae-reporter"]
 }
 ```
@@ -251,7 +251,7 @@ record_in = normalize(payload).model_copy(update=overrides)
 확장의 [Test Connection] 단계에서 인증 모드를 한 번에 판단 가능.
 
 ### 6.3 (선택) 자동 `seq` 발급
-- `seq=0` 또는 미지정 시 백엔드가 동일 `(data_type, division, team, year)` 의 `MAX(seq)+1` 자동 부여.
+- `seq=0` 또는 미지정 시 백엔드가 동일 `(data_type, team, group, year)` 의 `MAX(seq)+1` 자동 부여.
 - ingest 라우터에서 `seq=Form(0)` 으로 받고, normalizer 진입 직전 빈 값 보충.
 - 이번 사이클은 **계획만**, 실제 구현은 다음 사이클로 미룸 (race 조건 검토 필요).
 

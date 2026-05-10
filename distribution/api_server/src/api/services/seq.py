@@ -2,12 +2,12 @@
 
 When a user submits ``/api/convert/ingest`` with ``seq=0`` or empty, the backend
 assigns the next available sequence number for the natural key tuple
-``(data_type, division, team, year)``.
+``(data_type, team, group, year)``.
 
 Implementation:
     - ``next_seq()`` runs ``SELECT COALESCE(MAX(seq), 0) + 1 FROM records WHERE ...``.
     - On PostgreSQL we issue the SELECT inside the caller's transaction;
-      ``UNIQUE (data_type, division, team, year, seq)`` (Migration 0001) guards
+      ``UNIQUE (data_type, team, group, year, seq)`` (Migration 0001) guards
       against true races by raising IntegrityError on commit, which the caller
       can retry.
     - On SQLite (test env) the same query works under the implicit locking
@@ -32,8 +32,8 @@ async def next_seq(
     session: AsyncSession,
     *,
     data_type: str,
-    division: str,
     team: str,
+    group: str,
     year: int,
 ) -> int:
     """Return ``MAX(seq) + 1`` for the natural key tuple.
@@ -41,8 +41,8 @@ async def next_seq(
     Args:
         session: AsyncSession.
         data_type: ``DOC | DATA | SIM | CAD | LOG | FORM | OTHER``.
-        division: division code (uppercased).
         team: team code (uppercased).
+        group: group code (uppercased).
         year: 4-digit year.
 
     Returns:
@@ -55,8 +55,8 @@ async def next_seq(
     stmt = (
         select(func.coalesce(func.max(Record.seq), 0) + 1)
         .where(Record.data_type == data_type)
-        .where(Record.division == division.upper())
         .where(Record.team == team.upper())
+        .where(Record.group == group.upper())
         .where(Record.year == int(year))
     )
     result = await session.execute(stmt)
@@ -64,8 +64,8 @@ async def next_seq(
     logger.info(
         "next_seq: (%s,%s,%s,%s) -> %d",
         data_type,
-        division,
         team,
+        group,
         year,
         val,
     )

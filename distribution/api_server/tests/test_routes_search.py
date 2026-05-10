@@ -88,8 +88,8 @@ async def test_search_semantic_with_embeddings(
         rec = Record(
             id="DOC-HE-AI-2026-099001",
             data_type="DOC",
-            division="HE",
-            team="AI",
+            team="HE",
+            group="AI",
             year=2026,
             seq=99001,
             title="smoke",

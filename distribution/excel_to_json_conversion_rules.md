@@ -89,7 +89,7 @@ DATA JSON 으로 변환하기 위한 가이드다. Excel 은 본문 흐름(narra
 | `per_sheet` (기본) | 시트마다 별도 DATA record 생성      | 각 시트가 독립 주제일 때 (1시트 1주제)   |
 | `combined`         | 모든 시트를 하나의 record 로 묶음   | 데이터셋이 시트별로 쪼개진 경우          |
 
-- 파일 경로: `{output_dir}/{data_id}.json` (`data_id = DATA-{div}-{team}-{year}-{seq:06d}`).
+- 파일 경로: `{output_dir}/{data_id}.json` (`data_id = DATA-{div}-{group}-{year}-{seq:06d}`).
 - `per_sheet` 모드에서 시트 이름은 `caption` 으로 사용된다.
 
 ### 2.3 출력 JSON 구조 (요약)
@@ -99,8 +99,8 @@ DATA JSON 으로 변환하기 위한 가이드다. Excel 은 본문 흐름(narra
   "data_id": "DATA-HE-CAE-2026-000001",
   "schema_version": "data.v1",
   "caption": "측정결과",
-  "division": "HE",
-  "team": "CAE",
+  "team": "HE",
+  "group": "CAE",
   "year": 2026,
   "headers": ["시간", "하중", "변형률"],
   "units":   ["s",    "N",    "%"],
@@ -182,7 +182,7 @@ DATA JSON 으로 변환하기 위한 가이드다. Excel 은 본문 흐름(narra
 
 ```bash
 python -m excel_converter input.xlsx \
-    --division HE --team CAE --year 2026 \
+    --team HE --group CAE --year 2026 \
     [--start-seq 100] [--output-dir output] \
     [--mode per_sheet|combined] \
     [--header-row N] [--start-cell A5] \
@@ -193,8 +193,8 @@ python -m excel_converter input.xlsx \
 
 | 옵션                  | 기본값       | 설명                                                                                  |
 |-----------------------|-------------|---------------------------------------------------------------------------------------|
-| `--division`          | (필수)      | 팀 코드 (예: `HE`)                                                                    |
-| `--team`              | (필수)      | 그룹 코드 (예: `CAE`)                                                                 |
+| `--team`          | (필수)      | 팀 코드 (예: `HE`)                                                                    |
+| `--group`              | (필수)      | 그룹 코드 (예: `CAE`)                                                                 |
 | `--year`              | (필수)      | 연도 (예: `2026`)                                                                     |
 | `--start-seq`         | `1`         | 첫 시트의 순번 (이후 시트는 +1)                                                       |
 | `--output-dir`        | `output`    | 출력 폴더                                                                             |
@@ -334,7 +334,7 @@ openpyxl 은 병합 영역의 좌상단 셀에만 값을 두고 나머지 셀은
 ```bash
 # 표가 B5 부터 시작하는 시트
 python -m excel_converter messy.xlsx \
-    --division HE --team CAE --year 2026 \
+    --team HE --group CAE --year 2026 \
     --start-cell B5
 ```
 
@@ -377,7 +377,7 @@ Suggested --start-cell B5. Reasons: A1 is empty; row 5 looks like a header (...)
 
 ```bash
 python -m excel_converter messy.xlsx \
-    --division HE --team CAE --year 2026 \
+    --team HE --group CAE --year 2026 \
     --skip-blank-rows
 ```
 
@@ -675,17 +675,17 @@ python -m excel_converter messy.xlsx \
 ```bash
 # 표준(원칙 5개 준수) 워크북
 python -m excel_converter battery_test.xlsx \
-    --division HE --team CAE --year 2026 \
+    --team HE --group CAE --year 2026 \
     --start-seq 100 --infer-units --skip-empty
 
 # 표가 B5 부터 시작하는 불규칙 워크북
 python -m excel_converter legacy_data.xlsx \
-    --division HE --team CAE --year 2026 \
+    --team HE --group CAE --year 2026 \
     --start-cell B5 --skip-blank-rows --infer-units
 
 # 모든 시트를 하나의 record 로 병합
 python -m excel_converter multi_sheet.xlsx \
-    --division HE --team CAE --year 2026 \
+    --team HE --group CAE --year 2026 \
     --mode combined --skip-empty
 ```
 

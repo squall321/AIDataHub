@@ -13,8 +13,8 @@ async def test_diff_meta_changes(db_client, test_session_maker) -> None:
         rec_a = Record(
             id="DOC-HE-CAE-2026-000201",
             data_type="DOC",
-            division="HE",
-            team="CAE",
+            team="HE",
+            group="CAE",
             year=2026,
             seq=201,
             title="원본 제목",
@@ -26,8 +26,8 @@ async def test_diff_meta_changes(db_client, test_session_maker) -> None:
         rec_b = Record(
             id="DOC-HE-CAE-2026-000202",
             data_type="DOC",
-            division="HE",
-            team="CAE",
+            team="HE",
+            group="CAE",
             year=2026,
             seq=202,
             title="변경 제목",
@@ -62,8 +62,8 @@ async def test_diff_section_changes(db_client, test_session_maker) -> None:
         rec_a = Record(
             id="DOC-HE-CAE-2026-000301",
             data_type="DOC",
-            division="HE",
-            team="CAE",
+            team="HE",
+            group="CAE",
             year=2026,
             seq=301,
             title="A",
@@ -75,8 +75,8 @@ async def test_diff_section_changes(db_client, test_session_maker) -> None:
         rec_b = Record(
             id="DOC-HE-CAE-2026-000302",
             data_type="DOC",
-            division="HE",
-            team="CAE",
+            team="HE",
+            group="CAE",
             year=2026,
             seq=302,
             title="B",

@@ -32,7 +32,7 @@ python group_extraction.py
 
 # 6) 원본 파일 업로드 → 서버 변환 + 적재
 python ingest_record.py /path/to/doc.docx \
-  --division HE --team CAE --year 2026 --seq 7 \
+  --team HE --group CAE --year 2026 --seq 7 \
   --agents iga-analyst --tags KooRemapper,IGA
 
 # 7) 사전 변환된 번들 업로드 (JSON + 자원 폴더 자동 zip)

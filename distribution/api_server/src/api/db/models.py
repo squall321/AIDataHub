@@ -65,14 +65,14 @@ class Record(Base):
     __table_args__ = (
         UniqueConstraint(
             "data_type",
-            "division",
             "team",
+            "group",
             "year",
             "seq",
             name="uq_records_natural_key",
         ),
         Index("idx_records_type", "data_type"),
-        Index("idx_records_div_team", "division", "team"),
+        Index("idx_records_team_group", "team", "group"),
         Index("idx_records_year", "year"),
         Index("idx_records_agents", "agents", postgresql_using="gin"),
         Index("idx_records_tags", "tags", postgresql_using="gin"),
@@ -109,8 +109,8 @@ class Record(Base):
 
     # ---- Classification keys ---------------------------------------------
     data_type: Mapped[str] = mapped_column(String(20), nullable=False)
-    division: Mapped[str] = mapped_column(String(10), nullable=False)
-    team: Mapped[str] = mapped_column(String(20), nullable=False)
+    team: Mapped[str] = mapped_column(String(10), nullable=False)
+    group: Mapped[str] = mapped_column(String(20), nullable=False)
     year: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
 

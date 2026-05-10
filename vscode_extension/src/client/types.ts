@@ -12,8 +12,8 @@ export interface AgentOption {
 
 export interface MetaOptions {
   version: string;
-  divisions: string[];
-  teams: Record<string, string[]>;
+  teams: string[];
+  groups: Record<string, string[]>;
   agents: AgentOption[];
   classifications: string[];
   statuses: string[];
@@ -23,8 +23,8 @@ export interface MetaOptions {
   supported_extensions: string[];
   max_upload_mb: number;
   allow_custom: {
-    division: boolean;
     team: boolean;
+    group: boolean;
     domain: boolean;
   };
 }
@@ -49,8 +49,8 @@ export interface IngestResponseRecord {
   summary: string;
   tags: string[];
   agents: string[];
-  division: string;
   team: string;
+  group: string;
   year: number;
   seq: number;
   source_file: string | null;
@@ -68,8 +68,8 @@ export interface IngestResponse {
 
 export interface UploadFormValues {
   // Identification (required)
-  division: string;
   team: string;
+  group: string;
   year: number;
   seq: number;
   // Classification (Migration 0006 extended)
@@ -192,8 +192,8 @@ export interface RecordSection {
 export interface FullRecord {
   id: string;
   data_type: string;
-  division: string;
   team: string;
+  group: string;
   year: number;
   seq: number;
   title: string;
@@ -245,7 +245,7 @@ export interface DiscoverResponse {
   description: string;
   total_records: number;
   by_data_type: Record<string, number>;
-  by_division?: Record<string, number>;
+  by_team?: Record<string, number>;
   by_classification?: Record<string, number>;
   agents: DiscoverAgentEntry[];
   data_types_explained?: Record<string, string>;

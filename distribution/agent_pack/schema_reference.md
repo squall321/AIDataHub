@@ -10,11 +10,11 @@
 
 ```jsonc
 {
-  // 식별 (id 에서 division/team/year/seq 모두 도출)
+  // 식별 (id 에서 team/group/year/seq 모두 도출)
   "id": "DOC-HE-CAE-2026-000001",
   "data_type": "DOC",       // DOC | DATA | SIM | CAD | LOG | FORM | OTHER
-  "division": "HE",
-  "team": "CAE",
+  "team": "HE",
+  "group": "CAE",
   "year": 2026,
   "seq": 1,
   "schema_version": "1.0",
@@ -157,10 +157,10 @@
 ## ID 포맷
 
 ```text
-{DATA_TYPE}-{DIV}-{TEAM}-{YYYY}-{6digits}
+{DATA_TYPE}-{DIV}-{GROUP}-{YYYY}-{6digits}
 
 DATA_TYPE: DOC | DATA | SIM | CAD | LOG | FORM | OTHER
-DIV / TEAM: 대문자 2~5자 (회사 표준)
+DIV / GROUP: 대문자 2~5자 (회사 표준)
 YYYY: 4자리 연도
 6digits: 0-padded sequence
 
@@ -169,7 +169,7 @@ YYYY: 4자리 연도
     SIM-HE-CAE-2025-000007
 ```
 
-`id` 만 있으면 `division/team/year/seq` 모두 파싱 가능. agent 가 별도 필드로 전달할 필요 없음.
+`id` 만 있으면 `team/group/year/seq` 모두 파싱 가능. agent 가 별도 필드로 전달할 필요 없음.
 
 ---
 

@@ -194,7 +194,80 @@ export class UploaderPanel {
         }
         return;
       }
+      case 'openFilePicker': {
+        // 드래그-드롭이 webview 안에서 빈 dataTransfer 를 반환할 때 호출됨.
+        // VS Code OS 네이티브 파일 다이얼로그를 띄워 사용자가 파일 선택 → fs 로 읽어 webview 로 전달.
+        const filters: { [name: string]: string[] } = msg.target === 'bundle'
+          ? { 'ZIP bundle': ['zip'] }
+          : { 'Documents': ['docx', 'pdf', 'pptx', 'md', 'markdown', 'xlsx', 'html', 'htm'] };
+        try {
+          const uris = await vscode.window.showOpenDialog({
+            canSelectFiles: true, canSelectFolders: false, canSelectMany: false,
+            filters,
+            openLabel: msg.target === 'bundle' ? 'Upload bundle' : 'Upload file',
+          });
+          if (!uris || uris.length === 0) {
+            this.post({ type: 'fileLoaded', reqId: msg.reqId, target: msg.target, ok: false, error: 'cancelled' });
+            return;
+          }
+          await this.streamFileToWebview(uris[0], msg.reqId, msg.target);
+        } catch (err) {
+          this.post({ type: 'fileLoaded', reqId: msg.reqId, target: msg.target, ok: false, error: formatError(err) });
+        }
+        return;
+      }
+      case 'loadDroppedPath': {
+        // text/uri-list 또는 file:/// 경로를 webview 가 추출한 후 호출.
+        try {
+          let raw = msg.path;
+          if (/^file:\/\//i.test(raw)) {
+            // file:///C:/... → 경로만 추출 (vscode.Uri.parse 가 처리)
+            const uri = vscode.Uri.parse(raw);
+            await this.streamFileToWebview(uri, msg.reqId, msg.target);
+          } else {
+            const uri = vscode.Uri.file(raw);
+            await this.streamFileToWebview(uri, msg.reqId, msg.target);
+          }
+        } catch (err) {
+          this.post({ type: 'fileLoaded', reqId: msg.reqId, target: msg.target, ok: false, error: formatError(err) });
+        }
+        return;
+      }
     }
+  }
+
+  /** 파일을 디스크에서 읽어 base64 로 인코딩한 후 webview 로 postMessage. */
+  private async streamFileToWebview(
+    uri: vscode.Uri,
+    reqId: number,
+    target: 'upload' | 'bundle',
+  ): Promise<void> {
+    const data = await vscode.workspace.fs.readFile(uri);
+    const filename = uri.path.split('/').pop() || 'file';
+    // Buffer 로 변환해 base64 인코딩 (Node only — 확장 호스트에서 안전)
+    const b64 = Buffer.from(data).toString('base64');
+    this.post({
+      type: 'fileLoaded',
+      reqId,
+      target,
+      ok: true,
+      contentBase64: b64,
+      filename,
+      size: data.byteLength,
+      mimeType: this.guessMime(filename),
+    });
+  }
+
+  private guessMime(filename: string): string {
+    const lc = filename.toLowerCase();
+    if (lc.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    if (lc.endsWith('.pptx')) return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    if (lc.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    if (lc.endsWith('.pdf'))  return 'application/pdf';
+    if (lc.endsWith('.md') || lc.endsWith('.markdown')) return 'text/markdown';
+    if (lc.endsWith('.html') || lc.endsWith('.htm')) return 'text/html';
+    if (lc.endsWith('.zip'))  return 'application/zip';
+    return 'application/octet-stream';
   }
 
   /**
@@ -228,32 +301,65 @@ export class UploaderPanel {
       this.post({ type: 'connection', ok: false, error: 'Server URL is empty.' });
       return;
     }
-    const client = new ApiClient(normalizedUrl, apiKey || undefined);
-    try {
-      const health = await client.health();
-      if (health.auth_required && !apiKey) {
+
+    // 동적 폴백: 입력된 URL → 실패 시 localhost:8000 자동 시도.
+    // NAT loopback 환경 (자기 외부 IP 가 자기 PC 에서 안 닿음) 등에서
+    // 사용자가 일일이 URL 을 바꾸지 않아도 동작하도록.
+    const FALLBACK_URL = 'http://localhost:8000';
+    const candidates: string[] = [normalizedUrl];
+    if (
+      !/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(normalizedUrl)
+      && normalizedUrl !== FALLBACK_URL
+    ) {
+      candidates.push(FALLBACK_URL);
+    }
+
+    let lastError: unknown = null;
+    for (let i = 0; i < candidates.length; i++) {
+      const url = candidates[i];
+      const fellBack = i > 0;
+      const client = new ApiClient(url, apiKey || undefined);
+      try {
+        const health = await client.health();
+        if (health.auth_required && !apiKey) {
+          this.post({
+            type: 'connection',
+            ok: false,
+            error: 'This server requires an API key (auth_required=true).',
+            health,
+            effectiveUrl: url,
+            fellBack,
+          });
+          return;
+        }
+        if (apiKey) {
+          await client.verifyKey();
+        }
+        if (persist) {
+          await this.store.setBaseUrl(url);
+          if (apiKey) await this.store.setApiKey(apiKey);
+          await this.store.setConnected(true);
+          const snap = await this.store.snapshot();
+          this.post({ type: 'config', ...snap });
+        }
         this.post({
           type: 'connection',
-          ok: false,
-          error: 'This server requires an API key (auth_required=true).',
+          ok: true,
           health,
+          effectiveUrl: url,
+          fellBack,
         });
         return;
+      } catch (err) {
+        lastError = err;
+        // 다음 후보로 계속.
       }
-      if (apiKey) {
-        await client.verifyKey();
-      }
-      if (persist) {
-        await this.store.setBaseUrl(normalizedUrl);
-        if (apiKey) await this.store.setApiKey(apiKey);
-        await this.store.setConnected(true);
-        const snap = await this.store.snapshot();
-        this.post({ type: 'config', ...snap });
-      }
-      this.post({ type: 'connection', ok: true, health });
-    } catch (err) {
-      this.post({ type: 'connection', ok: false, error: formatError(err) });
     }
+    this.post({
+      type: 'connection',
+      ok: false,
+      error: formatError(lastError),
+    });
   }
 
   private async fetchOptions(): Promise<void> {

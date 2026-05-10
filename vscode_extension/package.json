@@ -2,7 +2,7 @@
   "name": "ai-data-hub-uploader",
   "displayName": "AI Data Hub Uploader",
   "description": "Upload, bundle and search records in your AI Data Hub backend — drag-drop original files (.docx/.pdf/.pptx/.md/.xlsx), or pre-converted JSON+resources zip bundles, plus semantic / FTS / tag search.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "squall321",
   "license": "UNLICENSED",
   "repository": {

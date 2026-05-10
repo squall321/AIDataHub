@@ -207,7 +207,7 @@ python -m api.seed
 
 ```powershell
 python -m converter "d:\tmp\iga_guide_test.docx" `
-    --division HE --team CAE --year 2026 --seq 1 `
+    --team HE --group CAE --year 2026 --seq 1 `
     --output-dir output
 ```
 
@@ -252,7 +252,7 @@ uvicorn api.main:app --reload --port 8000 --app-dir src
 ```powershell
 curl.exe -X POST http://localhost:8000/api/convert/ingest `
     -F "file=@d:\tmp\iga_guide_test.docx" `
-    -F "division=HE" -F "team=CAE" -F "year=2026" -F "seq=2" `
+    -F "team=HE" -F "group=CAE" -F "year=2026" -F "seq=2" `
     -F "tags=IGA,KooRemapper" -F "agents=iga-analyst"
 ```
 

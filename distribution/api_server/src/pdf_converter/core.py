@@ -10,7 +10,7 @@
 - 표는 ``page.extract_tables()`` 로 추출 → ``tables[]`` 등록 + 본문 흐름에 ref 블록.
 - 그림은 ``page.images`` 메타로 베스트 노력 (실제 이미지 추출은 향후 OCR 통합과 함께).
 
-ID 형식: ``DOC-{div}-{team}-{year}-{seq:06d}``
+ID 형식: ``DOC-{team}-{group}-{year}-{seq:06d}``
 서브 ID: -F (figure) / -T (table) / -A (attachment).
 """
 from __future__ import annotations
@@ -57,8 +57,8 @@ logger = logging.getLogger(__name__)
 class PdfConverterOptions:
     """PDF 변환기 옵션."""
 
-    division: str
     team: str
+    group: str
     year: int
     seq: int = 1
     output_dir: Path = field(default_factory=lambda: Path("output"))
@@ -77,8 +77,8 @@ class PdfConverterOptions:
     ocr_dpi: int = 200
 
     def __post_init__(self) -> None:
-        self.division = self.division.upper()
         self.team = self.team.upper()
+        self.group = self.group.upper()
         if self.year < 1900 or self.year > 9999:
             raise ValueError(f"year out of range: {self.year}")
         if self.seq < 0:
@@ -87,11 +87,11 @@ class PdfConverterOptions:
 
 
 # ---------------------------------------------------------------------------
-# ID helpers — DOC-{div}-{team}-{year}-{seq:06d}
+# ID helpers — DOC-{team}-{group}-{year}-{seq:06d}
 # ---------------------------------------------------------------------------
 
 def _make_doc_id(opts: PdfConverterOptions) -> str:
-    return f"DOC-{opts.division}-{opts.team}-{opts.year}-{opts.seq:06d}"
+    return f"DOC-{opts.team}-{opts.group}-{opts.year}-{opts.seq:06d}"
 
 
 def _make_fig_id(doc_id: str, n: int) -> str:
@@ -115,7 +115,7 @@ class PdfConverter:
 
     사용::
 
-        opts = PdfConverterOptions(division="HE", team="CAE", year=2026)
+        opts = PdfConverterOptions(team="HE", group="CAE", year=2026)
         conv = PdfConverter(opts)
         result = conv.convert("input.pdf")
         write_output(result, opts.output_dir)
@@ -641,7 +641,7 @@ class PdfConverter:
             "created": _iso_date(created_iso),
             "modified": _iso_date(modified_iso),
             "author": author,
-            "department": f"{self.opts.division}-{self.opts.team}",
+            "department": f"{self.opts.team}-{self.opts.group}",
             "version": "1.0",
             "tags": tags,
             "summary": summary,

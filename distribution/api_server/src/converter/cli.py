@@ -17,8 +17,8 @@ def main(argv: list[str] | None = None) -> int:
         description="Word(.docx) → JSON 변환 (json_schema_rules.md v1.0)",
     )
     parser.add_argument("docx_path", help="입력 .docx 경로")
-    parser.add_argument("--division", required=True, help="팀 코드 (예: HE)")
-    parser.add_argument("--team", required=True, help="그룹 코드 (예: CAE)")
+    parser.add_argument("--team", required=True, help="팀 코드 (예: HE)")
+    parser.add_argument("--group", required=True, help="그룹 코드 (예: CAE)")
     parser.add_argument("--year", type=int, required=True, help="연도 (예: 2026)")
     parser.add_argument("--seq", type=int, default=1, help="순번 (기본 1)")
     parser.add_argument(
@@ -49,8 +49,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     opts = ConverterOptions(
-        division=args.division.upper(),
         team=args.team.upper(),
+        group=args.group.upper(),
         year=args.year,
         seq=args.seq,
         output_dir=Path(args.output_dir),

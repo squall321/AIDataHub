@@ -69,7 +69,7 @@ Markdown 은 CommonMark 의 명시적인 헤딩 계층(`#`, `##`, ...) 덕분에
 
 - 단일 JSON 파일 (스키마 v1.0, `data_type = "DOC"`, `meta.source_format = "md"`).
 - ID 형식:
-  - `meta.doc_id` = `DOC-{div}-{team}-{year}-{seq:06d}`
+  - `meta.doc_id` = `DOC-{div}-{group}-{year}-{seq:06d}`
   - 그림: `{doc_id}-F{nnn}` (예: `DOC-HE-CAE-2026-000001-F001`)
   - 표: `{doc_id}-T{nnn}`
   - 첨부: `{doc_id}-A{nnn}`
@@ -414,7 +414,7 @@ URL 확장자 기반 자동 분류:
 
 생성된 JSON 이 [json_schema_rules.md](./json_schema_rules.md) 13장 검증 체크리스트를 통과해야 한다.
 
-- [ ] `meta.doc_id` 가 `DOC-{div}-{team}-{year}-{seq:06d}` 패턴인가
+- [ ] `meta.doc_id` 가 `DOC-{div}-{group}-{year}-{seq:06d}` 패턴인가
 - [ ] `meta.source_format == "md"`
 - [ ] `meta.title` 이 비어 있지 않은가
 - [ ] `meta.tags` 가 2개 이상인가 (front matter 또는 CLI)
@@ -452,7 +452,7 @@ pip install "markdown-it-py>=3.0" "mdit-py-plugins>=0.4"
 
 ```bash
 python -m md_converter input.md \
-    --division HE --team CAE --year 2026 --seq 7 \
+    --team HE --group CAE --year 2026 --seq 7 \
     --output-dir output \
     --agents iga-analyst,doc-curator \
     --tags KooRemapper,IGA,NURBS
@@ -470,8 +470,8 @@ output/
 
 | 옵션 | 설명 | 기본값 |
 |------|------|--------|
-| `--division` | 팀 코드 (필수, 대문자화) | — |
-| `--team` | 그룹 코드 (필수, 대문자화) | — |
+| `--team` | 팀 코드 (필수, 대문자화) | — |
+| `--group` | 그룹 코드 (필수, 대문자화) | — |
 | `--year` | 연도 (필수) | — |
 | `--seq` | 순번 (6자리 패딩) | 1 |
 | `--output-dir` | 출력 폴더 | `output` |
@@ -484,7 +484,7 @@ output/
 ```python
 from md_converter import MarkdownConverter, MarkdownConverterOptions, write_output
 
-opts = MarkdownConverterOptions(division="HE", team="CAE", year=2026, seq=7)
+opts = MarkdownConverterOptions(team="HE", group="CAE", year=2026, seq=7)
 conv = MarkdownConverter(opts)
 result = conv.convert("path/to/input.md")          # 또는 conv.convert_text(md_string)
 json_path, log_path = write_output(result, opts.output_dir)

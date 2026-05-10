@@ -219,7 +219,7 @@ curl -s "$BASE/api/data/DATA-HE-CAE-2026-000034/aggregate?func=avg&col=stress" |
 ```bash
 cd api_server
 .venv/Scripts/python.exe -m converter input.docx \
-  --division HE --team CAE --year 2026 --seq 7 \
+  --team HE --group CAE --year 2026 --seq 7 \
   --agents iga-analyst,doc-curator \
   --tags KooRemapper,IGA --output-dir output
 ```
@@ -231,8 +231,8 @@ cd api_server
 ```bash
 curl -X POST "$BASE/api/convert/ingest" \
   -F "file=@input.docx" \
-  -F "division=HE" \
-  -F "team=CAE" \
+  -F "team=HE" \
+  -F "group=CAE" \
   -F "year=2026" \
   -F "seq=7" \
   -F "agents=iga-analyst,doc-curator" \
@@ -296,7 +296,7 @@ PDF 의 OCR 적용:
 ```bash
 curl -X POST "$BASE/api/convert/ingest?ocr=true&ocr_lang=eng+kor" \
   -F "file=@scan.pdf" \
-  -F "division=HE" -F "team=CAE" -F "year=2026" -F "seq=8"
+  -F "team=HE" -F "group=CAE" -F "year=2026" -F "seq=8"
 ```
 
 Excel 다중 표:
@@ -304,7 +304,7 @@ Excel 다중 표:
 ```bash
 curl -X POST "$BASE/api/convert/ingest?detect_multi_tables=true" \
   -F "file=@multi.xlsx" \
-  -F "division=HE" -F "team=MFG" -F "year=2026" -F "seq=12"
+  -F "team=HE" -F "group=MFG" -F "year=2026" -F "seq=12"
 ```
 
 ---

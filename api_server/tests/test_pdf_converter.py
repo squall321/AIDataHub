@@ -41,8 +41,8 @@ from pdf_converter.parser import (  # noqa: E402
 @pytest.fixture()
 def opts(tmp_path):
     return PdfConverterOptions(
-        division="HE",
-        team="CAE",
+        team="HE",
+        group="CAE",
         year=2026,
         seq=1,
         output_dir=tmp_path,
@@ -271,14 +271,14 @@ def test_metadata_from_info_dict(opts, tmp_path):
     pdf = _make_simple_pdf(
         tmp_path / "meta.pdf",
         title="Battery Crash Report",
-        author="cae-team",
+        author="cae-group",
         subject="배터리 측면 충돌 결과 요약",
         keywords="battery,crash,LS-DYNA",
     )
     result, _ = _convert(pdf, opts)
     meta = result.meta
     assert meta["title"] == "Battery Crash Report"
-    assert meta["author"] == "cae-team"
+    assert meta["author"] == "cae-group"
     assert meta["summary"] == "배터리 측면 충돌 결과 요약"
     # keywords → tags 병합
     assert "battery" in meta["tags"]

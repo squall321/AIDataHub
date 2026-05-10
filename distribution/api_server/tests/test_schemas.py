@@ -26,8 +26,8 @@ class TestIdFormat:
         parts = parse_id("DOC-HE-CAE-2026-000001")
         assert parts == {
             "data_type": "DOC",
-            "division": "HE",
-            "team": "CAE",
+            "team": "HE",
+            "group": "CAE",
             "year": 2026,
             "seq": 1,
         }
@@ -40,8 +40,8 @@ class TestIdFormat:
     def test_legacy_default_doc(self) -> None:
         parts = parse_id("HE-CAE-2026-000001")
         assert parts["data_type"] == "DOC"
-        assert parts["division"] == "HE"
-        assert parts["team"] == "CAE"
+        assert parts["team"] == "HE"
+        assert parts["group"] == "CAE"
         assert parts["year"] == 2026
         assert parts["seq"] == 1
         assert is_legacy_id("HE-CAE-2026-000001") is True
@@ -76,8 +76,8 @@ class TestIdFormat:
         [
             "",
             "FOO-HE-CAE-2026-000001",   # invalid data_type
-            "DOC-h-CAE-2026-000001",    # division too short / lowercase
-            "DOC-HE-cae-2026-000001",   # team lowercase
+            "DOC-h-CAE-2026-000001",    # team too short / lowercase
+            "DOC-HE-cae-2026-000001",   # group lowercase
             "DOC-HE-CAE-1999-000001",   # year out of range
             "DOC-HE-CAE-2026-12345",    # seq not 6 digits
             "HE-CAE-2026-12345",        # legacy seq wrong width
@@ -98,11 +98,11 @@ class TestIdFormat:
     def test_recordid_validation_errors(self) -> None:
         with pytest.raises(ValidationError):
             RecordID(
-                data_type="DOC", division="he", team="CAE", year=2026, seq=1
+                data_type="DOC", team="he", group="CAE", year=2026, seq=1
             )
         with pytest.raises(ValidationError):
             RecordID(
-                data_type="DOC", division="HE", team="CAE", year=1999, seq=1
+                data_type="DOC", team="HE", group="CAE", year=1999, seq=1
             )
 
 

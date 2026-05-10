@@ -85,8 +85,8 @@ def test_pptx_converter_emits_chart_table(tmp_path) -> None:
 
     pptx_path = _make_pptx_with_chart(tmp_path)
     opts = PptxConverterOptions(
-        division="HE",
-        team="CAE",
+        team="HE",
+        group="CAE",
         year=2026,
         seq=99,
         output_dir=tmp_path / "out",

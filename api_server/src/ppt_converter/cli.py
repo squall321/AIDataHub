@@ -2,7 +2,7 @@
 
 사용 예:
     python -m ppt_converter slides.pptx \
-        --division HE --team CAE --year 2026 --seq 1 \
+        --team HE --group CAE --year 2026 --seq 1 \
         --output-dir output --tags IGA,튜토리얼 --agents iga-analyst
 """
 from __future__ import annotations
@@ -32,8 +32,8 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument("pptx_path", help="입력 .pptx 경로")
-    parser.add_argument("--division", required=True, help="팀 코드 (예: HE)")
-    parser.add_argument("--team", required=True, help="그룹 코드 (예: CAE)")
+    parser.add_argument("--team", required=True, help="팀 코드 (예: HE)")
+    parser.add_argument("--group", required=True, help="그룹 코드 (예: CAE)")
     parser.add_argument("--year", type=int, required=True, help="연도 (예: 2026)")
     parser.add_argument("--seq", type=int, default=1, help="순번 (기본 1)")
     parser.add_argument(
@@ -97,8 +97,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     opts = PptxConverterOptions(
-        division=args.division.upper(),
         team=args.team.upper(),
+        group=args.group.upper(),
         year=args.year,
         seq=args.seq,
         output_dir=Path(args.output_dir),

@@ -13,7 +13,7 @@ and an MCP stdio server. Every record has:
 |---|---|
 | `id` | human-readable code, e.g. `DOC-HE-CAE-2026-000001` |
 | `data_type` | `DOC` / `DATA` / `SIM` / `CAD` / `LOG` / `FORM` / `OTHER` |
-| `division`, `team`, `year`, `seq` | parsed from the id |
+| `team`, `group`, `year`, `seq` | parsed from the id |
 | `title`, `summary`, `tags[]` | human metadata |
 | `agents[]` | which agent types may use this record |
 | `content` | data_type-specific JSON payload (DOC: sections, DATA: rows, ...) |
@@ -56,7 +56,7 @@ If you already know the agent_type or data_type, skip step 1 and go to step 2.
 | endpoint | purpose |
 |---|---|
 | `POST /api/ask` | natural-language → `{interpreted_query, results, follow_up_queries}` |
-| `GET /api/records?...` | filter by `data_type`, `division`, `team`, `year`, `agent`, `tag`, `q`, `capabilities` |
+| `GET /api/records?...` | filter by `data_type`, `team`, `group`, `year`, `agent`, `tag`, `q`, `capabilities` |
 | `GET /api/data?agent=...` | agent-scoped search with relevance scoring (Cline SR core) |
 | `GET /api/search?mode=fts\|tag\|semantic` | classic search modes |
 
@@ -74,7 +74,7 @@ If you already know the agent_type or data_type, skip step 1 and go to step 2.
 
 | endpoint | purpose |
 |---|---|
-| `GET /api/analytics/distribution` | counts by data_type / division / team / year |
+| `GET /api/analytics/distribution` | counts by data_type / team / group / year |
 | `GET /api/analytics/common-tags?agent=...` | top tags within an agent's scope |
 | `GET /api/analytics/cross-agent?agents=A&agents=B` | shared records |
 | `GET /api/analytics/timeline?year=2026` | monthly counts |

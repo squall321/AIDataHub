@@ -13,7 +13,7 @@
 |---|---|---|
 | P0-1 `meta.id` vs `meta.doc_id` | v1.2 doc-fix | `json_schema_rules.md` §4.1 |
 | P0-2 `meta.agents` vs `meta.agent_scope` | v1.2 doc-fix | §4.2 |
-| P0-3 필수 필드 `data_type/division/team/year/seq` | v1.2 doc-fix (`doc_id` 파싱으로 도출 명시) | §4.1 |
+| P0-3 필수 필드 `data_type/team/group/year/seq` | v1.2 doc-fix (`doc_id` 파싱으로 도출 명시) | §4.1 |
 | P0-4 `derivation` enum 충돌 | v1.2 doc-fix (`original/extracted/aggregated/translated`) | §4.4, `schemas/common.py:26` |
 | **P0-5** normalizer 가 0006 10필드 미흡수 | **v1.3 code-fix** — A-1 commit `c2c66c6`. `_extract_doc:103-153` + `_common_fields:240-274` + `RecordIn(...)` 에 11개 필드 흡수 추가 | §4.4 (KNOWN GAP 박스 → "v1.3 닫힘" 박스로 교체) |
 | **P0-6** 0007 필드 변환기 자동 채움 0% | **v1.3 code-fix** — A-2 commit `c2c66c6`. 6 변환기 모두 `_apply_agent_discovery_defaults` 적용 — `agent_hints` (자동), `query_examples` (title/tag 기반), `access_pattern` 채움 | §4.4-bis |
@@ -43,13 +43,13 @@
 | `id` | string | 필수 | - | - | - | - | - | - | 모든 변환기가 `doc_id` 키로 출력. 명세는 `id`. (P0 키 충돌) |
 | `doc_id` | string | (명세에 없음) | O | O (`data_id` 로 별도) | O | O | O | O | 명세에 `doc_id` 키 없음. |
 | `data_type` | enum | 필수 | - | - (`schema_version=data.v1`) | - | - | - | - | 변환기 어디도 `meta.data_type` 안 씀 → ID prefix 로만 판단. |
-| `division` / `team` / `year` / `seq` | — | 필수 | - | - | - | - | - | - | 변환기 meta 에 출력 X. ID 파싱으로만 도출 |
+| `team` / `group` / `year` / `seq` | — | 필수 | - | - | - | - | - | - | 변환기 meta 에 출력 X. ID 파싱으로만 도출 |
 | `title` | string | 필수 | O `core.title` 또는 파일명 | O `_META.title` 또는 빌트인 `wb.properties.title` | O `core.title` 또는 stem | O `front_matter.title` 또는 첫 h1 | O `<title>` 또는 첫 h1 | O `/Info.Title` 또는 첫 헤딩 | 일관성 양호 |
 | `summary` | string | 필수 | ~ override 만 | O `_META.summary` / `description` 빌트인 | ~ `_extract_summary_fallback` (slide note) | O `front_matter.summary` | O `<meta name="description">` | O `/Info.Subject` | Word 만 자동 추출 없음 |
 | `tags` | string[] | 필수 | ~ override 만 | O `_META.tags` / `keywords` 빌트인 | ~ CLI tags | O `front_matter.tags` | O `<meta name="keywords">` | O `/Info.Keywords` 분할 | Word 자동 추출 없음 |
 | `agents` | string[] | 권장 | ~ `agent_scope` override | O `_META.agents` | ~ CLI agents | O `front_matter.agents` | O `<meta name="agents">` | ~ CLI agents | **명세는 `agents`, 변환기는 `agent_scope`** (P0) |
 | `author` | string | 권장 | O `core.author` | O `creator` 빌트인 | O `core.author` | O `front_matter.author` | O `<meta name="author">` | O `/Info.Author` | 일관성 양호 |
-| `department` | string | 권장 | O `{div}-{team}` 합성 | - (워크북 키 없음) | O 합성 | O 합성 | O 합성 | O 합성 | Excel 만 자동 채움 없음 |
+| `department` | string | 권장 | O `{div}-{group}` 합성 | - (워크북 키 없음) | O 합성 | O 합성 | O 합성 | O 합성 | Excel 만 자동 채움 없음 |
 | `project` | string | 선택 | - | O `_META.project` | - | ~ front_matter | ~ head_meta | - | 5/6 누락 |
 | `source_file` | string | 권장 | O | - (DATA payload 의 `source.sheet` 만) | O | O | O | O | Excel 의 source 키가 별도 |
 | `source_format` | string | (명세에 없음) | O `"docx"` | - | O `"pptx"` | O `"md"` | O `"html"` | O `"pdf"` | 명세에 정식으로 없음 — 사실상 표준이지만 미정의 (P1) |
@@ -119,7 +119,7 @@
 |---|------|--------|------|------|
 | P0-1 | **`meta.id` vs `meta.doc_id`** | ✅ doc-fixed | 6개 변환기 모두 `meta.doc_id` 출력 (`converter/core.py:796`, `ppt_converter/core.py:893`, `md_converter/core.py:633`, `html_converter/core.py:625`, `pdf_converter/core.py:635`, Excel 은 top-level `data_id`). normalizer `_extract_doc:104` 가 `raw.id → meta.doc_id → meta.id` 순으로 흡수. | 룰 MD를 `doc_id` 1차 표기로 정정. 명세 검증은 `doc_id` 통과. |
 | P0-2 | **`meta.agents` vs `meta.agent_scope`** | ✅ doc-fixed | 변환기는 `agent_scope` 출력. Word `core.py:809-810`, PPT `core.py:907`, MD `core.py:647`, HTML `core.py:639`, PDF `core.py:649`. normalizer `:108` 폴백. | 룰 MD를 `agent_scope` 1차 표기로 정정. |
-| P0-3 | **`data_type`/`division`/`team`/`year`/`seq` 변환기 미출력** | ✅ doc-fixed (의도된 설계) | 변환기 어디에도 별도 키 없음. `doc_id` 파싱으로 도출 (`schemas/id_format.parse_id`). | 룰 MD에 "`doc_id` 에서 파싱" 으로 명시. Excel DATA 만 top-level 에 `division/team/year` 별도 출력 (예외). |
+| P0-3 | **`data_type`/`team`/`group`/`year`/`seq` 변환기 미출력** | ✅ doc-fixed (의도된 설계) | 변환기 어디에도 별도 키 없음. `doc_id` 파싱으로 도출 (`schemas/id_format.parse_id`). | 룰 MD에 "`doc_id` 에서 파싱" 으로 명시. Excel DATA 만 top-level 에 `team/group/year` 별도 출력 (예외). |
 | P0-4 | **`derivation` enum 충돌** | ✅ doc-fixed | 코드 `schemas/common.py:26`: `original/extracted/aggregated/translated`. 룰 MD가 `revision/translation/extract` 로 표기되어 있던 것이 잘못. | 룰 MD를 코드 enum 으로 정정. v1.1 변경 이력에 명시. |
 | P0-5 | **classification/status/domain/subject_keywords/source_system/language/parent_record_id/derivation/quality_score/valid_from/valid_until normalizer 미흡수** | ✅ code-fixed (v1.3) | A-1 (commit `c2c66c6`) — `_extract_doc` (`normalizer.py:103-153`) + `_common_fields` (`:240-274`) + `RecordIn(...)` 인스턴스화에 11개 필드 흡수 경로 추가. 모두 `meta.*` 우선 + `raw.*` 폴백 패턴. | E2E 검증 완료 (`d:/tmp/e2e_full2.py`) — 모든 11 필드 DB 까지 정상 흐름. |
 | P0-6 | **0007 `agent_hints/related_record_ids/query_examples/access_pattern`** | ✅ code-fixed (v1.3) | A-2 (commit `c2c66c6`) — 6 변환기 `_build_meta` 에 `_apply_agent_discovery_defaults` 적용. Word/MD/HTML/PDF 는 `converter/core.py:57-129` 공유 helper, Excel/PPT 는 로컬 helper. | 작성자 override (frontmatter / head_meta / CLI) 가 우선, 빈 경우 자동 채움. |
@@ -189,7 +189,7 @@ v1.3 (2026-05-10) 갱신 후의 잔여 작업.
 
 1. ✅ `meta.id` → `meta.doc_id` 1차 표기 (P0-1, v1.2)
 2. ✅ `meta.agents` → `meta.agent_scope` 1차 표기 (P0-2, v1.2)
-3. ✅ `data_type/division/team/year/seq` 는 `doc_id` 파싱으로 도출 명시 (P0-3, v1.2)
+3. ✅ `data_type/team/group/year/seq` 는 `doc_id` 파싱으로 도출 명시 (P0-3, v1.2)
 4. ✅ `derivation` enum 코드값으로 정정 (P0-4, v1.2)
 5. ✅ KNOWN GAP 박스 → "v1.3 닫힘" 박스로 교체 (P0-5, v1.3)
 6. ✅ 0007 필드 흡수 + 변환기 자동 채움 명시 (P0-6, v1.3)

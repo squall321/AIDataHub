@@ -254,8 +254,8 @@ async def test_db_write_creates_record(db_session) -> None:
     assert fetched is not None
     assert fetched.title == "test data"
     assert fetched.data_type == "DATA"
-    assert fetched.division == "HE"
-    assert fetched.team == "CAE"
+    assert fetched.team == "HE"
+    assert fetched.group == "CAE"
     assert fetched.year == 2026
     assert fetched.seq == 10
     assert fetched.content_hash is not None

@@ -79,7 +79,7 @@ DOC-HE-CAE-2026-000001 (v1.0, original)
 ### 새 리비전 생성 절차
 
 1. 동일 데이터의 새 버전을 **새 record id 로** 생성한다 (자연키 unique
-   constraint 때문에 동일 data_type/division/team/year/seq 재사용 불가).
+   constraint 때문에 동일 data_type/team/group/year/seq 재사용 불가).
 2. `parent_record_id` 를 직전 리비전 ID 로 설정한다.
 3. `derivation` 을 `"extracted"` 등으로 표시 (현 enum 4개 중 적절한 값).
 4. 운영자가 부모를 `status = "deprecated"` 로 마킹 (자동화는 다음 단계 — 아래
@@ -90,7 +90,7 @@ DOC-HE-CAE-2026-000001 (v1.0, original)
 본 사이클에서는 부모 자동 deprecate 는 CLI 헬퍼로 분리한다. 자동화 시 식별 키:
 
 ```
-identity = (data_type, division, team, content_hash)
+identity = (data_type, team, group, content_hash)
 ```
 
 `content_hash` 가 다르면 "새 데이터", 같으면 동일 데이터. 동일 identity 로

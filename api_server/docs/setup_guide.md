@@ -101,7 +101,7 @@ JOBS_LIST_LIMIT=100          # /api/jobs 응답 상한
 5. 변환기 사용 예:
 
    ```powershell
-   python -m pdf_converter scanned.pdf --division HE --team CAE --year 2026 --ocr --ocr-lang eng+kor
+   python -m pdf_converter scanned.pdf --team HE --group CAE --year 2026 --ocr --ocr-lang eng+kor
    ```
 
 > Tesseract 또는 의존성이 없으면 `--ocr` 플래그는 안전하게 무시되고 경고만 남는다.
@@ -128,7 +128,7 @@ psql -h localhost -U postgres -d ai_data -c "\dt"
 ```powershell
 # 1) Word → JSON
 python -m converter "d:\tmp\iga_guide_test.docx" `
-  --division HE --team CAE --year 2026 --seq 1 `
+  --team HE --group CAE --year 2026 --seq 1 `
   --output-dir output
 
 # 2) JSON → DB

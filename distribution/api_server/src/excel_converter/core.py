@@ -12,7 +12,7 @@
 - --skip-blank-rows 로 데이터 사이의 빈 행을 제거할 수 있다
 
 caption 은 시트 이름.
-data_id 는 ``DATA-{div}-{team}-{year}-{seq:06d}`` 포맷.
+data_id 는 ``DATA-{team}-{group}-{year}-{seq:06d}`` 포맷.
 """
 from __future__ import annotations
 
@@ -126,8 +126,8 @@ def parse_cell_address(addr: str) -> tuple[int, int]:
 class XlsxConverterOptions:
     """변환기 옵션."""
 
-    division: str
     team: str
+    group: str
     year: int
     start_seq: int = 1
     output_dir: Path = field(default_factory=lambda: Path("output"))
@@ -142,8 +142,8 @@ class XlsxConverterOptions:
     glossary_sheet: str = "_GLOSSARY"  # 컬럼 의미 정의 시트 이름
 
     def __post_init__(self) -> None:
-        self.division = self.division.upper()
         self.team = self.team.upper()
+        self.group = self.group.upper()
         if self.mode not in ("per_sheet", "combined"):
             raise ValueError(f"mode must be 'per_sheet' or 'combined', got {self.mode!r}")
         if self.header_row < 1:
@@ -193,8 +193,8 @@ class ConvertedSheet:
             "data_id": self.data_id,
             "schema_version": "data.v1",
             "caption": self.caption,
-            "division": opts.division,
             "team": opts.team,
+            "group": opts.group,
             "year": opts.year,
             "headers": self.headers,
             "rows": self.rows,
@@ -862,7 +862,7 @@ class XlsxConverter:
     # ---- internals ---------------------------------------------------
 
     def _data_id(self, seq: int) -> str:
-        return f"DATA-{self.options.division}-{self.options.team}-{self.options.year}-{seq:06d}"
+        return f"DATA-{self.options.team}-{self.options.group}-{self.options.year}-{seq:06d}"
 
     def _convert_sheet(self, ws: Worksheet, seq: int) -> Optional[ConvertedSheet]:
         merge_lookup = _build_merge_lookup(ws)

@@ -21,7 +21,7 @@ async def test_list_records_happy(db_client, seed_records) -> None:
 async def test_list_records_filter_by_year_and_team(db_client, seed_records) -> None:
     resp = await db_client.get(
         "/api/records",
-        params={"year": 2026, "team": "CAE", "data_type": "DOC"},
+        params={"year": 2026, "group": "CAE", "data_type": "DOC"},
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -55,8 +55,8 @@ async def test_create_and_delete_record(db_client) -> None:
     payload = {
         "id": "DOC-HE-CAE-2026-000099",
         "data_type": "DOC",
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": 2026,
         "seq": 99,
         "title": "신규 테스트 문서",

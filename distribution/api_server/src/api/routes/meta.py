@@ -17,7 +17,7 @@ from ..db.base import get_session
 from ..db.models import Agent
 from ..schemas.common import CLASSIFICATIONS, DERIVATIONS, STATUSES
 from ..schemas.id_format import DATA_TYPES
-from ..seed.divisions import DIVISIONS, TEAMS
+from ..seed.teams import GROUPS, TEAMS
 from ..services.converter_dispatch import EXTENSION_MAP
 
 log = logging.getLogger(__name__)
@@ -31,8 +31,8 @@ router = APIRouter(prefix="/api/meta", tags=["meta"])
 LANGUAGES: list[str] = ["ko", "en", "ja", "zh"]
 
 ALLOW_CUSTOM: dict[str, bool] = {
-    "division": False,
-    "team": True,
+    "team": False,
+    "group": True,
     "domain": True,
 }
 
@@ -69,8 +69,8 @@ async def options(
 
     payload = {
         "version": "1.0",
-        "divisions": list(DIVISIONS),
-        "teams": {k: list(v) for k, v in TEAMS.items()},
+        "teams": list(TEAMS),
+        "groups": {k: list(v) for k, v in GROUPS.items()},
         "agents": agents_payload,
         "classifications": list(CLASSIFICATIONS),
         "statuses": list(STATUSES),

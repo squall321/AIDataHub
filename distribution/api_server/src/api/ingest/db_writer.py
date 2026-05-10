@@ -181,8 +181,8 @@ async def write_record(
 
         # update — 모든 mutable 필드 갱신.
         existing.data_type = record_in.data_type
-        existing.division = parts["division"]
         existing.team = parts["team"]
+        existing.group = parts["group"]
         existing.year = parts["year"]
         existing.seq = parts["seq"]
         existing.title = record_in.title
@@ -224,8 +224,8 @@ async def write_record(
         target = Record(
             id=record_in.id,
             data_type=record_in.data_type,
-            division=parts["division"],
             team=parts["team"],
+            group=parts["group"],
             year=parts["year"],
             seq=parts["seq"],
             title=record_in.title,

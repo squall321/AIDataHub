@@ -32,8 +32,8 @@ async def test_next_seq_empty_returns_one(test_session) -> None:
     val = await next_seq(
         test_session,
         data_type="DOC",
-        division="HE",
-        team="CAE",
+        team="HE",
+        group="CAE",
         year=2026,
     )
     assert val == 1
@@ -47,8 +47,8 @@ async def test_next_seq_increments_after_insert(test_session) -> None:
     rec = Record(
         id="DOC-HE-CAE-2026-000007",
         data_type="DOC",
-        division="HE",
-        team="CAE",
+        team="HE",
+        group="CAE",
         year=2026,
         seq=7,
         title="seed",
@@ -63,8 +63,8 @@ async def test_next_seq_increments_after_insert(test_session) -> None:
     val = await next_seq(
         test_session,
         data_type="DOC",
-        division="HE",
-        team="CAE",
+        team="HE",
+        group="CAE",
         year=2026,
     )
     assert val == 8
@@ -72,7 +72,7 @@ async def test_next_seq_increments_after_insert(test_session) -> None:
 
 @pytest.mark.asyncio
 async def test_next_seq_scoped_by_natural_key(test_session) -> None:
-    """다른 (data_type, division, team, year) 는 카운터를 공유하지 않는다."""
+    """다른 (data_type, team, group, year) 는 카운터를 공유하지 않는다."""
     from api.db.models import Record
     from api.services.seq import next_seq
 
@@ -80,8 +80,8 @@ async def test_next_seq_scoped_by_natural_key(test_session) -> None:
         Record(
             id="DOC-HE-CAE-2026-000005",
             data_type="DOC",
-            division="HE",
-            team="CAE",
+            team="HE",
+            group="CAE",
             year=2026,
             seq=5,
             title="A",
@@ -93,24 +93,24 @@ async def test_next_seq_scoped_by_natural_key(test_session) -> None:
     )
     await test_session.flush()
 
-    # 다른 division → 1.
+    # 다른 team → 1.
     v1 = await next_seq(
-        test_session, data_type="DOC", division="DA", team="CAE", year=2026
+        test_session, data_type="DOC", team="DA", group="CAE", year=2026
     )
     assert v1 == 1
     # 다른 year → 1.
     v2 = await next_seq(
-        test_session, data_type="DOC", division="HE", team="CAE", year=2025
+        test_session, data_type="DOC", team="HE", group="CAE", year=2025
     )
     assert v2 == 1
     # 다른 data_type → 1.
     v3 = await next_seq(
-        test_session, data_type="DATA", division="HE", team="CAE", year=2026
+        test_session, data_type="DATA", team="HE", group="CAE", year=2026
     )
     assert v3 == 1
     # 같은 키 → 6.
     v4 = await next_seq(
-        test_session, data_type="DOC", division="HE", team="CAE", year=2026
+        test_session, data_type="DOC", team="HE", group="CAE", year=2026
     )
     assert v4 == 6
 
@@ -128,8 +128,8 @@ async def test_ingest_seq_zero_assigns_next(db_client) -> None:
     f2_bytes = b"# second\n\nbody-B\n"
 
     form = {
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": "2026",
         "seq": "0",
     }

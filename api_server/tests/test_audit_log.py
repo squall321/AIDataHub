@@ -63,8 +63,8 @@ async def test_audit_event_on_insert_via_route(db_client, test_session_maker) ->
     payload = {
         "id": "DOC-HE-CAE-2026-000111",
         "data_type": "DOC",
-        "division": "HE",
-        "team": "CAE",
+        "team": "HE",
+        "group": "CAE",
         "year": 2026,
         "seq": 111,
         "title": "audit insert",

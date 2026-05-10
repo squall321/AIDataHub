@@ -36,9 +36,9 @@ def _convert_docx_to_json(tmp_path: Path) -> Path:
         "-m",
         "converter",
         str(TEST_DOCX),
-        "--division",
-        "HE",
         "--team",
+        "HE",
+        "--group",
         "CAE",
         "--year",
         "2026",
@@ -134,7 +134,7 @@ async def test_ingest_then_query_records(
     except ImportError as exc:
         pytest.skip(f"Agent 2 ingest 모듈 없음: {exc}")
 
-    # 정규화 (sample dict 는 이미 명시적 data_type/division/.../content 를 가짐)
+    # 정규화 (sample dict 는 이미 명시적 data_type/team/.../content 를 가짐)
     record_in = normalize(sample_doc_record_dict)
 
     # write_record 또는 upsert_record 둘 중 하나

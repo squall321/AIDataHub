@@ -110,8 +110,8 @@ async def seed_data_records(test_session_maker) -> dict[str, Any]:
         ss = Record(
             id="DATA-HE-CAE-2026-008002",
             data_type="DATA",
-            division="HE",
-            team="CAE",
+            team="HE",
+            group="CAE",
             year=2026,
             seq=8002,
             title="Stress-Strain Curve — SS400 가정 데이터",
@@ -127,8 +127,8 @@ async def seed_data_records(test_session_maker) -> dict[str, Any]:
         small = Record(
             id="DATA-HE-CAE-2026-008003",
             data_type="DATA",
-            division="HE",
-            team="CAE",
+            team="HE",
+            group="CAE",
             year=2026,
             seq=8003,
             title="짧은 측정 데이터",
@@ -148,8 +148,8 @@ async def seed_data_records(test_session_maker) -> dict[str, Any]:
         doc = Record(
             id="DOC-HE-CAE-2026-008004",
             data_type="DOC",
-            division="HE",
-            team="CAE",
+            team="HE",
+            group="CAE",
             year=2026,
             seq=8004,
             title="문서 (DATA 카탈로그에서 제외)",

@@ -10,14 +10,14 @@ AI Data Hub는 사업부 문서/데이터를 PostgreSQL 에 적재하고
 ## ID 포맷
 
 ```
-<DATA_TYPE>-<DIVISION>-<TEAM>-<YEAR>-<SEQ>
+<DATA_TYPE>-<TEAM>-<GROUP>-<YEAR>-<SEQ>
 ```
 
 | 필드        | 길이/타입       | 예시                                |
 |-------------|------------------|-------------------------------------|
 | DATA_TYPE   | 3~4자 enum      | `DOC`, `DATA`, `SIM`, `CAD`, `LOG`, `FORM`, `OTHER` |
-| DIVISION    | 2~3자          | `HE`, `EV`                          |
-| TEAM        | 2~6자          | `CAE`, `Test`                       |
+| TEAM    | 2~3자          | `HE`, `EV`                          |
+| GROUP        | 2~6자          | `CAE`, `Test`                       |
 | YEAR        | 4자리 연도     | `2026`                              |
 | SEQ         | 6자리 zero-pad | `000001`                            |
 
@@ -31,7 +31,7 @@ AI Data Hub는 사업부 문서/데이터를 PostgreSQL 에 적재하고
 | CAD 모델    | `CAD-HE-CAE-2026-000012`           |
 | 로그        | `LOG-HE-CAE-2026-000003`           |
 
-> 참고: 변환기(`converter`)는 `meta.doc_id` 를 `<DIV>-<TEAM>-<YEAR>-<SEQ>`
+> 참고: 변환기(`converter`)는 `meta.doc_id` 를 `<DIV>-<GROUP>-<YEAR>-<SEQ>`
 > (data_type 접두사 없이) 형식으로 발급한다. 정규화기(`api.ingest.normalizer`)가
 > `data_type` 접두사를 붙여 최종 `Record.id` 를 만든다.
 
@@ -61,8 +61,8 @@ AI Data Hub는 사업부 문서/데이터를 PostgreSQL 에 적재하고
 ├──────────────────────────────────────────────────────────┤
 │ id              VARCHAR(80) PK                            │
 │ data_type       VARCHAR(20)        ┐                      │
-│ division        VARCHAR(10)        │  natural key        │
-│ team            VARCHAR(20)        │  (uq)               │
+│ team        VARCHAR(10)        │  natural key        │
+│ group            VARCHAR(20)        │  (uq)               │
 │ year            SMALLINT           │                      │
 │ seq             INTEGER            ┘                      │
 │ title           TEXT                                       │

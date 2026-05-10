@@ -4,6 +4,13 @@ const KEY_BASE_URL = 'aidh.baseUrl';
 const KEY_CONNECTED = 'aidh.connected';
 const SECRET_API_KEY = 'aidh.apiKey';
 
+/**
+ * 첫 사용 시 보이는 기본 URL — 운영 서버의 외부 IP.
+ * 사용자가 한 번 입력해 saveConfig 하면 globalState 에 저장되고
+ * 그 이후에는 저장된 값이 우선한다.
+ */
+export const DEFAULT_BASE_URL = 'http://110.15.177.125:8000';
+
 export interface ConnectionConfig {
   baseUrl: string;
   hasApiKey: boolean;
@@ -14,7 +21,7 @@ export class ConfigStore {
   constructor(private readonly context: vscode.ExtensionContext) {}
 
   getBaseUrl(): string {
-    return this.context.globalState.get<string>(KEY_BASE_URL, '');
+    return this.context.globalState.get<string>(KEY_BASE_URL, DEFAULT_BASE_URL);
   }
 
   async setBaseUrl(value: string): Promise<void> {

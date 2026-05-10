@@ -8,7 +8,7 @@ A VS Code extension to interact with your AI Data Hub backend (`api_server`) dir
 
 No CLI, no `curl`, no Python.
 
-**Version**: 0.4.0 (2026-05-10) — Bundle + 0006 metadata + Search tabs.
+**Version**: 0.5.0 (2026-05-11) — Bundle + 0006 metadata + Search tabs. Org hierarchy rename: `team → group`.
 
 ---
 
@@ -17,7 +17,7 @@ No CLI, no `curl`, no Python.
 ### From the `.vsix` (recommended)
 
 ```powershell
-code --install-extension ai-data-hub-uploader-0.4.0.vsix
+code --install-extension ai-data-hub-uploader-0.5.0.vsix
 ```
 
 The extension ships with the prebuilt JS in `out/`. No `npm install` required on the user side.
@@ -93,15 +93,15 @@ The panel then auto-switches to the **Metadata Form**:
 
 | Group | Fields |
 |-------|--------|
-| Identification (required) | `division`, `team`, `year`, `seq` |
+| Identification (required) | `team`, `group`, `year`, `seq` |
 | Classification | `classification` (default `internal`), `status` (default `draft`), `domain`, `language` (default `ko`) |
 | Discoverability | `tags`, `agents`, `subject_keywords` (chip inputs — Enter or comma to add) |
 | Override (optional) | `title`, `summary` (leave empty = use auto-extracted from the converter) |
 | Quality (optional) | `quality_score` 0–100, `derivation`, `valid_from`, `valid_until` |
 
-- `division → team` cascades: picking a division refills the team list.
+- `team → group` cascades: picking a team refills the group list.
 - `agents` is filtered to those whose `data_types` matches the inferred type (DOC/DATA).
-- `Send to Backend` stays disabled until division / team / year (1990–2100) / seq (1–999999) are valid.
+- `Send to Backend` stays disabled until team / group / year (1990–2100) / seq (1–999999) are valid.
 
 ### DRY-RUN
 

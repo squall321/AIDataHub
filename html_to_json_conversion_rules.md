@@ -52,7 +52,7 @@ HTML 은 Markdown 과 거의 1:1 로 매핑되며 — h1/h2/h3 헤딩, p, ul/ol,
 
 - 단일 JSON 파일 (스키마 v1.0, `data_type = "DOC"`, `meta.source_format = "html"`).
 - ID 형식 — Markdown 변환기와 동일:
-  - `meta.doc_id` = `DOC-{div}-{team}-{year}-{seq:06d}`
+  - `meta.doc_id` = `DOC-{div}-{group}-{year}-{seq:06d}`
   - 그림: `{doc_id}-F{nnn}`
   - 표: `{doc_id}-T{nnn}`
   - 첨부: `{doc_id}-A{nnn}`
@@ -317,7 +317,7 @@ Markdown 변환기와 동일 정책.
 
 생성된 JSON 이 [json_schema_rules.md](./json_schema_rules.md) 13장 검증 체크리스트를 통과해야 한다.
 
-- [ ] `meta.doc_id` 가 `DOC-{div}-{team}-{year}-{seq:06d}` 패턴인가
+- [ ] `meta.doc_id` 가 `DOC-{div}-{group}-{year}-{seq:06d}` 패턴인가
 - [ ] `meta.source_format == "html"`
 - [ ] `meta.title` 이 비어 있지 않은가
 - [ ] `meta.tags` 가 2개 이상인가 (head meta keywords 또는 CLI)
@@ -343,7 +343,7 @@ Markdown 변환기와 동일 정책.
 
 ```bash
 python -m html_converter input.html \
-    --division HE --team CAE --year 2026 --seq 7 \
+    --team HE --group CAE --year 2026 --seq 7 \
     --output-dir output \
     --agents iga-analyst,doc-curator \
     --tags KooRemapper,IGA,NURBS
@@ -351,8 +351,8 @@ python -m html_converter input.html \
 
 | 옵션 | 설명 | 기본값 |
 |------|------|--------|
-| `--division` | 팀 코드 (대문자화) | — |
-| `--team` | 그룹 코드 (대문자화) | — |
+| `--team` | 팀 코드 (대문자화) | — |
+| `--group` | 그룹 코드 (대문자화) | — |
 | `--year` | 연도 | — |
 | `--seq` | 순번 (6자리 패딩) | 1 |
 | `--output-dir` | 출력 폴더 | `output` |
@@ -373,7 +373,7 @@ output/
 ```python
 from html_converter import HtmlConverter, HtmlConverterOptions, write_output
 
-opts = HtmlConverterOptions(division="HE", team="CAE", year=2026, seq=7)
+opts = HtmlConverterOptions(team="HE", group="CAE", year=2026, seq=7)
 conv = HtmlConverter(opts)
 result = conv.convert("path/to/input.html")    # 또는 conv.convert_text(html_string)
 json_path, log_path = write_output(result, opts.output_dir)

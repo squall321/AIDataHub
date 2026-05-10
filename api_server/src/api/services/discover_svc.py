@@ -151,7 +151,7 @@ async def build_discover_payload(
     by_division: dict[str, int] = {}
     rows = (
         await session.execute(
-            select(Record.division, func.count()).group_by(Record.division)
+            select(Record.team, func.count()).group_by(Record.team)
         )
     ).all()
     for k, v in rows:
@@ -321,8 +321,8 @@ def build_json_schema() -> dict[str, Any]:
                 "enum": list(DATA_TYPES),
                 "description": "콘텐츠 변종.",
             },
-            "division": {"type": "string", "description": "사업부 (HE/EV/PT/...)"},
-            "team": {"type": "string", "description": "팀 (CAE/MFG/...)"},
+            "team": {"type": "string", "description": "사업부 (HE/EV/PT/...)"},
+            "group": {"type": "string", "description": "팀 (CAE/MFG/...)"},
             "year": {"type": "integer", "minimum": 2020, "maximum": 2099},
             "seq": {"type": "integer", "minimum": 1, "maximum": 999_999},
             "title": {"type": "string"},
@@ -532,7 +532,7 @@ _ALL_HINTS: dict[str, list[dict[str, str]]] = {
             ),
             "sample_endpoint": "GET /api/discover",
             "why_useful": (
-                "data_type, division, classification 분포 + 에이전트 + "
+                "data_type, team, classification 분포 + 에이전트 + "
                 "starting_points 가 한 번에 들어온다."
             ),
         },
@@ -674,9 +674,9 @@ _LLM_DOC_TEMPLATE = """# AI Data Hub — LLM Quick Reference
 - **capabilities**: content 모양 라벨 (sections/blocks/tables/figures/...).
 
 ## 3. ID format
-`{DATA_TYPE}-{DIVISION}-{TEAM}-{YEAR}-{SEQ:06d}` — 예: `DOC-HE-CAE-2026-000001`.
+`{DATA_TYPE}-{TEAM}-{GROUP}-{YEAR}-{SEQ:06d}` — 예: `DOC-HE-CAE-2026-000001`.
 - DATA_TYPE ∈ {DOC, DATA, SIM, CAD, LOG, FORM, OTHER}
-- DIVISION 2-4자, TEAM 2-5자, YEAR 2020-2099, SEQ 6자리.
+- TEAM 2-4자, GROUP 2-5자, YEAR 2020-2099, SEQ 6자리.
 - 레거시 (접두사 누락) 도 ingest 단계에서 자동 보강.
 
 ## 4. Key endpoints (one-line each)
@@ -685,7 +685,7 @@ _LLM_DOC_TEMPLATE = """# AI Data Hub — LLM Quick Reference
 - `GET /api/hints?context=getting_started` — 자연어 힌트.
 - `GET /api/docs/llm.txt` — 이 문서.
 - `POST /api/ask` — 자연어 쿼리 → interpreted_query + results.
-- `GET /api/records` — 필터 (data_type/division/year/agent/tag/capabilities/q).
+- `GET /api/records` — 필터 (data_type/team/year/agent/tag/capabilities/q).
 - `GET /api/records/{id}` — 단일 record 상세.
 - `GET /api/records/{id}/sections` / `/tables` / `/figures` / `/attachments`.
 - `GET /api/data?agent=...&query=...` — 에이전트 시점 검색 (Cline SR 코어).
@@ -698,7 +698,7 @@ _LLM_DOC_TEMPLATE = """# AI Data Hub — LLM Quick Reference
 1. *최근 IGA 시뮬 결과 5건*:
    `GET /api/data?agent=iga-analyst&data_types=SIM&limit=5`
 2. *2026년 HE-CAE 표 데이터*:
-   `GET /api/records?division=HE&team=CAE&year=2026&capabilities=tables`
+   `GET /api/records?team=HE&group=CAE&year=2026&capabilities=tables`
 3. *quality_score >= 80 인 approved 문서*:
    `GET /api/records?status=approved` 후 quality_score 클라이언트 필터,
    또는 `POST /api/ask {"query":"품질 80 이상 approved"}`.
@@ -965,7 +965,7 @@ async def _interpret_with_llm(query: str) -> dict[str, Any] | None:
         "Available filter fields:\n"
         f"  - agent (one of: {', '.join(_AGENT_KEYWORDS.keys())})\n"
         f"  - data_type (one of: {', '.join(DATA_TYPES)})\n"
-        f"  - division, team, year (int 2020-2099)\n"
+        f"  - team, group, year (int 2020-2099)\n"
         f"  - status (one of: {', '.join(STATUSES)})\n"
         f"  - classification (one of: {', '.join(CLASSIFICATIONS)})\n"
         f"  - capabilities (subset of: {', '.join(CAPABILITY_LABELS)})\n"
@@ -1043,10 +1043,10 @@ def _validate_filters(parsed: dict[str, Any]) -> dict[str, Any]:
         valid_tags = [t for t in v if isinstance(t, str) and t.strip()]
         if valid_tags:
             filters["tags"] = valid_tags
-    if (v := filters_raw.get("division")) and isinstance(v, str):
-        filters["division"] = v.upper()
     if (v := filters_raw.get("team")) and isinstance(v, str):
         filters["team"] = v.upper()
+    if (v := filters_raw.get("group")) and isinstance(v, str):
+        filters["group"] = v.upper()
     if (v := filters_raw.get("q")) and isinstance(v, str) and v.strip():
         filters["q"] = v.strip()
 
@@ -1089,10 +1089,10 @@ async def execute_ask(
     stmt = select(Record)
     if (v := filters.get("data_type")):
         stmt = stmt.where(Record.data_type == v)
-    if (v := filters.get("division")):
-        stmt = stmt.where(Record.division == v)
     if (v := filters.get("team")):
         stmt = stmt.where(Record.team == v)
+    if (v := filters.get("group")):
+        stmt = stmt.where(Record.group == v)
     if (v := filters.get("year")) is not None:
         stmt = stmt.where(Record.year == v)
     if (v := filters.get("status")):

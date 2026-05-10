@@ -14,7 +14,7 @@ async def faceted_seed(test_session_maker) -> dict[str, str]:
     from api.db.models import Record
 
     records = []
-    # 주: id 형식 — DATA_TYPE-DIVISION-TEAM-YEAR-SEQ
+    # 주: id 형식 — DATA_TYPE-TEAM-GROUP-YEAR-SEQ
     seed_specs = [
         # (id, dtype, year, tags, agents, domain, classification, status, quality)
         ("DOC-HE-CAE-2026-100001", "DOC", 2026, ["IGA", "NURBS"],
@@ -44,8 +44,8 @@ async def faceted_seed(test_session_maker) -> dict[str, str]:
             Record(
                 id=rid,
                 data_type=dt,
-                division="HE",
-                team="CAE" if "CAE" in rid else "EDU",
+                team="HE",
+                group="CAE" if "CAE" in rid else "EDU",
                 year=year,
                 seq=seq,
                 title=f"{dt} record {rid}",

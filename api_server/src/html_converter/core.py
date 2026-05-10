@@ -52,8 +52,8 @@ logger = logging.getLogger(__name__)
 class HtmlConverterOptions:
     """변환기 옵션."""
 
-    division: str
     team: str
+    group: str
     year: int
     seq: int = 1
     output_dir: Path = field(default_factory=lambda: Path("output"))
@@ -62,8 +62,8 @@ class HtmlConverterOptions:
     extra_meta: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        self.division = self.division.upper()
         self.team = self.team.upper()
+        self.group = self.group.upper()
         if self.year < 1900 or self.year > 9999:
             raise ValueError(f"year out of range: {self.year}")
         if self.seq < 0:
@@ -72,11 +72,11 @@ class HtmlConverterOptions:
 
 
 # ---------------------------------------------------------------------------
-# ID helpers — DOC-{div}-{team}-{year}-{seq:06d}
+# ID helpers — DOC-{team}-{group}-{year}-{seq:06d}
 # ---------------------------------------------------------------------------
 
 def _make_doc_id(opts: HtmlConverterOptions) -> str:
-    return f"DOC-{opts.division}-{opts.team}-{opts.year}-{opts.seq:06d}"
+    return f"DOC-{opts.team}-{opts.group}-{opts.year}-{opts.seq:06d}"
 
 
 def _make_fig_id(doc_id: str, n: int) -> str:
@@ -631,7 +631,7 @@ class HtmlConverter:
             "created": hm.get("created") or now,
             "modified": hm.get("modified") or now,
             "author": author,
-            "department": f"{self.opts.division}-{self.opts.team}",
+            "department": f"{self.opts.team}-{self.opts.group}",
             "version": str(hm.get("version", "1.0")),
             "tags": tags,
             "summary": summary,

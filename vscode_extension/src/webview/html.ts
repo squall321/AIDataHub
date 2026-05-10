@@ -288,11 +288,48 @@ function clientScript(): string {
   const headerSettingsBtn = document.getElementById('btn-settings');
   const tabnav = document.getElementById('tabnav');
 
+  // ------------------------------------------------------------ Global drag/drop guard
+  //
+  // VS Code 의 webview 는 기본 상태에서 drag 이벤트를 자체 처리해 파일을
+  // 에디터에서 열어버린다. dropzone 밖 영역에서도 drag 가 활성화되지 않으면
+  // 사용자가 정확히 dropzone 안으로 드롭하지 않는 한 파일이 가로채진다.
+  //
+  // 해결: document 전체에 dragenter/dragover/drop 을 잡아 preventDefault.
+  //   - dragover: 'copy' effect 를 강제해 dropzone 위에서는 드롭 허용 표시.
+  //     dropzone 밖이면 'none' 으로 두지만 어쨌든 preventDefault 해서 VS Code
+  //     가 이벤트를 받지 않게 한다.
+  //   - drop: dropzone 밖에 떨어지면 silent — VS Code 도, dropzone 도 받지
+  //     않음. dropzone 안에 떨어지면 dz 자체의 drop 핸들러가 처리한다
+  //     (이벤트 버블링은 dz 의 stopPropagation 으로 차단되지 않으므로
+  //     document 핸들러도 함께 호출되지만 dz 가 이미 처리한 후라 무해).
+  function _isInsideDropzone(target) {
+    let n = target;
+    while (n && n !== document) {
+      if (n.classList && n.classList.contains('dropzone')) return true;
+      n = n.parentNode;
+    }
+    return false;
+  }
+  window.addEventListener('dragenter', function(e){ e.preventDefault(); }, false);
+  window.addEventListener('dragover', function(e){
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = _isInsideDropzone(e.target) ? 'copy' : 'none';
+    }
+  }, false);
+  window.addEventListener('drop', function(e){
+    // dropzone 밖에 떨어진 파일은 VS Code 가 받지 못하게만 막고 그 외 무동작.
+    if (!_isInsideDropzone(e.target)) {
+      e.preventDefault();
+    }
+    // dropzone 안이면 dz 의 자체 drop 핸들러가 이미 preventDefault 한 상태.
+  }, false);
+
   // ------------------------------------------------------------ State
   const state = {
     tab: 'upload',              // upload | bundle | search
     showWelcome: true,          // forced when not connected
-    config: { baseUrl: '', hasApiKey: false, connected: false },
+    config: { baseUrl: 'http://110.15.177.125:8000', hasApiKey: false, connected: false },
     options: null,              // MetaOptions
     optionsError: null,
     // Upload tab
@@ -407,7 +444,7 @@ function clientScript(): string {
       <h1>👋 Connect to your AI Data Hub server</h1>
       <p class="subtle">Enter your backend URL and API key. The key is stored in VS Code SecretStorage.</p>
       <label>Server URL</label>
-      <input id="i-url" type="text" placeholder="http://10.10.20.5:8000" value="\${escapeHtml(state.config.baseUrl)}" />
+      <input id="i-url" type="text" placeholder="http://110.15.177.125:8000" value="\${escapeHtml(state.config.baseUrl)}" />
       <label>API Key (leave empty if backend has AUTH_REQUIRED=false)</label>
       <input id="i-key" type="password" placeholder="••••••••••••" />
       <div class="toolbar">
@@ -481,15 +518,109 @@ function clientScript(): string {
     dz.addEventListener('dragleave', () => { dz.classList.remove('over'); dz.classList.remove('bad'); });
     dz.addEventListener('drop', (e) => {
       e.preventDefault();
+      e.stopPropagation();
       dz.classList.remove('over'); dz.classList.remove('bad');
-      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (f) acceptUploadFile(f);
+      handleDroppedDataTransfer(e.dataTransfer, 'upload');
     });
   }
 
+  // ====================================================================
+  // Drag-drop fallback (VS Code webview 가 dataTransfer.files 를 비울 때)
+  // ====================================================================
+  function _decodeBase64ToBlob(b64, mime){
+    const bin = atob(b64);
+    const len = bin.length;
+    const buf = new Uint8Array(len);
+    for (let i = 0; i < len; i++) buf[i] = bin.charCodeAt(i);
+    return new Blob([buf], { type: mime || 'application/octet-stream' });
+  }
+
+  function _blobToFile(blob, name){
+    // File 생성자가 일부 환경에서 안 되면 Blob 에 name 만 붙여 반환.
+    try { return new File([blob], name, { type: blob.type }); }
+    catch { blob.name = name; return blob; }
+  }
+
+  function _extractPathFromDataTransfer(dt){
+    if (!dt) return null;
+    const types = dt.types ? Array.from(dt.types) : [];
+    console.log('[aidh] dataTransfer types:', types);
+    // 1. text/uri-list 가 가장 표준적
+    let raw = '';
+    try { raw = dt.getData('text/uri-list') || ''; } catch {}
+    if (!raw) { try { raw = dt.getData('text/plain') || ''; } catch {} }
+    if (!raw) return null;
+    // uri-list is multiline, take first non-comment line.
+    // NOTE: this code lives inside a backtick template literal, so any
+    // backslash-r or backslash-n in source is processed at TS compile time.
+    // Keep the regex escaped as double-backslash (or split on the literal char).
+    const first = raw.split(/\\r?\\n/).map(function(s){ return s.trim(); }).find(function(s){ return s && s.charAt(0) !== '#'; });
+    if (!first) return null;
+    return first;
+  }
+
+  async function handleDroppedDataTransfer(dt, target){
+    const dzId = target === 'bundle' ? 'bdz' : 'dropzone';
+    const filesLen = (dt && dt.files) ? dt.files.length : 0;
+    const itemsLen = (dt && dt.items) ? dt.items.length : 0;
+    console.log('[aidh] drop event — files:', filesLen, 'items:', itemsLen);
+
+    // (A) 정상 경로 — files 배열이 채워져 있음 (Chrome / 일부 VS Code 환경).
+    let f = filesLen > 0 ? dt.files[0] : null;
+    if (!f && itemsLen > 0 && dt.items) {
+      for (let i = 0; i < dt.items.length; i++) {
+        const it = dt.items[i];
+        if (it && it.kind === 'file') {
+          const got = it.getAsFile && it.getAsFile();
+          if (got && got.size > 0) { f = got; break; }
+        }
+      }
+    }
+    if (f && f.size > 0) {
+      if (target === 'bundle') acceptBundleFile(f);
+      else acceptUploadFile(f);
+      return;
+    }
+
+    // (B) 경로 폴백 — VS Code 가 text/uri-list 또는 text/plain 으로
+    //     file:///... URI 를 전달하는 경우 (가장 흔함, Windows Explorer 드래그).
+    const path = _extractPathFromDataTransfer(dt);
+    if (path) {
+      flashDropToast(dzId, '경로 받음 — 호스트에서 읽는 중…', 'ok');
+      try {
+        const loaded = await rpc('loadDroppedPath', { target, path });
+        if (loaded && loaded.contentBase64) {
+          const blob = _decodeBase64ToBlob(loaded.contentBase64, loaded.mimeType);
+          const file = _blobToFile(blob, loaded.filename || 'file');
+          if (target === 'bundle') acceptBundleFile(file);
+          else acceptUploadFile(file);
+          return;
+        }
+      } catch (err) {
+        console.warn('[aidh] loadDroppedPath failed:', err);
+      }
+    }
+
+    // (C) 최후 폴백 — OS 네이티브 파일 picker.
+    flashDropToast(dzId, '드래그 데이터 없음 — 파일 선택 창을 엽니다…', 'bad');
+    try {
+      const loaded = await rpc('openFilePicker', { target });
+      if (loaded && loaded.contentBase64) {
+        const blob = _decodeBase64ToBlob(loaded.contentBase64, loaded.mimeType);
+        const file = _blobToFile(blob, loaded.filename || 'file');
+        if (target === 'bundle') acceptBundleFile(file);
+        else acceptUploadFile(file);
+      }
+    } catch (err) {
+      console.warn('[aidh] openFilePicker failed:', err);
+      flashDropToast(dzId, '파일 선택 실패: ' + (err && err.message ? err.message : err), 'bad');
+    }
+  }
+
   function acceptUploadFile(file){
+    console.log('[aidh] acceptUploadFile:', file.name, file.size, file.type);
     if (!isExtAllowed(file.name)) {
-      flashDropBad('dropzone', 'Unsupported file type: ' + file.name);
+      flashDropToast('dropzone', '지원하지 않는 형식: ' + file.name, 'bad');
       return;
     }
     const dataType = detectDataType(file.name) || 'OTHER';
@@ -498,16 +629,43 @@ function clientScript(): string {
     state.upload.error = null;
     state.upload.response = null;
     state.upload.autoFilled = null;
-    goUpload('form');
+    flashDropToast('dropzone', '✓ 받았습니다: ' + file.name + ' — 폼으로 이동…', 'ok');
+    setTimeout(() => goUpload('form'), 250);
   }
 
   function flashDropBad(id, msg){
+    flashDropToast(id, msg, 'bad');
+  }
+
+  // 800ms 짜리 inline toast — dropzone 안에 뜨는 작은 알림.
+  function flashDropToast(id, msg, kind){
     const dz = document.getElementById(id);
-    if (dz) {
+    if (!dz) { console.warn('[aidh] toast: no element', id, msg); return; }
+    let t = dz.querySelector('.dz-toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.className = 'dz-toast';
+      t.style.cssText = 'position:absolute;left:50%;bottom:8px;transform:translateX(-50%);padding:6px 14px;border-radius:6px;font-size:12px;z-index:10;';
+      // dropzone 을 상대 위치로 만들어서 toast 가 안에 뜨게.
+      if (getComputedStyle(dz).position === 'static') dz.style.position = 'relative';
+      dz.appendChild(t);
+    }
+    t.textContent = msg;
+    if (kind === 'ok') {
+      t.style.background = 'rgba(50,180,90,0.18)';
+      t.style.border = '1px solid rgba(50,180,90,0.6)';
+      t.style.color = 'var(--vscode-foreground)';
+      dz.classList.remove('bad');
+    } else {
+      t.style.background = 'rgba(220,60,60,0.18)';
+      t.style.border = '1px solid rgba(220,60,60,0.6)';
+      t.style.color = 'var(--vscode-foreground)';
       dz.classList.add('bad');
       setTimeout(()=>dz.classList.remove('bad'), 900);
     }
-    console.warn(msg);
+    if (t._fadeT) clearTimeout(t._fadeT);
+    t._fadeT = setTimeout(() => { if (t.parentNode) t.parentNode.removeChild(t); }, 1800);
+    console[kind === 'ok' ? 'log' : 'warn']('[aidh] toast:', msg);
   }
 
   function renderUploadForm(){
@@ -535,14 +693,14 @@ function clientScript(): string {
       <h2>Identification</h2>
       <div class="row">
         <div>
-          <label>Division *</label>
-          <select id="i-division">\${selectOptions(opts.divisions, '')}</select>
-          <div id="e-division" class="field-error"></div>
+          <label>Team *</label>
+          <select id="i-team">\${selectOptions(opts.teams, '')}</select>
+          <div id="e-team" class="field-error"></div>
         </div>
         <div>
-          <label>Team *</label>
-          <select id="i-team"><option value="">— pick division —</option></select>
-          <div id="e-team" class="field-error"></div>
+          <label>Group *</label>
+          <select id="i-group"><option value="">— pick team —</option></select>
+          <div id="e-group" class="field-error"></div>
         </div>
         <div>
           <label>Year *</label>
@@ -647,15 +805,15 @@ function clientScript(): string {
     const agentsState = makeChipsFromSelect('chips-agents', 'i-agent-add');
     const subjectState = makeChips('chips-subject', 'add keyword…');
 
-    // Division -> Team cascade
-    const divEl = document.getElementById('i-division');
+    // Team -> Group cascade
     const teamEl = document.getElementById('i-team');
-    function refillTeams(){
-      const div = divEl.value;
-      const list = (opts.teams[div] || []);
-      teamEl.innerHTML = '<option value="">—</option>' + list.map(t => '<option value="'+escapeHtml(t)+'">'+escapeHtml(t)+'</option>').join('');
+    const groupEl = document.getElementById('i-group');
+    function refillGroups(){
+      const tm = teamEl.value;
+      const list = (opts.groups[tm] || []);
+      groupEl.innerHTML = '<option value="">—</option>' + list.map(t => '<option value="'+escapeHtml(t)+'">'+escapeHtml(t)+'</option>').join('');
     }
-    divEl.addEventListener('change', refillTeams);
+    teamEl.addEventListener('change', refillGroups);
 
     on('btn-remove', 'click', () => { state.upload.file = null; goUpload('drop'); });
     on('btn-send', 'click', () => {
@@ -735,8 +893,8 @@ function clientScript(): string {
 
   function collectForm(chips){
     return {
-      division: val('i-division'),
       team: val('i-team'),
+      group: val('i-group'),
       year: parseInt(val('i-year') || '0', 10),
       seq:  parseInt(val('i-seq')  || '0', 10),
       classification: val('i-classification'),
@@ -759,8 +917,8 @@ function clientScript(): string {
 
   function validateForm(v, opts){
     const errors = new Map();
-    if (!v.division) errors.set('division', 'Required');
-    if (!v.team)     errors.set('team', 'Required');
+    if (!v.team)  errors.set('team', 'Required');
+    if (!v.group) errors.set('group', 'Required');
     if (!Number.isFinite(v.year) || v.year < 1990 || v.year > 2100) errors.set('year', '1990–2100');
     if (!Number.isFinite(v.seq) || v.seq < 1 || v.seq > 999999) errors.set('seq', '1–999999');
     if (v.quality_score !== null && (v.quality_score < 0 || v.quality_score > 100)) errors.set('quality', '0–100');
@@ -772,7 +930,7 @@ function clientScript(): string {
   }
 
   function paintErrors(errors){
-    ['division','team','year','seq'].forEach(k => {
+    ['team','group','year','seq'].forEach(k => {
       const e = document.getElementById('e-'+k);
       if (e) e.textContent = errors.get(k) || '';
     });
@@ -816,8 +974,8 @@ function clientScript(): string {
     const fd = new FormData();
     const u = state.upload;
     fd.append('file', u.file.file, u.file.file.name);
-    fd.append('division', values.division);
     fd.append('team', values.team);
+    fd.append('group', values.group);
     fd.append('year', String(values.year));
     fd.append('seq',  String(values.seq));
     fd.append('classification', values.classification || 'internal');
@@ -1020,15 +1178,16 @@ function clientScript(): string {
     dz.addEventListener('dragleave', () => { dz.classList.remove('over'); dz.classList.remove('bad'); });
     dz.addEventListener('drop', (e) => {
       e.preventDefault();
+      e.stopPropagation();
       dz.classList.remove('over'); dz.classList.remove('bad');
-      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (f) acceptBundleFile(f);
+      handleDroppedDataTransfer(e.dataTransfer, 'bundle');
     });
   }
 
   function acceptBundleFile(file){
+    console.log('[aidh] acceptBundleFile:', file.name, file.size);
     if (!file.name.toLowerCase().endsWith('.zip')) {
-      flashDropBad('bdz', 'Bundle must be a .zip file: ' + file.name);
+      flashDropToast('bdz', 'Bundle must be a .zip file: ' + file.name, 'bad');
       return;
     }
     state.bundle.file = file;
@@ -1036,8 +1195,11 @@ function clientScript(): string {
     state.bundle.error = null;
     state.bundle.response = null;
     state.upload.kind = 'bundle';
-    goBundle('sending');
-    send({ type: 'requestUploadCredentials' });
+    flashDropToast('bdz', '✓ 받았습니다: ' + file.name + ' — 업로드 시작…', 'ok');
+    setTimeout(() => {
+      goBundle('sending');
+      send({ type: 'requestUploadCredentials' });
+    }, 250);
   }
 
   function renderBundleSending(){
@@ -1454,7 +1616,7 @@ function clientScript(): string {
       <div class="kv">
         <div class="k">Title</div><div>\${escapeHtml(rec.title || '')}</div>
         <div class="k">Data type</div><div>\${escapeHtml(rec.data_type || '')}</div>
-        <div class="k">Division/Team</div><div>\${escapeHtml(rec.division || '')} / \${escapeHtml(rec.team || '')}</div>
+        <div class="k">Team/Group</div><div>\${escapeHtml(rec.team || '')} / \${escapeHtml(rec.group || '')}</div>
         <div class="k">Year/Seq</div><div>\${rec.year ?? ''} / \${rec.seq ?? ''}</div>
         <div class="k">Classification</div><div>\${escapeHtml(rec.classification || '—')}</div>
         <div class="k">Status</div><div>\${escapeHtml(rec.status || '—')}</div>
@@ -1546,7 +1708,17 @@ function clientScript(): string {
       render();
     } else if (m.type === 'connection') {
       if (m.ok) {
-        setStatus('ok', 'Connection OK' + (m.health && m.health.version ? ' — server ' + m.health.version : ''));
+        // 폴백 발생 시 입력 필드 자동 갱신 + 안내 메시지.
+        if (m.fellBack && m.effectiveUrl) {
+          state.config.baseUrl = m.effectiveUrl;
+          const inp = document.getElementById('i-url');
+          if (inp) inp.value = m.effectiveUrl;
+        }
+        const versionTag = m.health && m.health.version ? ' — server ' + m.health.version : '';
+        const fallbackTag = m.fellBack && m.effectiveUrl
+          ? ' (auto-fell back to ' + m.effectiveUrl + ')'
+          : '';
+        setStatus('ok', 'Connection OK' + versionTag + fallbackTag);
       } else {
         setStatus('err', 'Failed: ' + (m.error || 'unknown error'));
       }
@@ -1580,6 +1752,12 @@ function clientScript(): string {
       _pendingReq.delete(m.reqId);
       if (m.ok) p.resolve(m.payload);
       else p.reject(new Error(m.error || 'request failed'));
+    } else if (m.type === 'fileLoaded') {
+      const p = _pendingReq.get(m.reqId);
+      if (!p) return;
+      _pendingReq.delete(m.reqId);
+      if (m.ok) p.resolve(m);
+      else p.reject(new Error(m.error || 'file load failed'));
     }
   });
 

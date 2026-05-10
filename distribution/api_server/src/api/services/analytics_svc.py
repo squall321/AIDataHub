@@ -1,6 +1,6 @@
 """크로스 레코드 분석 로직.
 
-- ``distribution`` : ``data_type``/``division``/``team``/``year`` 별 카운트
+- ``distribution`` : ``data_type``/``team``/``group``/``year`` 별 카운트
 - ``common_tags``  : 에이전트 범위 내 상위 태그 빈도
 - ``cross_agent``  : 두 에이전트 모두 사용하는 레코드 교집합
 - ``timeline``     : 연도별 월간 레코드 카운트
@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 
 
 async def distribution(session: AsyncSession) -> dict:
-    """``data_type``/``division``/``team``/``year`` 별 레코드 수."""
+    """``data_type``/``team``/``group``/``year`` 별 레코드 수."""
     by_type: dict[str, int] = {}
     by_division: dict[str, int] = {}
     by_team: dict[str, int] = {}
@@ -38,13 +38,13 @@ async def distribution(session: AsyncSession) -> dict:
 
     rows = (
         await session.execute(
-            select(Record.division, func.count()).group_by(Record.division)
+            select(Record.team, func.count()).group_by(Record.team)
         )
     ).all()
     by_division = {k: int(v) for k, v in rows}
 
     rows = (
-        await session.execute(select(Record.team, func.count()).group_by(Record.team))
+        await session.execute(select(Record.group, func.count()).group_by(Record.group))
     ).all()
     by_team = {k: int(v) for k, v in rows}
 

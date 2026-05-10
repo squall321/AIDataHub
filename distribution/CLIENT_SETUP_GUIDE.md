@@ -10,7 +10,7 @@
 | 역할 | 사용 목적 | 주력 도구 |
 |------|-----------|-----------|
 | **AI 에이전트** (Claude / GPT / Cline SR / 자체 모델) | 자연어 질의 → 본문 인용 → 답변 생성 | REST `/api/ask`, `/api/search`, `/api/records/{id}` 또는 MCP 도구 |
-| **사업부 엔지니어** (비개발자) | 자기 부서 자료 적재 (`.docx/.xlsx/.pptx/.pdf/.md/.html`) — **GUI 선호** | **VS Code Extension** (`vscode_extension/ai-data-hub-uploader-0.4.0.vsix`) |
+| **사업부 엔지니어** (비개발자) | 자기 부서 자료 적재 (`.docx/.xlsx/.pptx/.pdf/.md/.html`) — **GUI 선호** | **VS Code Extension** (`vscode_extension/ai-data-hub-uploader-0.5.0.vsix`) |
 | **사업부 엔지니어** (CLI 친화) | 같은 적재 — **명령어/CI 친화** | `client_setup/ingest.bat` |
 | **분석가** | 자료 검색 / 관련 자료 탐색 | `client_setup/search.bat`, `related.bat`, `ask.bat` |
 
@@ -24,10 +24,10 @@
 
 ### A. VS Code Extension (GUI, 비개발자 친화)
 
-- 위치: [`vscode_extension/ai-data-hub-uploader-0.4.0.vsix`](./vscode_extension/ai-data-hub-uploader-0.4.0.vsix)
+- 위치: [`vscode_extension/ai-data-hub-uploader-0.5.0.vsix`](./vscode_extension/ai-data-hub-uploader-0.5.0.vsix)
 - 설치: VS Code 명령 팔레트 → `Extensions: Install from VSIX...` 선택 또는
   ```bat
-  code --install-extension vscode_extension\ai-data-hub-uploader-0.4.0.vsix
+  code --install-extension vscode_extension\ai-data-hub-uploader-0.5.0.vsix
   ```
 - 사용: VS Code 명령 팔레트 → `AI Data Hub: Open Uploader` → Webview 5-step
   (Welcome → DropZone → Form → Sending → Result)

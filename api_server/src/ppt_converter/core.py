@@ -123,8 +123,8 @@ def _apply_agent_discovery_defaults(
 class PptxConverterOptions:
     """PPT 변환기 옵션."""
 
-    division: str
     team: str
+    group: str
     year: int
     seq: int = 1
     output_dir: Path = field(default_factory=lambda: Path("output"))
@@ -152,7 +152,7 @@ _CAPTION_MAX_LEN = 120
 # ID helpers (Word 변환기와 동일한 포맷)
 # ---------------------------------------------------------------------------
 def _make_doc_id(opts: PptxConverterOptions) -> str:
-    return f"DOC-{opts.division}-{opts.team}-{opts.year}-{opts.seq:06d}"
+    return f"DOC-{opts.team}-{opts.group}-{opts.year}-{opts.seq:06d}"
 
 
 def _make_fig_id(doc_id: str, n: int) -> str:
@@ -961,7 +961,7 @@ class PptxConverter:
             "created": created_str,
             "modified": modified_str,
             "author": author,
-            "department": f"{self.opts.division}-{self.opts.team}",
+            "department": f"{self.opts.team}-{self.opts.group}",
             "version": "1.0",
             "tags": list(self.opts.tags),
             "summary": summary,

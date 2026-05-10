@@ -12,7 +12,7 @@
 | [`CLIENT_SETUP_GUIDE.md`](./CLIENT_SETUP_GUIDE.md) | **클라이언트 셋업 가이드** — config.ini 작성 + setup.bat 더블클릭 + 일상 명령(ask/search/get/ingest). AI 에이전트 통합 패턴 포함. |
 | [`deploy/`](./deploy/) | 서버 셋업 스크립트 묶음 — Windows (`SERVER_QUICK_SETUP.bat`, `install_*windows.ps1`, vendor 사전 빌드 binary), Linux (`install_*linux.sh` — apt/dnf + source build fallback), Docker (`install.sh` + docker-compose). [`deploy/README_LINUX.md`](./deploy/README_LINUX.md) 별도. |
 | [`client_setup/`](./client_setup/) | 클라이언트 셋업 키트 (CLI) — 6개 .bat (ask/search/get/ingest/related/show_guide) + lib/ PowerShell 헬퍼. AI 에이전트·자동화·분석가 친화. |
-| [`vscode_extension/`](./vscode_extension/) | **VS Code Extension (GUI)** — `ai-data-hub-uploader-0.4.0.vsix` (28.1 KB) + USER_GUIDE.md. 비개발자 친화 5-step Webview (DropZone → Form → Send). 비개발 사업부 엔지니어가 자료 적재할 때. |
+| [`vscode_extension/`](./vscode_extension/) | **VS Code Extension (GUI)** — `ai-data-hub-uploader-0.5.0.vsix` (32.9 KB) + USER_GUIDE.md. 비개발자 친화 5-step Webview (DropZone → Form → Send). 비개발 사업부 엔지니어가 자료 적재할 때. |
 | [`api_server/`](./api_server/) | API 서버 본체 — FastAPI + SQLAlchemy + 6 변환기 + MCP + 30+ 라우터. `setup.bat` / `run.bat` / `ingest.bat` 포함. **`/dashboard` 정적 SPA** (5탭: 상태·카탈로그·검색·그룹·가이드) 도 함께 포함되어 별도 프론트 서버 불필요. |
 | [`word_pair_KooRemapper/`](./word_pair_KooRemapper/) | Word 베스트 사례 — `core_properties` + 본문 마커 5종 적용 전후 비교. |
 | [`ppt_pair_AI_DigitalTwin/`](./ppt_pair_AI_DigitalTwin/) | PPT 베스트 사례 — 본문 4원칙(H2 번호/Claim-Evidence/Figure N./표) 수동 라벨링 적용 전후 비교. |
@@ -47,7 +47,7 @@ NN_pair_*/
 | **서버 운영자** (Windows) | 4단계 셋업 | [`SERVER_SETUP_GUIDE.md`](./SERVER_SETUP_GUIDE.md) → `deploy\SERVER_QUICK_SETUP.bat` |
 | **서버 운영자** (Linux) | 1명령 셋업 | [`deploy/README_LINUX.md`](./deploy/README_LINUX.md) → `bash install_postgres_linux.sh` |
 | **AI agent / 분석가** (CLI) | config + setup | [`CLIENT_SETUP_GUIDE.md`](./CLIENT_SETUP_GUIDE.md) → `client_setup\setup.bat` |
-| **사업부 엔지니어** (GUI) | vsix 설치 | `vscode_extension\ai-data-hub-uploader-0.4.0.vsix` (자세한 사용법 [`USER_GUIDE.md`](./vscode_extension/USER_GUIDE.md)) |
+| **사업부 엔지니어** (GUI) | vsix 설치 | `vscode_extension\ai-data-hub-uploader-0.5.0.vsix` (자세한 사용법 [`USER_GUIDE.md`](./vscode_extension/USER_GUIDE.md)) |
 | **운영자 모니터링** (브라우저) | 서버 기동 후 | `http://localhost:8000/dashboard/` (5탭: 상태/카탈로그/검색/그룹/가이드) |
 
 ## 핵심 메시지

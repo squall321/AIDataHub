@@ -282,8 +282,8 @@ def _validate_extension(filename: str) -> None:
 @router.post("", include_in_schema=False)
 async def convert_only(
     file: UploadFile = File(...),
-    division: str = Form(...),
     team: str = Form(...),
+    group: str = Form(...),
     year: int = Form(...),
     seq: int = Form(1),
     tags: str = Form(""),
@@ -300,8 +300,8 @@ async def convert_only(
         saved = await _save_upload(file, work_dir, max_bytes=max_bytes)
         fmt = detect_format(saved.name)
         req = ConvertRequest(
-            division=division,
             team=team,
+            group=group,
             year=year,
             seq=seq,
             tags=_split_csv(tags),
@@ -328,8 +328,8 @@ async def convert_only(
 @router.post("/ingest", summary="파일 업로드 → 변환 → DB 적재")
 async def convert_and_ingest(
     file: UploadFile = File(...),
-    division: str = Form(...),
     team: str = Form(...),
+    group: str = Form(...),
     year: int = Form(...),
     seq: int = Form(1),
     tags: str = Form(""),
@@ -388,7 +388,7 @@ async def convert_and_ingest(
         fmt = detect_format(saved.name)
 
         # ---- S1. auto-seq -----------------------------------------------
-        # seq=0 (또는 음수) → backend 가 (data_type, division, team, year)
+        # seq=0 (또는 음수) → backend 가 (data_type, team, group, year)
         # 튜플 단위로 ``MAX(seq)+1`` 을 할당한다. 단일-writer 가정.
         # data_type 은 포맷에서 추정한다 (DOCX/PPTX/MD/PDF→DOC, XLSX→DATA).
         effective_seq = seq
@@ -397,22 +397,22 @@ async def convert_and_ingest(
             effective_seq = await next_seq(
                 session,
                 data_type=inferred_dt,
-                division=division,
                 team=team,
+                group=group,
                 year=year,
             )
             log.info(
-                "auto-seq assigned: type=%s div=%s team=%s year=%s -> seq=%d",
+                "auto-seq assigned: type=%s team=%s group=%s year=%s -> seq=%d",
                 inferred_dt,
-                division,
                 team,
+                group,
                 year,
                 effective_seq,
             )
 
         req = ConvertRequest(
-            division=division,
             team=team,
+            group=group,
             year=year,
             seq=effective_seq,
             tags=_split_csv(tags),
@@ -494,8 +494,8 @@ async def convert_and_ingest(
                 "summary": record.summary,
                 "tags": list(record.tags or []),
                 "agents": list(record.agents or []),
-                "division": record.division,
                 "team": record.team,
+                "group": record.group,
                 "year": record.year,
                 "seq": record.seq,
                 "source_file": record.source_file,

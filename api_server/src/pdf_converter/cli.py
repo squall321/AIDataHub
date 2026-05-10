@@ -3,7 +3,7 @@
 사용 예::
 
     python -m pdf_converter input.pdf \\
-        --division HE --team CAE --year 2026 --seq 7 \\
+        --team HE --group CAE --year 2026 --seq 7 \\
         --output-dir output \\
         --agents iga-analyst,doc-curator \\
         --tags KooRemapper,IGA,NURBS
@@ -32,8 +32,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="PDF(.pdf) → DOC JSON 변환 (json_schema_rules.md v1.0)",
     )
     p.add_argument("pdf_path", type=str, help="입력 .pdf 경로")
-    p.add_argument("--division", required=True, help="팀 코드 (예: HE)")
-    p.add_argument("--team", required=True, help="그룹 코드 (예: CAE)")
+    p.add_argument("--team", required=True, help="팀 코드 (예: HE)")
+    p.add_argument("--group", required=True, help="그룹 코드 (예: CAE)")
     p.add_argument("--year", type=int, required=True, help="연도 (예: 2026)")
     p.add_argument("--seq", type=int, default=1, help="순번 (기본 1)")
     p.add_argument(
@@ -106,8 +106,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     opts = PdfConverterOptions(
-        division=args.division,
         team=args.team,
+        group=args.group,
         year=args.year,
         seq=args.seq,
         output_dir=Path(args.output_dir),

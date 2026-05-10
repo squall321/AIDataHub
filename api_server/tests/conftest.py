@@ -339,8 +339,8 @@ async def seed_records(test_session_maker):
         rec1 = Record(
             id="DOC-HE-CAE-2026-000001",
             data_type="DOC",
-            division="HE",
-            team="CAE",
+            team="HE",
+            group="CAE",
             year=2026,
             seq=1,
             title="IGA offset 분석 보고서",
@@ -352,8 +352,8 @@ async def seed_records(test_session_maker):
         rec2 = Record(
             id="DATA-HE-CAE-2026-000002",
             data_type="DATA",
-            division="HE",
-            team="CAE",
+            team="HE",
+            group="CAE",
             year=2026,
             seq=2,
             title="배터리 셀 측정 데이터",
@@ -365,8 +365,8 @@ async def seed_records(test_session_maker):
         rec3 = Record(
             id="DOC-HE-CAE-2025-000003",
             data_type="DOC",
-            division="HE",
-            team="CAE",
+            team="HE",
+            group="CAE",
             year=2025,
             seq=3,
             title="OGA 정책 문서",

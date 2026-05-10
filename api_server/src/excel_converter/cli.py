@@ -3,7 +3,7 @@
 사용 예::
 
     python -m excel_converter input.xlsx \\
-        --division HE --team CAE --year 2026 \\
+        --team HE --group CAE --year 2026 \\
         --start-seq 100 --output-dir output \\
         --mode per_sheet --skip-empty --infer-units --header-row 1
 
@@ -11,13 +11,13 @@
 
     # 표가 B5 부터 시작하는 시트
     python -m excel_converter messy.xlsx \\
-        --division HE --team CAE --year 2026 \\
+        --team HE --group CAE --year 2026 \\
         --start-cell B5 --skip-blank-rows --infer-units
 
 데이터 의미 명시 (원칙 6) — _META + _GLOSSARY 시트 사용 예::
 
     python -m excel_converter battery_test.xlsx \\
-        --division HE --team CAE --year 2026 \\
+        --team HE --group CAE --year 2026 \\
         --infer-units \\
         --meta-sheet _META --glossary-sheet _GLOSSARY
 """
@@ -39,8 +39,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="Excel(.xlsx) → DATA JSON 직접 변환기",
     )
     p.add_argument("xlsx_path", type=str, help="입력 .xlsx 경로")
-    p.add_argument("--division", required=True, help="팀 코드 (예: HE)")
-    p.add_argument("--team", required=True, help="그룹 코드 (예: CAE)")
+    p.add_argument("--team", required=True, help="팀 코드 (예: HE)")
+    p.add_argument("--group", required=True, help="그룹 코드 (예: CAE)")
     p.add_argument("--year", type=int, required=True, help="연도 (예: 2026)")
     p.add_argument(
         "--start-seq",
@@ -151,8 +151,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     opts = XlsxConverterOptions(
-        division=args.division,
         team=args.team,
+        group=args.group,
         year=args.year,
         start_seq=args.start_seq,
         output_dir=Path(args.output_dir),

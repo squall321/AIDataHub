@@ -12,8 +12,8 @@ async def test_options_returns_all_keys(db_client) -> None:
     body = resp.json()
     expected_keys = {
         "version",
-        "divisions",
         "teams",
+        "groups",
         "agents",
         "classifications",
         "statuses",
@@ -39,8 +39,8 @@ async def test_options_returns_all_keys(db_client) -> None:
     assert "DOC" in body["data_types"]
     assert isinstance(body["max_upload_mb"], int)
     assert isinstance(body["allow_custom"], dict)
-    assert body["allow_custom"]["division"] is False
-    assert body["allow_custom"]["team"] is True
+    assert body["allow_custom"]["team"] is False
+    assert body["allow_custom"]["group"] is True
 
 
 @pytest.mark.asyncio
@@ -65,15 +65,15 @@ async def test_options_cache_control_header(db_client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_options_divisions_and_teams_consistent(db_client) -> None:
-    """``divisions`` 의 모든 코드가 ``teams`` dict 의 키로 등장해야 한다."""
+async def test_options_teams_and_groups_consistent(db_client) -> None:
+    """``teams`` 의 모든 코드가 ``groups`` dict 의 키로 등장해야 한다."""
     resp = await db_client.get("/api/meta/options")
     body = resp.json()
-    teams = body["teams"]
-    for div in body["divisions"]:
-        assert div in teams, f"division {div!r} missing in teams mapping"
-        assert isinstance(teams[div], list)
-        assert all(isinstance(t, str) for t in teams[div])
+    groups = body["groups"]
+    for div in body["teams"]:
+        assert div in groups, f"team {div!r} missing in groups mapping"
+        assert isinstance(groups[div], list)
+        assert all(isinstance(t, str) for t in groups[div])
 
 
 @pytest.mark.asyncio

@@ -366,8 +366,8 @@ def _post_filter_tags(candidates: list[str], top_n: int) -> list[str]:
 
 @dataclass
 class ConverterOptions:
-    division: str
     team: str
+    group: str
     year: int
     seq: int = 1
     output_dir: Path = field(default_factory=lambda: Path("output"))
@@ -384,7 +384,7 @@ class _PendingCaption:
 
 
 def _make_doc_id(opts: ConverterOptions) -> str:
-    return f"{opts.division}-{opts.team}-{opts.year}-{opts.seq:06d}"
+    return f"{opts.team}-{opts.group}-{opts.year}-{opts.seq:06d}"
 
 
 def _make_fig_id(doc_id: str, n: int) -> str:
@@ -1126,7 +1126,7 @@ class Converter:
             "created": created,
             "modified": modified,
             "author": author,
-            "department": f"{self.opts.division}-{self.opts.team}",
+            "department": f"{self.opts.team}-{self.opts.group}",
             "version": "1.0",
             "tags": merged_tags,
             "summary": summary,

@@ -158,8 +158,8 @@ class RecordOut(RecordIn):
         from_attributes=True,
     )
 
-    division: str
     team: str
+    group: str
     year: int
     seq: int
     content_hash: str | None = None
@@ -179,8 +179,8 @@ class RecordSlim(BaseModel):
 
     id: str
     data_type: str
-    division: str
     team: str
+    group: str
     year: int
     seq: int
     title: str

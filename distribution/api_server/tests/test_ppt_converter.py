@@ -114,8 +114,8 @@ def sample_pptx(tmp_path: Path) -> Path:
 # ---------------------------------------------------------------------------
 def _build_options(tmp_path: Path) -> PptxConverterOptions:
     return PptxConverterOptions(
-        division="HE",
-        team="CAE",
+        team="HE",
+        group="CAE",
         year=2026,
         seq=1,
         output_dir=tmp_path / "out",

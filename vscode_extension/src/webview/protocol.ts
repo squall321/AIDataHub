@@ -37,12 +37,26 @@ export type WebviewToHost =
   | { type: 'searchRequest'; reqId: number; q: string; mode: 'semantic' | 'fts' | 'tag'; limit?: number }
   | { type: 'searchFacetedRequest'; reqId: number; filters: FacetedSearchFilters }
   | { type: 'getRecordRequest'; reqId: number; id: string }
-  | { type: 'discoverRequest'; reqId: number };
+  | { type: 'discoverRequest'; reqId: number }
+  // ---- File picker / drop fallback ----
+  /** Webview asks host to open OS file picker when drag-drop yields no File. */
+  | { type: 'openFilePicker'; reqId: number; target: 'upload' | 'bundle' }
+  /** Webview hands off a file path (from text/uri-list) to host for fs read. */
+  | { type: 'loadDroppedPath'; reqId: number; target: 'upload' | 'bundle'; path: string };
 
 // Host → Webview
 export type HostToWebview =
   | { type: 'config'; baseUrl: string; hasApiKey: boolean; connected: boolean }
-  | { type: 'connection'; ok: boolean; error?: string; health?: SystemHealth }
+  | {
+      type: 'connection';
+      ok: boolean;
+      error?: string;
+      health?: SystemHealth;
+      /** Server URL that actually responded (may differ from input if fallback succeeded). */
+      effectiveUrl?: string;
+      /** True when the original URL failed and a fallback (localhost) was used. */
+      fellBack?: boolean;
+    }
   | { type: 'options'; ok: boolean; payload?: MetaOptions; error?: string }
   | {
       type: 'uploadCredentials';
@@ -55,6 +69,19 @@ export type HostToWebview =
   | { type: 'searchResponse'; reqId: number; ok: boolean; payload?: SearchResponse; error?: string }
   | { type: 'searchFacetedResponse'; reqId: number; ok: boolean; payload?: FacetedSearchResponse; error?: string }
   | { type: 'getRecordResponse'; reqId: number; ok: boolean; payload?: FullRecord; error?: string }
-  | { type: 'discoverResponse'; reqId: number; ok: boolean; payload?: DiscoverResponse; error?: string };
+  | { type: 'discoverResponse'; reqId: number; ok: boolean; payload?: DiscoverResponse; error?: string }
+  // ---- File loaded from host ----
+  | {
+      type: 'fileLoaded';
+      reqId: number;
+      target: 'upload' | 'bundle';
+      ok: boolean;
+      /** base64 of file bytes (utf-8 safe across postMessage). */
+      contentBase64?: string;
+      filename?: string;
+      size?: number;
+      mimeType?: string;
+      error?: string;
+    };
 
 export type IngestResponseT = IngestResponse;

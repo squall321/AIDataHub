@@ -130,7 +130,7 @@ d:/Personal/AI_data/
 │   └─ requirements.txt
 │
 ├─ vscode_extension/               ← VS Code 비개발자 GUI 클라이언트
-│   ├─ ai-data-hub-uploader-0.4.0.vsix  (산출물)
+│   ├─ ai-data-hub-uploader-0.5.0.vsix  (산출물)
 │   ├─ USER_GUIDE.md
 │   └─ src/                        ← TypeScript (webview)
 │
@@ -209,7 +209,7 @@ d:/Personal/AI_data/
 {
   "schema_version": "1.0",
   "meta": {
-    "id": "DOC-HE-CAE-2026-000001",   // {prefix}-{division}-{team}-{year}-{seq6}
+    "id": "DOC-HE-CAE-2026-000001",   // {prefix}-{team}-{group}-{year}-{seq6}
     "data_type": "DOC",                // DOC | DATA | SIM | CAD | LOG | FORM | OTHER
     "title": "...",
     "summary": "...",

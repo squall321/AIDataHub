@@ -1,18 +1,18 @@
 """레코드 ID 파싱·검증 유틸리티.
 
 공식 ID 포맷:
-    {DATA_TYPE}-{DIVISION}-{TEAM}-{YEAR}-{SEQ:06d}
+    {DATA_TYPE}-{TEAM}-{GROUP}-{YEAR}-{SEQ:06d}
     예: DOC-HE-CAE-2026-000001
 
 레거시 ID 포맷 (DATA_TYPE 접두사 누락):
-    {DIVISION}-{TEAM}-{YEAR}-{SEQ:06d}
+    {TEAM}-{GROUP}-{YEAR}-{SEQ:06d}
     예: HE-CAE-2026-000001
     → 파싱 시 ``data_type`` 인수 또는 기본값 ``"DOC"``로 보강한다.
 
 규칙:
     - ``DATA_TYPE``: ``DOC | DATA | SIM | CAD | LOG | FORM | OTHER``
-    - ``DIVISION``: 2~4자 대문자 ASCII (HE, DA, MX, VD …)
-    - ``TEAM``    : 2~5자 대문자 ASCII (CAE, MFG, QA, DEV, PLM …)
+    - ``TEAM``: 2~4자 대문자 ASCII (HE, DA, MX, VD …)
+    - ``GROUP``    : 2~5자 대문자 ASCII (CAE, MFG, QA, DEV, PLM …)
     - ``YEAR``    : 4자리 (2020~2099)
     - ``SEQ``     : 6자리 zero-pad (000001~999999)
 
@@ -46,16 +46,16 @@ _DATA_TYPE_ALT = "|".join(sorted(DATA_TYPES, key=len, reverse=True))
 # 정식 ID
 ID_PATTERN = re.compile(
     rf"^(?P<data_type>{_DATA_TYPE_ALT})"
-    r"-(?P<division>[A-Z]{2,4})"
-    r"-(?P<team>[A-Z]{2,5})"
+    r"-(?P<team>[A-Z]{2,4})"
+    r"-(?P<group>[A-Z]{2,5})"
     r"-(?P<year>20[2-9][0-9])"
     r"-(?P<seq>\d{6})$"
 )
 
 # 레거시 ID (data_type 누락)
 LEGACY_ID_PATTERN = re.compile(
-    r"^(?P<division>[A-Z]{2,4})"
-    r"-(?P<team>[A-Z]{2,5})"
+    r"^(?P<team>[A-Z]{2,4})"
+    r"-(?P<group>[A-Z]{2,5})"
     r"-(?P<year>20[2-9][0-9])"
     r"-(?P<seq>\d{6})$"
 )
@@ -72,7 +72,7 @@ def parse_id(id: str, default_data_type: str = "DOC") -> dict:
         default_data_type: 레거시 ID 일 때 사용할 ``data_type`` 기본값.
 
     Returns:
-        ``{"data_type": str, "division": str, "team": str, "year": int, "seq": int}``
+        ``{"data_type": str, "team": str, "group": str, "year": int, "seq": int}``
 
     Raises:
         ValueError: 정식·레거시 어느 패턴과도 일치하지 않을 때.
@@ -84,8 +84,8 @@ def parse_id(id: str, default_data_type: str = "DOC") -> dict:
     if m:
         return {
             "data_type": m.group("data_type"),
-            "division": m.group("division"),
             "team": m.group("team"),
+            "group": m.group("group"),
             "year": int(m.group("year")),
             "seq": int(m.group("seq")),
         }
@@ -98,16 +98,16 @@ def parse_id(id: str, default_data_type: str = "DOC") -> dict:
             )
         return {
             "data_type": default_data_type,
-            "division": legacy.group("division"),
             "team": legacy.group("team"),
+            "group": legacy.group("group"),
             "year": int(legacy.group("year")),
             "seq": int(legacy.group("seq")),
         }
 
     raise ValueError(
         f"Invalid record id {id!r}: expected "
-        "'{DATA_TYPE}-{DIV}-{TEAM}-{YYYY}-{NNNNNN}' "
-        "or legacy '{DIV}-{TEAM}-{YYYY}-{NNNNNN}'"
+        "'{DATA_TYPE}-{TEAM}-{GROUP}-{YYYY}-{NNNNNN}' "
+        "or legacy '{TEAM}-{GROUP}-{YYYY}-{NNNNNN}'"
     )
 
 
@@ -118,8 +118,8 @@ def is_legacy_id(id: str) -> bool:
 
 def format_id(
     data_type: str,
-    division: str,
     team: str,
+    group: str,
     year: int,
     seq: int,
 ) -> str:
@@ -129,16 +129,16 @@ def format_id(
     """
     if data_type not in DATA_TYPES:
         raise ValueError(f"data_type must be one of {DATA_TYPES}, got {data_type!r}")
-    if not re.fullmatch(r"[A-Z]{2,4}", division):
-        raise ValueError(f"division must be 2-4 uppercase ASCII letters, got {division!r}")
-    if not re.fullmatch(r"[A-Z]{2,5}", team):
-        raise ValueError(f"team must be 2-5 uppercase ASCII letters, got {team!r}")
+    if not re.fullmatch(r"[A-Z]{2,4}", team):
+        raise ValueError(f"team must be 2-4 uppercase ASCII letters, got {team!r}")
+    if not re.fullmatch(r"[A-Z]{2,5}", group):
+        raise ValueError(f"group must be 2-5 uppercase ASCII letters, got {group!r}")
     if not (2020 <= int(year) <= 2099):
         raise ValueError(f"year must be in 2020..2099, got {year!r}")
     if not (1 <= int(seq) <= 999_999):
         raise ValueError(f"seq must be in 1..999999, got {seq!r}")
 
-    return f"{data_type}-{division}-{team}-{int(year)}-{int(seq):06d}"
+    return f"{data_type}-{team}-{group}-{int(year)}-{int(seq):06d}"
 
 
 def normalize_id(id: str, default_data_type: str = "DOC") -> str:
@@ -149,8 +149,8 @@ def normalize_id(id: str, default_data_type: str = "DOC") -> str:
     parts = parse_id(id, default_data_type=default_data_type)
     return format_id(
         data_type=parts["data_type"],
-        division=parts["division"],
         team=parts["team"],
+        group=parts["group"],
         year=parts["year"],
         seq=parts["seq"],
     )
@@ -167,23 +167,23 @@ class RecordID(BaseModel):
     """
 
     data_type: DataType
-    division: str = Field(..., min_length=2, max_length=4)
-    team: str = Field(..., min_length=2, max_length=5)
+    team: str = Field(..., min_length=2, max_length=4)
+    group: str = Field(..., min_length=2, max_length=5)
     year: int = Field(..., ge=2020, le=2099)
     seq: int = Field(..., ge=1, le=999_999)
 
-    @field_validator("division")
+    @field_validator("team")
     @classmethod
     def _div_upper(cls, v: str) -> str:
         if not re.fullmatch(r"[A-Z]{2,4}", v):
-            raise ValueError("division must be 2-4 uppercase ASCII letters")
+            raise ValueError("team must be 2-4 uppercase ASCII letters")
         return v
 
-    @field_validator("team")
+    @field_validator("group")
     @classmethod
     def _team_upper(cls, v: str) -> str:
         if not re.fullmatch(r"[A-Z]{2,5}", v):
-            raise ValueError("team must be 2-5 uppercase ASCII letters")
+            raise ValueError("group must be 2-5 uppercase ASCII letters")
         return v
 
     @classmethod
@@ -193,8 +193,8 @@ class RecordID(BaseModel):
     def to_string(self) -> str:
         return format_id(
             data_type=self.data_type,
-            division=self.division,
             team=self.team,
+            group=self.group,
             year=self.year,
             seq=self.seq,
         )

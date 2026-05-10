@@ -160,8 +160,8 @@ VS Code 확장 등 클라이언트가 폼 옵션을 일관되게 받기 위한 *
 ```json
 {
   "version": "1.0",
-  "divisions": ["HE", "EV", "PT", "DA", "MX", "VD"],
-  "teams": {
+  "teams": ["HE", "EV", "PT", "DA", "MX", "VD"],
+  "groups": {
     "HE": ["CAE", "Test", "Design"],
     "EV": ["BMS", "Battery", "Motor"],
     "PT": ["Material", "Process"]
@@ -182,8 +182,8 @@ VS Code 확장 등 클라이언트가 폼 옵션을 일관되게 받기 위한 *
   "supported_extensions": [".docx", ".markdown", ".md", ".pdf", ".pptx", ".xlsx"],
   "max_upload_mb":  50,
   "allow_custom": {
-    "division": false,
-    "team":     true,
+    "team": false,
+    "group":     true,
     "domain":   true
   }
 }
@@ -191,7 +191,7 @@ VS Code 확장 등 클라이언트가 폼 옵션을 일관되게 받기 위한 *
 
 | 필드                      | 출처                                                 |
 |---------------------------|------------------------------------------------------|
-| `divisions` / `teams`     | `api.seed.divisions` (정적 매핑)                     |
+| `teams` / `groups`     | `api.seed.teams` (정적 매핑)                     |
 | `agents`                  | `agents` 테이블 (`/api/agents` 와 같은 데이터)       |
 | `classifications`         | `api.schemas.common.CLASSIFICATIONS`                 |
 | `statuses`                | `api.schemas.common.STATUSES`                        |
@@ -289,8 +289,8 @@ curl -s "http://localhost:8000/api/data?agent=iga-analyst&query=offset&limit=5"
 | 위치 | 이름        | 타입    | 필수 | 설명                                            |
 |------|-------------|---------|------|-------------------------------------------------|
 | query | `data_type` | string | N    | `DOC` / `DATA` / `SIM` / `CAD` / `LOG` / ...    |
-| query | `division`  | string | N    | `HE` / `EV` / ...                               |
-| query | `team`      | string | N    | `CAE` / ...                                     |
+| query | `team`  | string | N    | `HE` / `EV` / ...                               |
+| query | `group`      | string | N    | `CAE` / ...                                     |
 | query | `year`      | int    | N    |                                                 |
 | query | `agent`     | string | N    | `agent_records` 매핑 기준 필터                  |
 | query | `limit`     | int    | N    | 기본 50                                         |
@@ -304,8 +304,8 @@ curl -s "http://localhost:8000/api/data?agent=iga-analyst&query=offset&limit=5"
     {
       "id": "DOC-HE-CAE-2026-000001",
       "data_type": "DOC",
-      "division": "HE",
-      "team": "CAE",
+      "team": "HE",
+      "group": "CAE",
       "year": 2026,
       "title": "IGA 가이드",
       "summary": "...",
@@ -334,8 +334,8 @@ curl: `curl -s "http://localhost:8000/api/records?data_type=DOC&limit=10"`
 {
   "id": "DOC-HE-CAE-2026-000001",
   "data_type": "DOC",
-  "division": "HE",
-  "team": "CAE",
+  "team": "HE",
+  "group": "CAE",
   "year": 2026,
   "seq": 1,
   "title": "IGA 가이드",
@@ -548,8 +548,8 @@ soft-deleted 레코드까지 조회.
 | 위치 | 이름             | 타입    | 필수 | 설명                                               |
 |------|------------------|---------|------|----------------------------------------------------|
 | form | `file`           | file    | Y    | 업로드 파일 (지원 확장자 중 하나)                  |
-| form | `division`       | string  | Y    | 팀 코드 (`HE`, `VE` …)                             |
-| form | `team`           | string  | Y    | 그룹 코드 (`CAE`, `BMS` …)                         |
+| form | `team`       | string  | Y    | 팀 코드 (`HE`, `VE` …)                             |
+| form | `group`           | string  | Y    | 그룹 코드 (`CAE`, `BMS` …)                         |
 | form | `year`           | int     | Y    | 연도 (예: `2026`)                                  |
 | form | `seq`            | int     | N    | 순번 (기본 `1`)                                    |
 | form | `tags`           | string  | N    | 콤마 구분 태그 (`"IGA,LS-DYNA"`)                   |
@@ -575,7 +575,7 @@ curl:
 curl -X POST http://localhost:8000/api/convert/ \
   -H "X-API-Key: $KEY" \
   -F "file=@iga_guide.docx" \
-  -F "division=HE" -F "team=CAE" -F "year=2026" -F "seq=1" \
+  -F "team=HE" -F "group=CAE" -F "year=2026" -F "seq=1" \
   -F "tags=IGA,LS-DYNA" -F "agents=iga-analyst"
 ```
 
@@ -624,8 +624,8 @@ curl -X POST http://localhost:8000/api/convert/ \
     "summary": "...",
     "tags": ["IGA", "LS-DYNA"],
     "agents": ["iga-analyst"],
-    "division": "HE",
-    "team": "CAE",
+    "team": "HE",
+    "group": "CAE",
     "year": 2026,
     "seq": 1,
     "source_file": "iga_guide.docx",
@@ -646,7 +646,7 @@ curl:
 curl -X POST http://localhost:8000/api/convert/ingest \
   -H "X-API-Key: $KEY" \
   -F "file=@iga_guide.docx" \
-  -F "division=HE" -F "team=CAE" -F "year=2026" -F "seq=1" \
+  -F "team=HE" -F "group=CAE" -F "year=2026" -F "seq=1" \
   -F "tags=IGA,LS-DYNA" -F "agents=iga-analyst"
 ```
 

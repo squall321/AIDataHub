@@ -18,8 +18,8 @@ from md_converter.core import MarkdownConverter, MarkdownConverterOptions
 @pytest.fixture()
 def opts(tmp_path):
     return MarkdownConverterOptions(
-        division="HE",
-        team="CAE",
+        team="HE",
+        group="CAE",
         year=2026,
         seq=1,
         output_dir=tmp_path,
@@ -241,7 +241,7 @@ def test_caption_pattern_replaces_missing_caption(opts):
 def test_doc_id_format(opts):
     md = "# Hello\n\nbody.\n"
     result, _ = _convert(md, opts)
-    # DOC-{div}-{team}-{year}-{seq:06d}
+    # DOC-{div}-{group}-{year}-{seq:06d}
     assert result.meta["doc_id"] == "DOC-HE-CAE-2026-000001"
     fig_md = "# X\n\n![alt](a.png)\n"
     converter = MarkdownConverter(opts)

@@ -1,6 +1,6 @@
 """Legacy 변환기(.docx → JSON 단일 파이프라인) 호환성 회귀 테스트.
 
-기존 `python -m converter <docx> --division ...` 흐름이
+기존 `python -m converter <docx> --team ...` 흐름이
 DB/스키마 도입 이후에도 깨지지 않는지를 검증한다.
 """
 from __future__ import annotations
@@ -25,9 +25,9 @@ def _run_converter(out_dir: Path) -> subprocess.CompletedProcess[str]:
         "-m",
         "converter",
         str(TEST_DOCX),
-        "--division",
-        "HE",
         "--team",
+        "HE",
+        "--group",
         "CAE",
         "--year",
         "2026",
@@ -96,7 +96,7 @@ def test_converter_meta_doc_id_format(tmp_path: Path) -> None:
     doc_id = payload.get("meta", {}).get("doc_id", "")
     parts = doc_id.split("-")
     # HE-CAE-2026-000001 → 4 parts
-    assert len(parts) == 4, f"예상 형식 'DIV-TEAM-YEAR-SEQ' 와 다름: {doc_id!r}"
+    assert len(parts) == 4, f"예상 형식 'DIV-GROUP-YEAR-SEQ' 와 다름: {doc_id!r}"
     assert parts[0] == "HE"
     assert parts[1] == "CAE"
     assert parts[2] == "2026"

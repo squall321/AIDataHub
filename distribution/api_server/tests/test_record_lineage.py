@@ -22,8 +22,8 @@ async def _seed_chain(session, mk):
             Record(
                 id=rid,
                 data_type="DOC",
-                division="HE",
-                team="CAE",
+                team="HE",
+                group="CAE",
                 year=2026,
                 seq=401 + idx,
                 title=f"Generation {idx}",
