@@ -169,6 +169,68 @@ async def write_record(
                     agent_type,
                 )
 
+    # ----------------------------- doc_type taxonomy 검증 (Migration 0011) ----
+    # ``record_in.doc_type`` 이 ``doc_types`` 테이블에 없으면 warn-only.
+    record_doc_type = getattr(record_in, "doc_type", None)
+    if record_doc_type:
+        try:
+            from ..db.models import DocType
+
+            exists = await session.scalar(
+                select(DocType.code).where(DocType.code == record_doc_type)
+            )
+            if not exists:
+                logger.warning(
+                    "record %s uses unknown doc_type=%r",
+                    record_in.id,
+                    record_doc_type,
+                )
+        except Exception as exc:  # noqa: BLE001 - best effort
+            # 마이그레이션 미적용 / mirror 모델 환경에서는 silently skip.
+            logger.debug(
+                "doc_type validation skipped for %s: %s", record_in.id, exc
+            )
+
+    # ----------------------------- agent expected-schema 검증 (warn-only) ----
+    # 각 agent 가 기대하는 doc_type / required_tags / excluded_tags 를 검사한다.
+    if record_in.agents:
+        for agent_type in record_in.agents:
+            agent_row = await session.scalar(
+                select(Agent).where(Agent.agent_type == agent_type)
+            )
+            if not agent_row:
+                continue  # 이미 위에서 warn 한 unregistered agent
+            # required_doc_type
+            req_dt = getattr(agent_row, "required_doc_type", None)
+            if req_dt and record_doc_type != req_dt:
+                logger.warning(
+                    "record %s agent %s expects doc_type=%r but got %r",
+                    record_in.id,
+                    agent_type,
+                    req_dt,
+                    record_doc_type,
+                )
+            # required_tags
+            req_tags = getattr(agent_row, "required_tags", None) or []
+            missing_tags = set(req_tags) - set(record_in.tags or [])
+            if missing_tags:
+                logger.warning(
+                    "record %s agent %s missing required tags: %s",
+                    record_in.id,
+                    agent_type,
+                    sorted(missing_tags),
+                )
+            # excluded_tags
+            exc_tags = getattr(agent_row, "excluded_tags", None) or []
+            bad_tags = set(record_in.tags or []) & set(exc_tags)
+            if bad_tags:
+                logger.warning(
+                    "record %s agent %s has excluded tags: %s",
+                    record_in.id,
+                    agent_type,
+                    sorted(bad_tags),
+                )
+
     existing = await session.get(Record, record_in.id)
     pre_snapshot: dict[str, Any] | None = None
 
@@ -181,6 +243,9 @@ async def write_record(
 
         # update — 모든 mutable 필드 갱신.
         existing.data_type = record_in.data_type
+        # Migration 0011: soft taxonomy 컬럼이 미존재할 수 있는 mirror 모델도 안전.
+        if hasattr(existing, "doc_type"):
+            existing.doc_type = record_doc_type
         existing.team = parts["team"]
         existing.group = parts["group"]
         existing.year = parts["year"]
@@ -259,6 +324,9 @@ async def write_record(
             query_examples=list(record_in.query_examples),
             access_pattern=record_in.access_pattern,
         )
+        # Migration 0011: doc_type 컬럼은 운영 모델에만 존재 (mirror 모델 미존재).
+        if "doc_type" in Record.__table__.c:
+            target.doc_type = record_doc_type
         session.add(target)
         action = "inserted"
         # 섹션은 flush 이후 FK 가 살아있도록 add 후 동기화 한 번 수행.

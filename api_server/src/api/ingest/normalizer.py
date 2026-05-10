@@ -191,6 +191,8 @@ def _extract_doc(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
 
     common = {
         "id": raw.get("id") or meta.get("doc_id") or meta.get("id"),
+        # Soft taxonomy (Migration 0011) — 변환기는 ``meta.doc_type`` 으로 출력.
+        "doc_type": meta.get("doc_type") or raw.get("doc_type"),
         "title": meta.get("title", "") or raw.get("title", ""),
         "summary": meta.get("summary", "") or raw.get("summary", ""),
         "tags": list(meta.get("tags") or raw.get("tags") or []),
@@ -330,6 +332,8 @@ def _common_fields(raw: dict[str, Any], default_title: str = "") -> dict[str, An
             or meta.get("doc_id")
             or meta.get("id")
         ),
+        # Soft taxonomy (Migration 0011) — raw 우선, 없으면 meta.
+        "doc_type": raw.get("doc_type") or meta.get("doc_type"),
         "title": raw.get("title") or default_title,
         "summary": raw.get("summary", ""),
         "tags": list(raw.get("tags") or []),
@@ -439,6 +443,7 @@ def normalize(raw: dict[str, Any]) -> RecordIn:
     record = RecordIn(
         id=rid,
         data_type=variant,
+        doc_type=common.get("doc_type"),
         title=common.get("title") or rid,
         summary=common.get("summary", ""),
         tags=common.get("tags", []),

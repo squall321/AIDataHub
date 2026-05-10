@@ -7,7 +7,7 @@
 ## Install (end users)
 
 ```powershell
-code --install-extension ai-data-hub-uploader-0.6.0.vsix
+code --install-extension ai-data-hub-uploader-0.7.0.vsix
 ```
 
 자세한 사용법 및 트러블슈팅은 [`USER_GUIDE.md`](USER_GUIDE.md) 참고.
@@ -18,7 +18,7 @@ code --install-extension ai-data-hub-uploader-0.6.0.vsix
 npm install
 npx tsc -p .                                                      # → out/
 npx @vscode/vsce package --allow-missing-repository --no-dependencies
-# → ai-data-hub-uploader-0.6.0.vsix
+# → ai-data-hub-uploader-0.7.0.vsix
 # 또는 F5 (Extension Development Host) 로 디버그
 ```
 
@@ -75,7 +75,7 @@ vscode_extension/
 
 | 그룹           | 필드                                                 | 비고                                  |
 |----------------|------------------------------------------------------|---------------------------------------|
-| 조직/식별      | `division`, `team`, `year`, `seq`                    | 백엔드 `Record.id` 생성에 사용        |
+| 조직/식별      | `team`, `group`, `year`, `seq`                       | 백엔드 `Record.id` 생성에 사용        |
 | 분류           | `classification`, `status`, `domain`, `language`     | 거버넌스                              |
 | 검색/연결      | `tags`, `agents`, `subject_keywords`                 | RAG 매칭                              |
 | 첨부 자체      | `title` (override), `summary` (override)             | 변환기 자동 추출 결과 위에 덮어씀     |

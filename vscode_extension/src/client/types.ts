@@ -236,6 +236,10 @@ export interface AgentOutT {
   description: string;
   common_tags: string[];
   data_types: string[];           // subset of DOC|DATA|SIM|CAD|LOG|FORM|OTHER
+  // v0.7.0 — expected-schema fields (Migration 0008)
+  required_doc_type: string | null;
+  required_tags: string[];
+  excluded_tags: string[];
   created_at: string | null;      // ISO datetime
 }
 
@@ -245,6 +249,9 @@ export interface AgentInT {
   description?: string;
   common_tags?: string[];
   data_types?: string[];
+  required_doc_type?: string | null;
+  required_tags?: string[];
+  excluded_tags?: string[];
 }
 
 export interface AgentPatchT {
@@ -252,6 +259,34 @@ export interface AgentPatchT {
   description?: string;
   common_tags?: string[];
   data_types?: string[];
+  required_doc_type?: string | null;
+  required_tags?: string[];
+  excluded_tags?: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Doc-types taxonomy — /api/doc-types (v0.7.0)
+// Mirrors api_server's DocTypeOut / DocTypeIn / DocTypePatch pydantic schemas.
+// ---------------------------------------------------------------------------
+export interface DocTypeOutT {
+  code: string;                   // PK, e.g. "manual"
+  name: string;                   // human-friendly label
+  description: string;
+  expected_sections: string[];    // suggested top-level section titles
+  created_at: string | null;
+}
+
+export interface DocTypeInT {
+  code: string;                   // required
+  name: string;                   // required
+  description?: string;
+  expected_sections?: string[];
+}
+
+export interface DocTypePatchT {
+  name?: string;
+  description?: string;
+  expected_sections?: string[];
 }
 
 // ---------------------------------------------------------------------------

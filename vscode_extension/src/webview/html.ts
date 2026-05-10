@@ -446,10 +446,26 @@ function clientScript(): string {
         description: '',
         common_tags: [],
         data_types: [],
+        // v0.7.0 — expected-schema fields
+        required_doc_type: '',
+        required_tags: [],
+        excluded_tags: [],
       },
       formError: null,          // form-level error message (string|null)
       saving: false,
       recordsByAgent: {},       // agent_type -> { loading, items, error }
+      // v0.7.0 — doc_type taxonomy cache (DocTypeOutT[] | null)
+      docTypes: null,
+      docTypesLoading: false,
+      docTypesError: null,
+      // v0.7.0 — inline doc_type create mini-form state
+      docTypeMiniForm: {
+        open: false,
+        prevSelection: '',      // restored on cancel
+        values: { code: '', name: '', description: '', expected_sections: [] },
+        error: null,
+        saving: false,
+      },
     },
   };
 
@@ -1882,6 +1898,28 @@ function clientScript(): string {
       : '<span class="muted">—</span>';
     var created = ag.created_at ? escapeHtml(String(ag.created_at)) : '<span class="muted">—</span>';
     var descSafe = (ag.description || '').trim();
+
+    // v0.7.0 — expected-schema hint section.
+    var rdt = ag.required_doc_type;
+    var rtags = Array.isArray(ag.required_tags) ? ag.required_tags : [];
+    var xtags = Array.isArray(ag.excluded_tags) ? ag.excluded_tags : [];
+    var schemaHtml;
+    if (!rdt && rtags.length === 0 && xtags.length === 0) {
+      schemaHtml = '<div class="k">Expected schema</div><div><span class="muted">(any)</span></div>';
+    } else {
+      var rdtHtml = rdt ? '<code>' + escapeHtml(String(rdt)) + '</code>' : '<span class="muted">—</span>';
+      var rtagsHtml = rtags.length
+        ? rtags.map(function(t){ return '<span class="chip">' + escapeHtml(t) + '</span>'; }).join(' ')
+        : '<span class="muted">—</span>';
+      var xtagsHtml = xtags.length
+        ? xtags.map(function(t){ return '<span class="chip">' + escapeHtml(t) + '</span>'; }).join(' ')
+        : '<span class="muted">—</span>';
+      schemaHtml =
+          '<div class="k">required_doc_type</div><div>' + rdtHtml + '</div>'
+        + '<div class="k">required_tags</div><div>' + rtagsHtml + '</div>'
+        + '<div class="k">excluded_tags</div><div>' + xtagsHtml + '</div>';
+    }
+
     return '<div class="agent-detail">'
       + '<div class="kv">'
       + '  <div class="k">agent_type</div><div><code>' + escapeHtml(ag.agent_type) + '</code></div>'
@@ -1889,6 +1927,7 @@ function clientScript(): string {
       + '  <div class="k">Description</div><div>' + (descSafe ? escapeHtml(descSafe) : '<span class="muted">—</span>') + '</div>'
       + '  <div class="k">Common tags</div><div>' + tagHtml + '</div>'
       + '  <div class="k">Data types</div><div>' + dtHtml + '</div>'
+      + '  ' + schemaHtml
       + '  <div class="k">Created at</div><div>' + created + '</div>'
       + '</div>'
       + '<div class="toolbar">'
@@ -1903,6 +1942,12 @@ function clientScript(): string {
     var a = state.agents;
     var fv = a.formValues;
     var isEdit = !!a.editing;
+
+    // Kick off doc_type fetch on first form open (cached afterwards).
+    if (a.docTypes === null && !a.docTypesLoading) {
+      reloadDocTypesList();
+    }
+
     var wrap = el('div');
     var checkboxes = AGENT_DATA_TYPES.map(function(dt){
       var checked = fv.data_types.indexOf(dt) !== -1 ? ' checked' : '';
@@ -1910,6 +1955,64 @@ function clientScript(): string {
     }).join('');
     var errHtml = a.formError ? '<div class="status err">' + escapeHtml(a.formError) + '</div>' : '';
     var savingHtml = a.saving ? '<p class="muted" style="margin-top:8px">Saving…</p>' : '';
+
+    // Build doc_type dropdown options.
+    var dtList = Array.isArray(a.docTypes) ? a.docTypes : [];
+    var dtOpts = '<option value="">(none)</option>';
+    var currentSel = fv.required_doc_type || '';
+    var foundCurrent = false;
+    for (var i = 0; i < dtList.length; i++) {
+      var dt = dtList[i];
+      var sel = (currentSel && dt.code === currentSel) ? ' selected' : '';
+      if (sel) foundCurrent = true;
+      dtOpts += '<option value="' + escapeHtml(dt.code) + '"' + sel + '>'
+        + escapeHtml(dt.name || dt.code) + ' (' + escapeHtml(dt.code) + ')</option>';
+    }
+    // If editing an agent whose required_doc_type points to a code that's no
+    // longer in the taxonomy, still show it (un-resolved) so we don't silently
+    // drop it on save.
+    if (currentSel && !foundCurrent) {
+      dtOpts += '<option value="' + escapeHtml(currentSel) + '" selected>'
+        + escapeHtml(currentSel) + ' (unknown)</option>';
+    }
+    dtOpts += '<option value="__add_new__">+ Add new doc_type...</option>';
+
+    var dtLoadingHtml = a.docTypesLoading
+      ? '<span class="muted" style="font-size:11px;margin-left:6px">loading taxonomy…</span>'
+      : '';
+    var dtErrorHtml = a.docTypesError
+      ? '<div class="status err" style="margin-top:6px">' + escapeHtml(a.docTypesError) + '</div>'
+      : '';
+
+    // Inline mini-form for creating a new doc_type.
+    var mini = a.docTypeMiniForm;
+    var miniHtml = '';
+    if (mini.open) {
+      var miniErr = mini.error
+        ? '<div class="status err" style="margin-top:6px">' + escapeHtml(mini.error) + '</div>'
+        : '';
+      var miniSaving = mini.saving
+        ? '<p class="muted" style="margin-top:6px">Creating…</p>'
+        : '';
+      miniHtml =
+          '<div class="agent-form" id="dt-mini" style="margin-top:8px;padding:10px;border:1px dashed var(--vscode-panel-border);border-radius:4px">'
+        + '  <div style="font-weight:600;margin-bottom:6px">New doc_type</div>'
+        + '  <label>code *</label>'
+        + '  <input id="dt-code" type="text" placeholder="manual" value="' + escapeHtml(mini.values.code) + '" />'
+        + '  <label>name *</label>'
+        + '  <input id="dt-name" type="text" placeholder="User manual" value="' + escapeHtml(mini.values.name) + '" />'
+        + '  <label>description</label>'
+        + '  <textarea id="dt-desc" rows="2" placeholder="Short blurb">' + escapeHtml(mini.values.description) + '</textarea>'
+        + '  <label>expected_sections <span class="muted" style="font-size:11px">— Enter or comma to add</span></label>'
+        + '  <div id="dt-chips-sections" class="chips"></div>'
+        + miniErr
+        + miniSaving
+        + '  <div class="toolbar" style="margin-top:8px">'
+        + '    <button id="dt-save">Save doc_type</button>'
+        + '    <button id="dt-cancel" class="secondary">Cancel</button>'
+        + '  </div>'
+        + '</div>';
+    }
 
     wrap.innerHTML = '<h1>' + (isEdit ? 'Edit agent' : 'New agent') + '</h1>'
       + '<p class="subtle">' + (isEdit
@@ -1927,6 +2030,19 @@ function clientScript(): string {
       + '  <label>Data types <span class="muted" style="font-size:11px">— record types this agent consumes</span></label>'
       + '  <div class="checkbox-row" id="af-dts">' + checkboxes + '</div>'
       + '</div>'
+      + '<details style="margin-top:10px"' + ((fv.required_doc_type || (fv.required_tags || []).length || (fv.excluded_tags || []).length) ? ' open' : '') + '>'
+      + '  <summary style="cursor:pointer;font-weight:600">Expected schema (optional)</summary>'
+      + '  <div class="agent-form" style="margin-top:6px">'
+      + '    <label>Required doc_type <span class="muted" style="font-size:11px">— record\\'s meta.doc_type must equal this</span>' + dtLoadingHtml + '</label>'
+      + '    <select id="af-doc-type">' + dtOpts + '</select>'
+      + dtErrorHtml
+      + miniHtml
+      + '    <label>Required tags <span class="muted" style="font-size:11px">— record must carry all of these</span></label>'
+      + '    <div id="af-chips-rtags" class="chips"></div>'
+      + '    <label>Excluded tags <span class="muted" style="font-size:11px">— record must carry none of these</span></label>'
+      + '    <div id="af-chips-xtags" class="chips"></div>'
+      + '  </div>'
+      + '</details>'
       + errHtml
       + savingHtml
       + '<div class="toolbar">'
@@ -1937,6 +2053,8 @@ function clientScript(): string {
 
     // Wire chip input — seed with existing tags.
     var chips = makeChipsSeeded('af-chips-tags', 'add tag…', fv.common_tags || []);
+    var rtagChips = makeChipsSeeded('af-chips-rtags', 'add required tag…', fv.required_tags || []);
+    var xtagChips = makeChipsSeeded('af-chips-xtags', 'add excluded tag…', fv.excluded_tags || []);
 
     // data_types checkboxes — keep state.formValues.data_types in sync.
     document.querySelectorAll('#af-dts input[type="checkbox"]').forEach(function(cb){
@@ -1950,10 +2068,117 @@ function clientScript(): string {
       });
     });
 
+    // doc_type dropdown change handler.
+    on('af-doc-type', 'change', function(){
+      var sel = document.getElementById('af-doc-type');
+      if (!sel) return;
+      var v = sel.value;
+      if (v === '__add_new__') {
+        // Open the inline mini-form. Remember the previous selection so Cancel
+        // can revert back.
+        // Persist current chip state into formValues so a re-render preserves it.
+        var fv2 = state.agents.formValues;
+        fv2.agent_type = val('af-type').trim();
+        fv2.name = val('af-name').trim();
+        fv2.description = val('af-desc');
+        fv2.common_tags = chips.get();
+        fv2.required_tags = rtagChips.get();
+        fv2.excluded_tags = xtagChips.get();
+        state.agents.docTypeMiniForm = {
+          open: true,
+          prevSelection: fv2.required_doc_type || '',
+          values: { code: '', name: '', description: '', expected_sections: [] },
+          error: null,
+          saving: false,
+        };
+        render();
+        return;
+      }
+      state.agents.formValues.required_doc_type = v;
+    });
+
+    // Mini-form wiring (only when open).
+    if (mini.open) {
+      var sectionChips = makeChipsSeeded('dt-chips-sections', 'add expected section…', mini.values.expected_sections || []);
+      on('dt-cancel', 'click', function(){
+        // Revert dropdown selection.
+        state.agents.formValues.required_doc_type = state.agents.docTypeMiniForm.prevSelection || '';
+        state.agents.docTypeMiniForm = {
+          open: false,
+          prevSelection: '',
+          values: { code: '', name: '', description: '', expected_sections: [] },
+          error: null,
+          saving: false,
+        };
+        render();
+      });
+      on('dt-save', 'click', function(){
+        var code = val('dt-code').trim();
+        var name = val('dt-name').trim();
+        var desc = val('dt-desc');
+        var sections = sectionChips.get();
+        if (!code) {
+          state.agents.docTypeMiniForm.error = 'code is required.';
+          state.agents.docTypeMiniForm.values = { code: code, name: name, description: desc, expected_sections: sections };
+          render();
+          return;
+        }
+        if (!name) {
+          state.agents.docTypeMiniForm.error = 'name is required.';
+          state.agents.docTypeMiniForm.values = { code: code, name: name, description: desc, expected_sections: sections };
+          render();
+          return;
+        }
+        state.agents.docTypeMiniForm.error = null;
+        state.agents.docTypeMiniForm.saving = true;
+        state.agents.docTypeMiniForm.values = { code: code, name: name, description: desc, expected_sections: sections };
+        render();
+        rpc('createDocTypeRequest', { payload: { code: code, name: name, description: desc, expected_sections: sections } })
+          .then(function(payload){
+            // Refresh dropdown list, auto-select new code, close mini-form.
+            var newCode = (payload && payload.code) ? payload.code : code;
+            state.agents.formValues.required_doc_type = newCode;
+            state.agents.docTypeMiniForm = {
+              open: false,
+              prevSelection: '',
+              values: { code: '', name: '', description: '', expected_sections: [] },
+              error: null,
+              saving: false,
+            };
+            // Append into local cache so re-render shows it without round-trip.
+            if (Array.isArray(state.agents.docTypes)) {
+              var exists = state.agents.docTypes.some(function(d){ return d.code === newCode; });
+              if (!exists) state.agents.docTypes = state.agents.docTypes.concat([payload]);
+            }
+            render();
+            // Background refresh to stay consistent.
+            reloadDocTypesList();
+          })
+          .catch(function(err){
+            state.agents.docTypeMiniForm.saving = false;
+            var msg = String((err && err.message) || err);
+            // 409 conflict → friendlier hint.
+            if (/409|already/i.test(msg)) {
+              msg = 'doc_type "' + code + '" already exists.';
+            }
+            state.agents.docTypeMiniForm.error = msg;
+            render();
+          });
+      });
+    }
+
     on('af-cancel', 'click', function(){
       state.agents.screen = 'list';
       state.agents.editing = null;
       state.agents.formError = null;
+      // Reset mini-form if it was open.
+      state.agents.docTypeMiniForm = {
+        open: false,
+        prevSelection: '',
+        values: { code: '', name: '', description: '', expected_sections: [] },
+        error: null,
+        saving: false,
+      };
       render();
     });
     on('af-save', 'click', function(){
@@ -1963,9 +2188,34 @@ function clientScript(): string {
       v.name = val('af-name').trim();
       v.description = val('af-desc');
       v.common_tags = chips.get();
+      v.required_tags = rtagChips.get();
+      v.excluded_tags = xtagChips.get();
+      var sel = document.getElementById('af-doc-type');
+      if (sel && sel.value !== '__add_new__') {
+        v.required_doc_type = sel.value || '';
+      }
       // data_types already kept in sync via checkbox change handler.
       submitAgentForm();
     });
+  }
+
+  function reloadDocTypesList(){
+    state.agents.docTypesLoading = true;
+    state.agents.docTypesError = null;
+    rpc('listDocTypesRequest', {})
+      .then(function(payload){
+        state.agents.docTypes = Array.isArray(payload) ? payload : [];
+        state.agents.docTypesLoading = false;
+        // Re-render if we are still on the agents form so the dropdown updates.
+        if (state.tab === 'agents' && state.agents.screen === 'form') render();
+      })
+      .catch(function(err){
+        state.agents.docTypesLoading = false;
+        // Non-fatal — surface as small inline notice; form still works without it.
+        state.agents.docTypes = [];
+        state.agents.docTypesError = 'doc_type taxonomy unavailable: ' + String((err && err.message) || err);
+        if (state.tab === 'agents' && state.agents.screen === 'form') render();
+      });
   }
 
   // Variant of makeChips that seeds initial items.
@@ -2020,14 +2270,25 @@ function clientScript(): string {
         description: found.description || '',
         common_tags: (found.common_tags || []).slice(),
         data_types: (found.data_types || []).slice(),
+        required_doc_type: found.required_doc_type || '',
+        required_tags: (found.required_tags || []).slice(),
+        excluded_tags: (found.excluded_tags || []).slice(),
       };
     } else {
       state.agents.editing = null;
       state.agents.formValues = {
         agent_type: '', name: '', description: '', common_tags: [], data_types: [],
+        required_doc_type: '', required_tags: [], excluded_tags: [],
       };
     }
     state.agents.formError = null;
+    state.agents.docTypeMiniForm = {
+      open: false,
+      prevSelection: '',
+      values: { code: '', name: '', description: '', expected_sections: [] },
+      error: null,
+      saving: false,
+    };
     state.agents.screen = 'form';
     render();
   }
@@ -2057,11 +2318,18 @@ function clientScript(): string {
     state.agents.saving = true;
     render();
     var isEdit = !!state.agents.editing;
+    // Normalize required_doc_type: send null when blank so backend distinguishes
+    // "no filter" from "explicit empty string". required_tags / excluded_tags
+    // always send the array (possibly empty).
+    var rdt = (v.required_doc_type && v.required_doc_type.trim()) ? v.required_doc_type.trim() : null;
     var payload = {
       name: v.name,
       description: v.description || '',
       common_tags: v.common_tags || [],
       data_types: v.data_types || [],
+      required_doc_type: rdt,
+      required_tags: v.required_tags || [],
+      excluded_tags: v.excluded_tags || [],
     };
     var promise;
     if (isEdit) {
@@ -2187,7 +2455,8 @@ function clientScript(): string {
                || m.type === 'getRecordResponse' || m.type === 'discoverResponse'
                || m.type === 'listAgentsResponse' || m.type === 'getAgentRecordsResponse'
                || m.type === 'createAgentResponse' || m.type === 'updateAgentResponse'
-               || m.type === 'deleteAgentResponse') {
+               || m.type === 'deleteAgentResponse'
+               || m.type === 'listDocTypesResponse' || m.type === 'createDocTypeResponse') {
       const p = _pendingReq.get(m.reqId);
       if (!p) return;
       _pendingReq.delete(m.reqId);

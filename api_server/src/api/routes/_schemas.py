@@ -93,6 +93,10 @@ class AgentOut(_Base):
     description: str = ""
     common_tags: list[str] = Field(default_factory=list)
     data_types: list[str] = Field(default_factory=list)
+    # ---- Expected-schema validation (Migration 0011) ----
+    required_doc_type: str | None = None
+    required_tags: list[str] = Field(default_factory=list)
+    excluded_tags: list[str] = Field(default_factory=list)
     created_at: datetime | None = None
 
 
@@ -102,6 +106,10 @@ class AgentIn(_Base):
     description: str = ""
     common_tags: list[str] = Field(default_factory=list)
     data_types: list[str] = Field(default_factory=list)
+    # ---- Expected-schema validation (Migration 0011) ----
+    required_doc_type: str | None = None
+    required_tags: list[str] = Field(default_factory=list)
+    excluded_tags: list[str] = Field(default_factory=list)
 
 
 class AgentPatch(_Base):
@@ -109,6 +117,33 @@ class AgentPatch(_Base):
     description: str | None = None
     common_tags: list[str] | None = None
     data_types: list[str] | None = None
+    required_doc_type: str | None = None
+    required_tags: list[str] | None = None
+    excluded_tags: list[str] | None = None
+
+
+# ---------------------------------------------------------------------------
+# DocType (Migration 0011) — taxonomy entries
+# ---------------------------------------------------------------------------
+class DocTypeOut(_Base):
+    code: str
+    name: str
+    description: str = ""
+    expected_sections: list[str] = Field(default_factory=list)
+    created_at: datetime | None = None
+
+
+class DocTypeIn(_Base):
+    code: str
+    name: str
+    description: str = ""
+    expected_sections: list[str] = Field(default_factory=list)
+
+
+class DocTypePatch(_Base):
+    name: str | None = None
+    description: str | None = None
+    expected_sections: list[str] | None = None
 
 
 # Agent 2 의 정식 스키마와 호환을 유지한다.
@@ -136,6 +171,9 @@ __all__ = [
     "AgentOut",
     "AgentPatch",
     "DataType",
+    "DocTypeIn",
+    "DocTypeOut",
+    "DocTypePatch",
     "RecordIn",
     "RecordListResponse",
     "RecordOut",

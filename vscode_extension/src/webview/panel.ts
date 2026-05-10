@@ -276,6 +276,40 @@ export class UploaderPanel {
         }
         return;
       }
+      // ---- v0.7.0 Doc-types ----
+      case 'listDocTypesRequest': {
+        const client = await this.getClient();
+        if (!client) {
+          this.post({ type: 'listDocTypesResponse', reqId: msg.reqId, ok: false, error: 'Not connected' });
+          return;
+        }
+        try {
+          const payload = await client.listDocTypes();
+          this.post({ type: 'listDocTypesResponse', reqId: msg.reqId, ok: true, payload });
+        } catch (err) {
+          this.post({ type: 'listDocTypesResponse', reqId: msg.reqId, ok: false, error: formatError(err) });
+        }
+        return;
+      }
+      case 'createDocTypeRequest': {
+        const client = await this.getClient();
+        if (!client) {
+          this.post({ type: 'createDocTypeResponse', reqId: msg.reqId, ok: false, error: 'Not connected' });
+          return;
+        }
+        try {
+          const payload = await client.createDocType(msg.payload);
+          // doc_type taxonomy changed — invalidate meta cache in case the
+          // server-side options bundle later starts exposing them.
+          this.options.clear();
+          this.post({ type: 'createDocTypeResponse', reqId: msg.reqId, ok: true, payload });
+          this.post({ type: 'optionsInvalidated' });
+        } catch (err) {
+          const status = err instanceof ApiError ? err.status : undefined;
+          this.post({ type: 'createDocTypeResponse', reqId: msg.reqId, ok: false, error: formatError(err), httpStatus: status });
+        }
+        return;
+      }
       case 'openFilePicker': {
         // 드래그-드롭이 webview 안에서 빈 dataTransfer 를 반환할 때 호출됨.
         // VS Code OS 네이티브 파일 다이얼로그를 띄워 사용자가 파일 선택 → fs 로 읽어 webview 로 전달.

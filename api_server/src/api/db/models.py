@@ -117,6 +117,10 @@ class Record(Base):
     # ---- Body / metadata --------------------------------------------------
     title: Mapped[str] = mapped_column(Text, nullable=False)
     summary: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    # ---- Doc type taxonomy (Migration 0011) ------------------------------
+    # ``data_type`` 위에 얹는 소프트 분류 (manual/report/checklist/training/spec/...).
+    # ``doc_types`` 테이블에 등록되지 않은 값은 warn-only.
+    doc_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
     tags: Mapped[list[str]] = mapped_column(
         ARRAY(Text), nullable=False, server_default="{}"
     )
@@ -326,6 +330,18 @@ class Agent(Base):
     data_types: Mapped[list[str]] = mapped_column(
         ARRAY(Text), nullable=False, server_default="{}"
     )
+    # ---- Expected-schema validation (Migration 0011) --------------------
+    # 이 agent 가 기대하는 doc_type / 필수 / 제외 tags. 인제스트 시 검증되며
+    # 현재는 warn-only (로그만 남기고 거부하지는 않는다).
+    required_doc_type: Mapped[str | None] = mapped_column(
+        String(40), nullable=True
+    )
+    required_tags: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default="{}"
+    )
+    excluded_tags: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default="{}"
+    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
@@ -524,11 +540,43 @@ class AuditLog(Base):
         )
 
 
+# ---------------------------------------------------------------------------
+# DocType (Migration 0011)
+# ---------------------------------------------------------------------------
+class DocType(Base):
+    """문서 종류 taxonomy (manual / report / checklist / training / ...).
+
+    ``data_type`` (7-enum 구조 분류) 위에 얹는 의미 분류. ``records.doc_type``
+    값이 이 테이블에 등록되어 있어야 권장 — 미등록이면 warn-only.
+    """
+
+    __tablename__ = "doc_types"
+    __table_args__ = (
+        Index("idx_doc_types_code", "code"),
+    )
+
+    code: Mapped[str] = mapped_column(String(40), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    expected_sections: Mapped[list[str]] = mapped_column(
+        ARRAY(String), nullable=False, server_default="{}"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<DocType code={self.code!r} name={self.name!r}>"
+
+
 __all__ = [
     "Agent",
     "AgentRecord",
     "ApiKey",
     "AuditLog",
+    "DocType",
     "Record",
     "RecordAttachment",
     "RecordSection",

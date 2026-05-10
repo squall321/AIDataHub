@@ -30,6 +30,7 @@ from . import (
     convert,
     data,
     discover,
+    doc_types,
     groups,
     jobs,
     meta,
@@ -77,6 +78,8 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(data.router)
     app.include_router(search.router)
     app.include_router(agents.router)
+    # /api/doc-types/* — doc_type taxonomy (Migration 0011)
+    app.include_router(doc_types.router)
     app.include_router(analytics.router)
     app.include_router(attachments.router)
     app.include_router(auth.router)
@@ -122,6 +125,7 @@ __all__ = [
     "convert",
     "data",
     "discover",
+    "doc_types",
     "groups",
     "jobs",
     "meta",

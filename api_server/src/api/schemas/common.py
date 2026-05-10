@@ -69,6 +69,9 @@ class RecordIn(BaseModel):
 
     id: str
     data_type: DataType
+    # Soft taxonomy ON TOP of data_type (Migration 0011). 권장 어휘는 ``doc_types``
+    # 테이블에 등록 — 미등록 값은 db_writer 가 warn-only 로 로그한다.
+    doc_type: str | None = None
     title: str
     summary: str = ""
     tags: list[str] = Field(default_factory=list)
@@ -179,6 +182,7 @@ class RecordSlim(BaseModel):
 
     id: str
     data_type: str
+    doc_type: str | None = None
     team: str
     group: str
     year: int

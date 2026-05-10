@@ -8,6 +8,8 @@ import type {
   AgentOutT,
   AgentPatchT,
   DiscoverResponse,
+  DocTypeInT,
+  DocTypeOutT,
   FacetedSearchFilters,
   FacetedSearchResponse,
   FullRecord,
@@ -48,6 +50,9 @@ export type WebviewToHost =
   | { type: 'createAgentRequest'; reqId: number; payload: AgentInT }
   | { type: 'updateAgentRequest'; reqId: number; agentType: string; patch: AgentPatchT }
   | { type: 'deleteAgentRequest'; reqId: number; agentType: string }
+  // ---- v0.7.0 Doc-types ----
+  | { type: 'listDocTypesRequest'; reqId: number }
+  | { type: 'createDocTypeRequest'; reqId: number; payload: DocTypeInT }
   // ---- File picker / drop fallback ----
   /** Webview asks host to open OS file picker when drag-drop yields no File. */
   | { type: 'openFilePicker'; reqId: number; target: 'upload' | 'bundle' }
@@ -86,6 +91,9 @@ export type HostToWebview =
   | { type: 'createAgentResponse'; reqId: number; ok: boolean; payload?: AgentOutT; error?: string; httpStatus?: number }
   | { type: 'updateAgentResponse'; reqId: number; ok: boolean; payload?: AgentOutT; error?: string; httpStatus?: number }
   | { type: 'deleteAgentResponse'; reqId: number; ok: boolean; agentType?: string; error?: string; httpStatus?: number }
+  // ---- v0.7.0 Doc-types responses ----
+  | { type: 'listDocTypesResponse'; reqId: number; ok: boolean; payload?: DocTypeOutT[]; error?: string }
+  | { type: 'createDocTypeResponse'; reqId: number; ok: boolean; payload?: DocTypeOutT; error?: string; httpStatus?: number }
   // ---- v0.6.0 cache invalidation hint ----
   | { type: 'optionsInvalidated' }
   // ---- File loaded from host ----

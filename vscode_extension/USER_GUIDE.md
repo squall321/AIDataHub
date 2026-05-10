@@ -6,12 +6,15 @@ A VS Code extension to interact with your AI Data Hub backend (`api_server`) dir
 - **Bundle tab** — drop a pre-converted `.zip` (JSON + figures/attachments folder) → `POST /api/ingest/bundle` → server skips conversion, places resources at static mounts.
 - **Search tab** — semantic / fts / tag 검색 + faceted filter (data_type / classification / domain / agent) + record detail viewer + `/api/discover` 전체 카탈로그.
 - **Agents tab (v0.6)** — full CRUD on agent definitions via `/api/agents`: list / view / create / edit / delete. Changes invalidate the Upload tab's agent dropdown cache so newly registered agents become pickable immediately.
+- **Agents — Expected schema (v0.7)** — agents can declare a `required_doc_type`, plus `required_tags` and `excluded_tags`. Pick `+ Add new doc_type...` in the dropdown to define a brand-new doc_type inline without leaving the form.
 
 No CLI, no `curl`, no Python.
 
+> **What's new in v0.7.0** — Agents tab gains three new fields (`required_doc_type`, `required_tags`, `excluded_tags`) tucked under an **Expected schema (optional)** disclosure. When the dropdown's `+ Add new doc_type...` is chosen, an inline mini-form lets you create a new `/api/doc-types` entry (`code`, `name`, `description`, `expected_sections`) without losing form context. New code is auto-selected on success; 409 conflicts surface inline. The agent list's expanded detail panel now shows a schema hint section (or "(any)" when nothing is constrained).
+>
 > **What's new in v0.6.0** — fourth tab **Agents** for managing agent definitions inline (no DB shell required). Agent list shows `agent_type` / name / data types / description; click a row to inline-expand the full record with **Edit** / **Delete** / **View records** actions. New / Edit form supports chip-input common tags and a `DOC/DATA/SIM/CAD/LOG/FORM/OTHER` checkbox grid for data types.
 
-**Version**: 0.6.0 (2026-05-11) — Agents CRUD tab added. Previous: 0.5.0 = Bundle + 0006 metadata + Search.
+**Version**: 0.7.0 (2026-05-11) — Agents expected-schema fields + inline doc_type creation. Previous: 0.6.0 = Agents CRUD tab.
 
 ---
 
@@ -158,12 +161,41 @@ The **Agents** tab manages agent definitions registered with the backend (`/api/
 
 After any successful create / update / delete, the meta/options cache is invalidated server-side and on the client, so the Upload tab's filtered agent dropdown reflects the change on its next render.
 
+### 4b.2 Expected schema (v0.7)
+
+The Agent form now has an **Expected schema (optional)** disclosure block (auto-expanded when any of the fields are populated). It declares what kind of records this agent is allowed to consume:
+
+| Field | Wire | Meaning |
+|-------|------|---------|
+| **Required doc_type** | `required_doc_type: string \| null` | Record's `meta.doc_type` (normalized by the backend) must equal this code. Choose `(none)` to leave unconstrained. |
+| **Required tags** | `required_tags: string[]` | Record must carry **all** of these tags. Chips input — Enter or comma to add. |
+| **Excluded tags** | `excluded_tags: string[]` | Record must carry **none** of these tags. |
+
+The expanded detail panel in the agent list also surfaces these three values (or `(any)` if all three are empty), so you can see at a glance which agents are open vs. constrained.
+
+### 4b.3 doc_type taxonomy (v0.7) — inline create
+
+`required_doc_type` is backed by a server-side taxonomy at `/api/doc-types`. The Agent form's doc_type dropdown is populated from this list. When the value you need doesn't exist yet, you can create it without leaving the form:
+
+1. Open the doc_type dropdown — the last option is **`+ Add new doc_type...`**.
+2. Pick it. An inline mini-form appears below the dropdown with:
+   - **`code`** (required) — short PK, e.g. `manual`, `report`, `iga-checklist`.
+   - **`name`** (required) — human-friendly label.
+   - **`description`** — short blurb.
+   - **`expected_sections`** — chip input of suggested top-level section titles (Enter / comma to add).
+3. Click **Save doc_type** → `POST /api/doc-types` (201).
+   - On success: dropdown refreshes, the new code is auto-selected, mini-form closes.
+   - On 409 conflict: an inline error reads `doc_type "<code>" already exists.` Adjust and retry.
+4. **Cancel** reverts the dropdown to the previous selection and closes the mini-form without touching the server.
+
+The new doc_type is immediately usable for this agent and any future agent forms. Existing records' `meta.doc_type` field (set by the backend's normalizer or by Advanced metadata on upload) is matched against the agent's `required_doc_type` at retrieval time.
+
 ### Errors
 
 | HTTP | Cause |
 |------|-------|
-| 409  | `agent_type` already exists — pick a different one. |
-| 404  | Agent was deleted in another session — refresh. |
+| 409  | `agent_type` (or `doc_type code`) already exists — pick a different one. |
+| 404  | Agent or doc_type was deleted in another session — refresh. |
 | 422  | Field validation (empty name, invalid data_type, etc.). |
 
 ---

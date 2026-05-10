@@ -4,6 +4,9 @@ import type {
   AgentPatchT,
   BundleUploadResponse,
   DiscoverResponse,
+  DocTypeInT,
+  DocTypeOutT,
+  DocTypePatchT,
   FacetedSearchFilters,
   FacetedSearchResponse,
   FullRecord,
@@ -305,5 +308,62 @@ export class ApiClient {
     });
     if (!res.ok) throw await parseError(res);
     return (await res.json()) as DiscoverResponse;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Doc-types taxonomy — /api/doc-types CRUD (v0.7.0)
+  // ---------------------------------------------------------------------------
+  /** GET /api/doc-types — list all doc_type definitions. */
+  async listDocTypes(): Promise<DocTypeOutT[]> {
+    const res = await fetch(joinUrl(this.baseUrl, '/api/doc-types'), {
+      method: 'GET',
+      headers: this.headers(),
+    });
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as DocTypeOutT[];
+  }
+
+  /** GET /api/doc-types/{code} — single doc_type (404 if missing). */
+  async getDocType(code: string): Promise<DocTypeOutT> {
+    const res = await fetch(
+      joinUrl(this.baseUrl, `/api/doc-types/${encodeURIComponent(code)}`),
+      { method: 'GET', headers: this.headers() },
+    );
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as DocTypeOutT;
+  }
+
+  /** POST /api/doc-types — create (201, or 409 on conflict). */
+  async createDocType(body: DocTypeInT): Promise<DocTypeOutT> {
+    const res = await fetch(joinUrl(this.baseUrl, '/api/doc-types'), {
+      method: 'POST',
+      headers: this.headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as DocTypeOutT;
+  }
+
+  /** PATCH /api/doc-types/{code} — partial update (404 if missing). */
+  async patchDocType(code: string, patch: DocTypePatchT): Promise<DocTypeOutT> {
+    const res = await fetch(
+      joinUrl(this.baseUrl, `/api/doc-types/${encodeURIComponent(code)}`),
+      {
+        method: 'PATCH',
+        headers: this.headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(patch),
+      },
+    );
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as DocTypeOutT;
+  }
+
+  /** DELETE /api/doc-types/{code} — 204 on success, 404 if missing. */
+  async deleteDocType(code: string): Promise<void> {
+    const res = await fetch(
+      joinUrl(this.baseUrl, `/api/doc-types/${encodeURIComponent(code)}`),
+      { method: 'DELETE', headers: this.headers() },
+    );
+    if (!res.ok && res.status !== 204) throw await parseError(res);
   }
 }

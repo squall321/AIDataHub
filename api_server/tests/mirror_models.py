@@ -53,6 +53,8 @@ class Record(Base):
     )
     id: Mapped[str] = mapped_column(String(80), primary_key=True)
     data_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Migration 0011: soft taxonomy 컬럼.
+    doc_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
     team: Mapped[str] = mapped_column(String(10), nullable=False)
     group: Mapped[str] = mapped_column(String(20), nullable=False)
     year: Mapped[int] = mapped_column(SmallInteger, nullable=False)
@@ -200,6 +202,12 @@ class Agent(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     common_tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     data_types: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    # Migration 0011: agent expected-schema 컬럼.
+    required_doc_type: Mapped[str | None] = mapped_column(
+        String(40), nullable=True
+    )
+    required_tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    excluded_tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -207,6 +215,19 @@ class Agent(Base):
         back_populates="agent",
         cascade="all, delete-orphan",
         passive_deletes=True,
+    )
+
+
+class DocType(Base):
+    __tablename__ = "doc_types"
+    code: Mapped[str] = mapped_column(String(40), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    expected_sections: Mapped[list] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
 
@@ -298,6 +319,7 @@ __all__ = [
     "ApiKey",
     "AuditLog",
     "Base",
+    "DocType",
     "Record",
     "RecordAttachment",
     "RecordSection",
