@@ -122,8 +122,11 @@
 ```jsonc
 {
   "id": "A001",
-  "kind": "image",        // image | chart | ole | equation | audio | video |
-                          // external_link | archive | other
+  "kind": "figure",       // 10 kinds (api/schemas/attachment.py:29-51):
+                          //   figure | document | spreadsheet | media |
+                          //   archive | cad | chart | drawing | data | other
+                          // 확장자 자동 매핑: _KIND_BY_EXT 표 참조.
+                          // PPT 차트 placeholder 는 kind="chart".
   "mime": "image/png",
   "caption": "Figure 1: NURBS 기저함수",
   "file_path": "DOC-HE-CAE-2026-000001/A001.png",  // POSIX 상대 경로

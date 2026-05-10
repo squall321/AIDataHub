@@ -416,7 +416,7 @@ def infer_attachment_kind(
     filename: str | None = None,
     mime: str | None = None,
 ) -> str:
-    """파일명/MIME 으로 첨부 kind 결정. 9 종 중 하나를 반환 (실패 시 ``"other"``).
+    """파일명/MIME 으로 첨부 kind 결정. 10 종 중 하나를 반환 (실패 시 ``"other"``).
 
     ``api.schemas.attachment.infer_attachment_kind`` 의 변환기 측 거울로,
     같은 매핑을 사용한다. 두 모듈 어느 쪽에서나 호출 가능하다.

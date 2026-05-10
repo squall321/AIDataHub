@@ -33,7 +33,9 @@
 
 ## 1. 현재 공용 meta 필드 카탈로그
 
-명세(`json_schema_rules.md` 4장, `lines 105-196`) 가 정의한 필드와, 6개 변환기가 실제 출력하는 필드를 대조한다.
+> **⏰ 본 §1 / §2 표는 v1.0 원본 감사 (2026-05-09) 의 기록물 — 모든 P0 가 v1.3 에서 닫힌 후의 현재 상태와 다르다.** 진위 정합표는 [`json_schema_rules.md`](./json_schema_rules.md) §13.1 (DB 매핑) 참조. 본 표의 `P0 키 충돌` 등 표기는 닫힌 이슈를 가리키는 역사 자료.
+
+명세(`json_schema_rules.md` 4장) 가 정의한 필드와, 6개 변환기가 실제 출력하는 필드를 대조한다.
 `O` = 채움(또는 채울 수 있음), `-` = 출력하지 않음, `~` = 옵션·CLI override 로만 가능.
 
 | 필드 | 타입 | 명세 필수 | Word | Excel | PPT | MD | HTML | PDF | 비고 |
@@ -86,14 +88,16 @@
 
 ## 2. 변환기별 고유 meta (own extras)
 
+> **⏰ §2 도 v1.0 원본 감사 표기.** v1.3 시점 결론: `agent_scope` / `units` vs `units_map` / `data.v1` 모두 명세에 정식 편입됨 — `json_schema_rules.md` §4.6 (own-extras), §11.2 (Excel), §13.1 (DB 매핑) 참조. 본 표의 "비표준 / 키명 다름 (P0)" 표기는 v1.0 시점 기록이며, 현재는 모두 명세 일부.
+
 | 변환기 | 키 | 위치 | 내용 |
 |--------|----|------|------|
-| Word | `agent_scope` | `meta.agent_scope` | `meta_overrides` 통해 주입. (명세는 `agents`) `core.py:770-771` |
+| Word | `agent_scope` | `meta.agent_scope` | `meta_overrides` 통해 주입. **명세 §4.2 정식 편입** `core.py:770-771` |
 | Excel | `tables[].context` | payload 의 `context` | 시트 레벨 `_META: sheet:<name>.{description,method,condition,equipment,operator,date,notes,caveats}`. `core.py:354-363` |
 | Excel | `tables[].column_descriptions` | payload 의 `column_descriptions` | `_GLOSSARY` description. `core.py:495` |
-| Excel | `tables[].units_map` | payload 의 `units_map` | `_GLOSSARY` unit (객체) — 명세 `tables[].units` (객체) 와 키명 다름 (P0) |
-| Excel | DATA 페이로드 자체 | top-level `data_id`, `schema_version="data.v1"`, `caption`, `division`, `team`, `year`, `headers`, `rows`, `row_count`, `column_count`, `source.{sheet,kind}`, `generated_at` | 다른 변환기와 schema_version 자체가 다름. `core.py:125-159` |
-| PPT | `agent_scope` | top-level meta | Word 와 동일 비표준 |
+| Excel | `tables[].units` + `units_map` | payload | 두 키 모두 출력 (alias). 명세 §11.2 정식 |
+| Excel | DATA 페이로드 자체 | top-level `data_id`, `schema_version="data.v1"`, ... | **명세 §11.2 정식 변종**. normalizer `_extract_data` (data_id → RecordIn.id 폴백 포함) 가 흡수. `core.py:125-159` |
+| PPT | `agent_scope` | top-level meta | 명세 정식 |
 | MD | `front_matter_extra` | `meta.front_matter_extra` | `title/tags/agents/summary/author/doc_type/created/modified/version` 외 모든 front matter 잔존 키. `core.py:649-656` |
 | HTML | `head_meta_extra` | `meta.head_meta_extra` | 표준 매핑되지 않은 `<meta name=...>` 모두 + `_extra`. `core.py:641-650` |
 | PDF | `meta.pdf` | top-level meta 의 `pdf` 객체 | `{page_count, heading_strategy, creator, producer, creation_date, modification_date}`. `core.py:651-664` |

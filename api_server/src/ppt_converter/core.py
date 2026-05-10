@@ -684,7 +684,7 @@ class PptxConverter:
         att = Attachment(
             id=att_id,
             number=self.att_counter,
-            kind="other",
+            kind="chart",
             caption=caption,
             section_ref=section.id,
             extra={

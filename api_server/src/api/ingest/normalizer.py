@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from typing import Any
 
 from ..schemas import (
@@ -32,8 +33,96 @@ from ..schemas.id_format import (
     normalize_id,
     parse_id,
 )
+from .capabilities import compute_capabilities
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# 자동 언어 감지 (META_FORMAT_AUDIT A-4 / P1-2)
+# ---------------------------------------------------------------------------
+# 한글: AC00-D7AF (한글 음절) + 1100-11FF (자모) + 3130-318F (호환 자모).
+_KO_RE = re.compile(r"[가-힯ᄀ-ᇿ㄰-㆏]")
+# 일본어 가나: 3040-309F (히라가나) + 30A0-30FF (가타카나).
+_JA_KANA_RE = re.compile(r"[぀-ゟ゠-ヿ]")
+# CJK 통합 한자: 4E00-9FFF.
+_ZH_RE = re.compile(r"[一-鿿]")
+# 라틴 문자.
+_EN_RE = re.compile(r"[A-Za-z]")
+
+
+def _detect_language_from_content(content: dict[str, Any]) -> str | None:
+    """``content`` 본문 텍스트의 문자종 분포로 언어를 추정한다.
+
+    Returns:
+        "ko" / "en" / "ja" / "zh" / "mixed" 또는 신호 부족 시 ``None``.
+    """
+    if not isinstance(content, dict):
+        return None
+    sections = content.get("sections") or []
+    if not isinstance(sections, list):
+        return None
+
+    texts: list[str] = []
+
+    def _walk(nodes: Any) -> None:
+        if not isinstance(nodes, list):
+            return
+        for n in nodes:
+            if not isinstance(n, dict):
+                continue
+            blocks = n.get("blocks") or []
+            if isinstance(blocks, list):
+                for b in blocks:
+                    if not isinstance(b, dict):
+                        continue
+                    btype = b.get("type")
+                    if btype in {"paragraph", "list_item", "quote", "code"}:
+                        t = b.get("text") or ""
+                        if isinstance(t, str) and t:
+                            texts.append(t)
+            _walk(n.get("children") or [])
+
+    _walk(sections)
+    body = " ".join(texts)[:5000]
+    if len(body) < 50:
+        return None
+
+    ko = len(_KO_RE.findall(body))
+    ja = len(_JA_KANA_RE.findall(body))
+    zh = len(_ZH_RE.findall(body))
+    en = len(_EN_RE.findall(body))
+    total = ko + ja + zh + en
+    if total < 30:
+        return None
+
+    ko_pct = ko / total
+    ja_pct = ja / total
+    zh_pct = zh / total
+    en_pct = en / total
+
+    # 일본어 가나가 5% 이상 + 한자 존재 → 중국어로 오분류 방지.
+    if ja > 0 and ja_pct >= 0.05 and zh > 0:
+        # 가나 + 한자(간지) 합산 비율로 일본어 판정.
+        jp_combined_pct = (ja + zh) / total
+        if jp_combined_pct >= 0.60:
+            return "ja"
+
+    if ko_pct >= 0.60:
+        return "ko"
+    if ja_pct >= 0.60:
+        return "ja"
+    if zh_pct >= 0.60 and ja == 0:
+        return "zh"
+    if en_pct >= 0.60:
+        return "en"
+
+    # 혼합 판정: 상위 두 클래스가 각각 >= 20% 인지.
+    pcts = sorted([ko_pct, ja_pct, zh_pct, en_pct], reverse=True)
+    if pcts[0] >= 0.20 and pcts[1] >= 0.20:
+        return "mixed"
+
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +224,9 @@ def _extract_doc(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
             meta.get("subject_keywords") or raw.get("subject_keywords") or []
         ),
         "source_system": meta.get("source_system") or raw.get("source_system"),
-        "language": meta.get("language") or raw.get("language") or "ko",
+        # language: 작성자 명시 여부를 보존하기 위해 기본값 "ko" 를 적용하지 않는다.
+        # normalize() 에서 None 이면 본문 자동 감지 → 그래도 없으면 "ko".
+        "language": meta.get("language") or raw.get("language"),
         "parent_record_id": (
             meta.get("parent_record_id") or raw.get("parent_record_id")
         ),
@@ -224,10 +315,21 @@ def _extract_other(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]
 
 
 def _common_fields(raw: dict[str, Any], default_title: str = "") -> dict[str, Any]:
-    """비-DOC 변종에서 공용 메타 필드를 끌어온다."""
+    """비-DOC 변종에서 공용 메타 필드를 끌어온다.
+
+    ``id`` 폴백 순서: ``raw.id`` → ``raw.data_id`` (Excel DATA 변종) →
+    ``meta.doc_id`` → ``meta.id``. Excel 변환기는 top-level ``data_id`` 만
+    출력하므로 이 폴백이 없으면 ingest 시 "id is required" 로 거부된다
+    (json_schema_rules §11.2 의 흡수 경로 명세와 일치).
+    """
     meta = raw.get("meta") if isinstance(raw.get("meta"), dict) else {}
     return {
-        "id": raw.get("id"),
+        "id": (
+            raw.get("id")
+            or raw.get("data_id")
+            or meta.get("doc_id")
+            or meta.get("id")
+        ),
         "title": raw.get("title") or default_title,
         "summary": raw.get("summary", ""),
         "tags": list(raw.get("tags") or []),
@@ -261,7 +363,9 @@ def _common_fields(raw: dict[str, Any], default_title: str = "") -> dict[str, An
             raw.get("subject_keywords") or meta.get("subject_keywords") or []
         ),
         "source_system": raw.get("source_system") or meta.get("source_system"),
-        "language": raw.get("language") or meta.get("language") or "ko",
+        # language: 작성자 명시 여부를 보존하기 위해 기본값 "ko" 를 적용하지 않는다.
+        # normalize() 에서 None 이면 본문 자동 감지 → 그래도 없으면 "ko".
+        "language": raw.get("language") or meta.get("language"),
         "parent_record_id": (
             raw.get("parent_record_id") or meta.get("parent_record_id")
         ),
@@ -311,6 +415,15 @@ def normalize(raw: dict[str, Any]) -> RecordIn:
     if not rid:
         raise ValueError("id is required (input has no 'id' field nor 'meta.doc_id')")
 
+    # 자동 언어 감지 (META_FORMAT_AUDIT A-4 / P1-2):
+    # 작성자가 language 를 명시하지 않은 경우(common["language"] is None)에 한해
+    # 본문 텍스트의 문자종 분포로 ko/en/ja/zh/mixed 를 추정한다. 감지 실패 시
+    # 스키마 기본값 "ko" 로 폴백 (record 생성 시 ``or "ko"`` 가 처리).
+    if not common.get("language"):
+        detected = _detect_language_from_content(content)
+        if detected:
+            common["language"] = detected
+
     # 레거시 ID 면 detected variant 를 기본 data_type 으로 사용.
     if is_legacy_id(rid):
         logger.warning(
@@ -357,6 +470,11 @@ def normalize(raw: dict[str, Any]) -> RecordIn:
         valid_from=common.get("valid_from"),
         valid_until=common.get("valid_until"),
     )
+    # capabilities 자동 산출 (json_schema_rules §13). RecordIn 구성 직후
+    # 구조 신호를 검사해 라벨 리스트를 채운다 — embeddings 는 임베딩 잡이 갱신.
+    caps = compute_capabilities(record)
+    if caps:
+        record = record.model_copy(update={"capabilities": caps})
     return record
 
 

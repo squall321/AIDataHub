@@ -16,7 +16,7 @@
 권장 키:
 
 - ``id`` (str), ``number`` (int), ``caption`` (str), ``section_ref`` (str)
-- ``kind`` (str)         — attachments[] 만. 9 종 중 하나.
+- ``kind`` (str)         — attachments[] 만. 10 종 중 하나.
 - ``file_path`` (str)    — 정적 마운트 ``/attachments`` 직하 상대 경로.
 - ``image_path`` (str)   — figures[] 의 legacy 키. attachments[] 에서는
                             ``file_path`` 로 통일된다.

@@ -143,7 +143,7 @@ class Source:
 @dataclass
 class Attachment:
     """일반화된 첨부 (figure / document / spreadsheet / media / archive
-    / cad / drawing / data / other).
+    / cad / chart / drawing / data / other).
 
     캡션은 모든 kind 에 대해 필수다. 누락 시 ``"(캡션 누락 — 검수 필요)"``
     placeholder 가 채워지고 변환기가 ``warnings`` 에 경고를 남긴다.

@@ -1,6 +1,6 @@
 """Attachment Pydantic 스키마.
 
-`record_attachments` 테이블 행을 표현한다. 모든 첨부는 다음 9 종류 중 하나의
+`record_attachments` 테이블 행을 표현한다. 모든 첨부는 다음 10 종류 중 하나의
 ``kind`` 를 가진다:
 
 - ``figure``      이미지/다이어그램 (png, jpg, svg, wmf, emf, ...)
@@ -9,6 +9,7 @@
 - ``media``       오디오/비디오 (mp3, wav, mp4, avi, mov, webm)
 - ``archive``     번들 아카이브 (zip, tar, gz, 7z)
 - ``cad``         3D CAD 모델 (step, iges, catpart, sldprt, prt)
+- ``chart``       차트 placeholder (PPT chart shape; 데이터는 tables[] 로 추출)
 - ``drawing``     2D 도면 (dwg, dxf)
 - ``data``        구조화 데이터 (json, xml, yaml)
 - ``other``       위에 해당하지 않는 모든 파일
@@ -33,6 +34,7 @@ ATTACHMENT_KINDS: tuple[str, ...] = (
     "media",
     "archive",
     "cad",
+    "chart",
     "drawing",
     "data",
     "other",
@@ -45,6 +47,7 @@ AttachmentKind = Literal[
     "media",
     "archive",
     "cad",
+    "chart",
     "drawing",
     "data",
     "other",
@@ -130,9 +133,10 @@ def infer_attachment_kind(
     filename: str | None = None,
     mime: str | None = None,
 ) -> str:
-    """확장자 + MIME 으로 attachment kind 결정. 항상 9 종 중 하나를 반환.
+    """확장자 + MIME 으로 attachment kind 결정. 항상 10 종 중 하나를 반환.
 
-    매칭 실패 시 ``"other"`` 로 폴백한다.
+    매칭 실패 시 ``"other"`` 로 폴백한다. ``"chart"`` 는 확장자/MIME 으로
+    추정되지 않고, PPT 변환기에서 chart shape 감지 시 직접 지정한다.
     """
     by_ext = infer_kind_from_extension(filename)
     if by_ext is not None:

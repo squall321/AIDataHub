@@ -152,6 +152,23 @@ async def write_record(
     parts = parse_id(record_in.id)
     content_hash = compute_content_hash(record_in.content)
 
+    # ----------------------------- agent_scope 등록 검증 (P1-7 / A-8) --------
+    # ``record_in.agents`` (← meta.agent_scope) 에 ``agents`` 테이블에 등록되지
+    # 않은 agent_type 이 있으면 경고만 남기고 진행한다 (warn-only). 오타/고아
+    # agent 식별자 조기 발견이 목적이며, 이후 strict 모드 전환을 대비한 단계.
+    if record_in.agents:
+        registered_rows = await session.execute(select(Agent.agent_type))
+        registered_agents: set[str] = {
+            row[0] for row in registered_rows.all() if row[0]
+        }
+        for agent_type in record_in.agents:
+            if agent_type and agent_type not in registered_agents:
+                logger.warning(
+                    "record %s references unregistered agent_type %r — pending strict validation",
+                    record_in.id,
+                    agent_type,
+                )
+
     existing = await session.get(Record, record_in.id)
     pre_snapshot: dict[str, Any] | None = None
 
