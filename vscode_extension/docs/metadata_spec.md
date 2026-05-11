@@ -8,8 +8,8 @@
 
 | Field      | Type   | Required | UI 컨트롤        | 백엔드 매핑 (`/api/convert/ingest`) | 비고                                      |
 |------------|--------|----------|------------------|--------------------------------------|-------------------------------------------|
-| `division` | string | Y        | `<select>` (옵션 API) | `division` (form)                | `HE`/`EV`/... — 백엔드 enum 옵션          |
-| `team`     | string | Y        | `<select>` (옵션 API) | `team` (form)                    | `division` 선택 시 종속적으로 필터링      |
+| `team` | string | Y        | `<select>` (옵션 API) | `team` (form)                | `HE`/`EV`/... — 백엔드 enum 옵션          |
+| `group`     | string | Y        | `<select>` (옵션 API) | `group` (form)                    | `team` 선택 시 종속적으로 필터링      |
 | `year`     | int    | Y        | `<input type=number>` | `year` (form)                    | 기본값: 현재 연도                         |
 | `seq`     | int    | Y        | `<input type=number>` | `seq` (form)                     | 기본값: 1, 백엔드 추후 자동증가 옵션 검토 |
 
@@ -68,7 +68,7 @@
 │                                                            │
 │  🏢 Identification                                         │
 │  ┌────────────┐ ┌────────────┐ ┌──────┐ ┌────┐             │
-│  │ Division ▾ │ │  Team    ▾ │ │ Year │ │Seq │             │
+│  │ Team ▾ │ │  Group    ▾ │ │ Year │ │Seq │             │
 │  └────────────┘ └────────────┘ └──────┘ └────┘             │
 │                                                            │
 │  🏷️  Classification                                        │
@@ -100,8 +100,8 @@ Content-Type: multipart/form-data
 X-API-Key: <secret>
 
 file:             <binary>
-division:         HE
-team:             CAE
+team:         HE
+group:             CAE
 year:             2026
 seq:              1
 classification:   internal
@@ -120,7 +120,7 @@ valid_until:                          # 백엔드 추가 후
 
 ## 5. 검증 규칙 (클라이언트 사이드)
 
-- `division`, `team`, `year`, `seq` 미입력 → `Send` 비활성.
+- `team`, `group`, `year`, `seq` 미입력 → `Send` 비활성.
 - `year`: 1990~2100 범위 강제.
 - `seq`: 1~999999 범위 강제.
 - `tags` / `agents` / `subject_keywords`: 각 항목 trim 후 빈 문자열 제거.
@@ -132,8 +132,8 @@ valid_until:                          # 백엔드 추가 후
 
 다음 enum 은 **백엔드 신규 엔드포인트 `GET /api/meta/options`** 가 권위적으로 내려줘야 한다 (확장 자체에 하드코딩 금지):
 
-- `divisions: string[]`
-- `teams: { [division: string]: string[] }`
+- `teams: string[]`
+- `groups: { [team: string]: string[] }`
 - `agents: { agent_type: string; name: string; data_types: string[] }[]`
 - `classifications: string[]`
 - `statuses: string[]`

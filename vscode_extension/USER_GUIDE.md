@@ -102,15 +102,15 @@ The panel then auto-switches to the **Metadata Form**:
 
 | Group | Fields |
 |-------|--------|
-| Identification (required) | `team`, `group`, `year`, `seq` |
+| Identification (required) | `group`, `group`, `year`, `seq` |
 | Classification | `classification` (default `internal`), `status` (default `draft`), `domain`, `language` (default `ko`) |
 | Discoverability | `tags`, `agents`, `subject_keywords` (chip inputs — Enter or comma to add) |
 | Override (optional) | `title`, `summary` (leave empty = use auto-extracted from the converter) |
 | Quality (optional) | `quality_score` 0–100, `derivation`, `valid_from`, `valid_until` |
 
-- `team → group` cascades: picking a team refills the group list.
+- `group → group` cascades: picking a group refills the group list.
 - `agents` is filtered to those whose `data_types` matches the inferred type (DOC/DATA).
-- `Send to Backend` stays disabled until team / group / year (1990–2100) / seq (1–999999) are valid.
+- `Send to Backend` stays disabled until group / group / year (1990–2100) / seq (1–999999) are valid.
 
 ### DRY-RUN
 

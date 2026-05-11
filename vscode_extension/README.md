@@ -75,7 +75,7 @@ vscode_extension/
 
 | 그룹           | 필드                                                 | 비고                                  |
 |----------------|------------------------------------------------------|---------------------------------------|
-| 조직/식별      | `team`, `group`, `year`, `seq`                       | 백엔드 `Record.id` 생성에 사용        |
+| 조직/식별      | `group`, `group`, `year`, `seq`                       | 백엔드 `Record.id` 생성에 사용        |
 | 분류           | `classification`, `status`, `domain`, `language`     | 거버넌스                              |
 | 검색/연결      | `tags`, `agents`, `subject_keywords`                 | RAG 매칭                              |
 | 첨부 자체      | `title` (override), `summary` (override)             | 변환기 자동 추출 결과 위에 덮어씀     |

@@ -15,7 +15,7 @@
 `api_server` 는 **`POST /api/convert/ingest`** 로 원본 파일(`.docx`/`.xlsx`/`.pptx`/`.md`/`.pdf`) 을 직접 받아 변환→DB 적재까지 한 번에 처리해 준다. 그러나 이 엔드포인트를 호출하려면:
 
 1. `curl` / `requests` 같은 HTTP 클라이언트 사용법
-2. `division` / `team` / `year` / `seq` / `tags` / `agents` 등 **메타 폼 필드 값**
+2. `team` / `group` / `year` / `seq` / `tags` / `agents` 등 **메타 폼 필드 값**
 3. `X-API-Key` 헤더
 
 이 모두가 필요하다. 사업부 엔지니어 입장에서는 **CLI 진입 자체가 진입 장벽** 이고, 결과적으로 데이터 적재가 한두 명에게만 집중된다.
@@ -60,7 +60,7 @@
 [3] File drop
     └─ 파일이 드롭되면:
        - 확장자 → data_type 자동 추론
-       - 백엔드 /api/meta/options 응답으로 Division/Team/Agents 셀렉트박스 채움
+       - 백엔드 /api/meta/options 응답으로 Team/Group/Agents 셀렉트박스 채움
        - 메타데이터 폼 표시 (필수/선택 분리)
        - [Send] 버튼 활성화는 필수 필드가 모두 채워져야 가능
 
@@ -77,13 +77,13 @@
 
 핵심 합의:
 
-- **조직/식별 (4)**: `division`, `team`, `year`, `seq`
+- **조직/식별 (4)**: `team`, `group`, `year`, `seq`
 - **분류 (4)**: `classification`, `status`, `domain`, `language`
 - **검색/연결 (3)**: `tags`, `agents`, `subject_keywords`
 - **타이틀/요약 (2, optional override)**: `title`, `summary`
 - **품질 (3, optional)**: `quality_score`, `valid_from`, `valid_until`
 
-`division` / `team` / `agents` / `classification` / `status` 등은 **백엔드가 권위적인 enum 목록을 내려주는 신규 엔드포인트** 가 필요 — 이게 백엔드 수정계획서의 핵심 요청.
+`team` / `group` / `agents` / `classification` / `status` 등은 **백엔드가 권위적인 enum 목록을 내려주는 신규 엔드포인트** 가 필요 — 이게 백엔드 수정계획서의 핵심 요청.
 
 ## 6. 아키텍처 / 모듈
 
@@ -113,7 +113,7 @@
 
 요약:
 1. **CORS 설정**: `vscode-webview://*` origin 허용.
-2. **`GET /api/meta/options`** 신규 — Division / Team / Agents / Classification / Status 등 enum 목록 반환.
+2. **`GET /api/meta/options`** 신규 — Team / Group / Agents / Classification / Status 등 enum 목록 반환.
 3. **`POST /api/auth/keys/verify`** 신규 — 보유 키가 유효한지만 헤더 검사 (boot 키 불필요).
 4. **에러 envelope 통일** — `/api/convert/ingest` 도 `{error:{code,message,request_id}}` 로 보장.
 5. **업로드 진행률**: HTTP 표준 chunked 가 충분하므로 추가 작업 불필요 (Webview 의 `XMLHttpRequest` 의 `upload.onprogress` 사용).
@@ -123,7 +123,7 @@
 - [ ] 새로 설치한 VS Code 에 `.vsix` 설치 → 첫 활성화 시 Settings 탭이 자동으로 뜬다.
 - [ ] 잘못된 IP/Key 로 [Test Connection] → 에러 메시지가 사람이 읽을 수 있는 형태.
 - [ ] 정상 IP/Key → DropZone 진입.
-- [ ] `.docx` 드롭 → division/team 셀렉트 박스가 백엔드에서 받은 옵션으로 채워짐.
+- [ ] `.docx` 드롭 → team/group 셀렉트 박스가 백엔드에서 받은 옵션으로 채워짐.
 - [ ] 필수 필드 미입력 → [Send] 비활성.
 - [ ] [Send] → `record_id` 와 `status` 가 표시됨.
 - [ ] 동일 파일 재전송 → `status: skipped` 처리됨이 명확히 보임.
@@ -150,7 +150,7 @@
 | Webview 가 sandboxed → fetch CORS 차단 | 백엔드에서 `vscode-webview` origin 허용     |
 | 큰 파일 업로드 중 끊김                 | `MAX_UPLOAD_MB` 표시 + 사전 사이즈 차단     |
 | API Key 탈취                           | `SecretStorage` + 화면 마스킹 + 복사 금지   |
-| `division` 가 free-form 인 기존 데이터 | 백엔드 옵션 응답에 `allow_custom: true` 옵션|
+| `team` 가 free-form 인 기존 데이터 | 백엔드 옵션 응답에 `allow_custom: true` 옵션|
 
 ## 11. 다음 액션
 

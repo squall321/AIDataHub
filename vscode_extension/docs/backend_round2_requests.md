@@ -38,13 +38,13 @@ return {"ok": True, "key_name": principal.name, "agent_scopes": list(principal.a
 
 **Impact on extension.** `seq_policy=auto` 면 form 에서 seq 입력 자체를 숨기고 백엔드가 채움. tag 칩 컨트롤이 자동완성 제안을 띄울 수 있음.
 
-→ 동시에 ingest 도 `seq=Form(0)` 또는 미지정 시 `(data_type, division, team, year)` 의 `MAX(seq)+1` 자동 부여 (라운드 1 §6.3 — 이번에 함께 처리 권장).
+→ 동시에 ingest 도 `seq=Form(0)` 또는 미지정 시 `(data_type, team, group, year)` 의 `MAX(seq)+1` 자동 부여 (라운드 1 §6.3 — 이번에 함께 처리 권장).
 
 ---
 
 ## R2-03. (P1) `/api/convert/ingest` 응답에 분류 필드 echo 포함
 
-**Why.** 현재 ingest 응답의 `record` dict 는 `id/data_type/title/summary/tags/agents/division/team/year/seq/source_file/content_hash` 까지만 노출한다. 확장 결과 화면이 "이 파일은 status=draft, classification=internal 로 적재되었습니다" 를 보여주려면 이 필드들이 응답에 있어야 한다.
+**Why.** 현재 ingest 응답의 `record` dict 는 `id/data_type/title/summary/tags/agents/team/group/year/seq/source_file/content_hash` 까지만 노출한다. 확장 결과 화면이 "이 파일은 status=draft, classification=internal 로 적재되었습니다" 를 보여주려면 이 필드들이 응답에 있어야 한다.
 
 **Proposal.** `routes/convert.py` 의 응답 `record` dict 에 다음 추가:
 ```python
