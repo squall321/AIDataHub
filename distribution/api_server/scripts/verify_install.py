@@ -237,7 +237,7 @@ def check_docs() -> list[Check]:
 # 메인
 # ---------------------------------------------------------------------------
 async def run_async() -> int:
-    print(f"{BOLD}AI Data Hub install verification{RESET}")
+    print(f"{BOLD}Mobile eXperience AI Data Hub install verification{RESET}")
     print(f"  src = {SRC}")
     print()
 

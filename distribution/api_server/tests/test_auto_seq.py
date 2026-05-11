@@ -45,7 +45,7 @@ async def test_next_seq_increments_after_insert(test_session) -> None:
     from api.services.seq import next_seq
 
     rec = Record(
-        id="DOC-HE-CAE-2026-000007",
+        id="DOC-HE-CAE-2026-0000000007",
         data_type="DOC",
         team="HE",
         group="CAE",
@@ -78,7 +78,7 @@ async def test_next_seq_scoped_by_natural_key(test_session) -> None:
 
     test_session.add(
         Record(
-            id="DOC-HE-CAE-2026-000005",
+            id="DOC-HE-CAE-2026-0000000005",
             data_type="DOC",
             team="HE",
             group="CAE",

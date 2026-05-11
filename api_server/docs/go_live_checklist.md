@@ -92,7 +92,7 @@ curl "http://localhost:8000/api/discover" -H "X-API-Key: <admin>"
 ## 6. 첫 record 적재
 
 - [ ] **`POST /api/convert/ingest`** 또는 VS Code 확장으로 **첫 record 적재**.
-      샘플: `AI_data/examples/HE-CAE-2026-000001.json` 또는 `AI_data/iga_guide.docx`.
+      샘플: `AI_data/examples/HE-CAE-2026-0000000001.json` 또는 `AI_data/iga_guide.docx`.
 
 curl 예:
 

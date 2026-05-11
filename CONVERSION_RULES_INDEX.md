@@ -1,4 +1,4 @@
-# AI Data Hub — Conversion Rules · Master Index
+# Mobile eXperience AI Data Hub — Conversion Rules · Master Index
 
 > 다른 AI 가 이 저장소에 진입할 때 가장 먼저 읽어야 할 단일 진입점.
 > 모든 변환 규칙·스키마·구현·운영 산출물의 **위치 지도**.
@@ -209,7 +209,7 @@ d:/Personal/AI_data/
 {
   "schema_version": "1.0",
   "meta": {
-    "id": "DOC-HE-CAE-2026-000001",   // {prefix}-{team}-{group}-{year}-{seq6}
+    "id": "DOC-HE-CAE-2026-0000000001",   // {prefix}-{team}-{group}-{year}-{seq6}
     "data_type": "DOC",                // DOC | DATA | SIM | CAD | LOG | FORM | OTHER
     "title": "...",
     "summary": "...",

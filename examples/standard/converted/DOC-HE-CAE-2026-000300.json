@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "meta": {
-    "doc_id": "DOC-HE-CAE-2026-000300",
+    "doc_id": "DOC-HE-CAE-2026-0000000300",
     "title": "KooRemapper IGA 변환 결과 (표준 예제)",
     "source_format": "pptx",
     "source_file": "sample_presentation.pptx",
@@ -98,12 +98,12 @@
       "blocks": [
         {
           "type": "table",
-          "ref": "DOC-HE-CAE-2026-000300-T001"
+          "ref": "DOC-HE-CAE-2026-0000000300-T001"
         }
       ],
       "figure_refs": [],
       "table_refs": [
-        "DOC-HE-CAE-2026-000300-T001"
+        "DOC-HE-CAE-2026-0000000300-T001"
       ],
       "children": []
     },
@@ -137,7 +137,7 @@
   "figures": [],
   "tables": [
     {
-      "id": "DOC-HE-CAE-2026-000300-T001",
+      "id": "DOC-HE-CAE-2026-0000000300-T001",
       "number": 1,
       "caption": "Table 1: 슬라이드 2 표",
       "section_ref": "2",

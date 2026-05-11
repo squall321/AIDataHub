@@ -1,8 +1,8 @@
-# AI Data Hub Uploader — Plan
+# Mobile eXperience AI Data Hub Uploader — Plan
 
 | 항목      | 값                                                |
 |-----------|---------------------------------------------------|
-| Feature   | `vscode_extension` (AI Data Hub Uploader)        |
+| Feature   | `vscode_extension` (Mobile eXperience AI Data Hub Uploader)        |
 | Phase     | Plan                                              |
 | Date      | 2026-05-08                                        |
 | 백엔드    | `AI_data/api_server` (FastAPI, port 8000)         |
@@ -49,12 +49,12 @@
 
 ```
 [1] First launch
-    └─ 활성화 시 Webview 패널 "AI Data Hub" 자동 오픈
+    └─ 활성화 시 Webview 패널 "Mobile eXperience AI Data Hub" 자동 오픈
        → 화면: Settings (IP / Port / API Key)
        → [Test Connection] → /health → /api/agents → 토스트 OK
 
 [2] Normal launch (이미 설정 + 연결 OK)
-    └─ Activity Bar 아이콘 → "AI Data Hub" Webview 오픈
+    └─ Activity Bar 아이콘 → "Mobile eXperience AI Data Hub" Webview 오픈
        → 화면: Drop Zone
 
 [3] File drop

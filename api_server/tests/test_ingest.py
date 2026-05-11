@@ -25,7 +25,7 @@ from api.ingest.normalizer import (
     normalize,
 )
 
-EXAMPLE_DOC_PATH = Path("d:/Personal/AI_data/examples/HE-CAE-2026-000001.json")
+EXAMPLE_DOC_PATH = Path("d:/Personal/AI_data/examples/HE-CAE-2026-0000000001.json")
 
 
 # ===========================================================================
@@ -35,7 +35,7 @@ class TestNormalizeVariantDetection:
     def test_doc(self) -> None:
         raw = {
             "schema_version": "1.0",
-            "meta": {"doc_id": "DOC-HE-CAE-2026-000001"},
+            "meta": {"doc_id": "DOC-HE-CAE-2026-0000000001"},
             "sections": [],
         }
         assert detect_variant(raw) == "DOC"
@@ -69,7 +69,7 @@ class TestNormalizeDocument:
         raw = json.loads(EXAMPLE_DOC_PATH.read_text(encoding="utf-8-sig"))
         record = normalize(raw)
         # ID 가 레거시 → DOC- 프리픽스 추가됨
-        assert record.id == "DOC-HE-CAE-2026-000001"
+        assert record.id == "DOC-HE-CAE-2026-0000000001"
         assert record.data_type == "DOC"
         assert record.title == "iga_guide_test"
         assert record.department == "HE-CAE"
@@ -93,7 +93,7 @@ class TestNormalizeDocument:
 class TestNormalizeData:
     def test_basic(self) -> None:
         raw = {
-            "id": "DATA-HE-CAE-2026-000010",
+            "id": "DATA-HE-CAE-2026-0000000010",
             "data_type": "DATA",
             "title": "metric props",
             "headers": ["name", "value"],
@@ -103,7 +103,7 @@ class TestNormalizeData:
         }
         rec = normalize(raw)
         assert rec.data_type == "DATA"
-        assert rec.id == "DATA-HE-CAE-2026-000010"
+        assert rec.id == "DATA-HE-CAE-2026-0000000010"
         assert rec.content["headers"] == ["name", "value"]
         assert rec.content["rows"] == [["a", 1], ["b", 2]]
         assert rec.tags == ["material"]
@@ -112,7 +112,7 @@ class TestNormalizeData:
 class TestNormalizeSim:
     def test_basic(self) -> None:
         raw = {
-            "id": "SIM-HE-CAE-2026-000005",
+            "id": "SIM-HE-CAE-2026-0000000005",
             "solver": "LS-DYNA",
             "inputs": {"k_file": "x.k"},
             "outputs": {"d3plot": "/x"},
@@ -125,7 +125,7 @@ class TestNormalizeSim:
 class TestNormalizeCad:
     def test_basic(self) -> None:
         raw = {
-            "id": "CAD-HE-CAE-2026-000020",
+            "id": "CAD-HE-CAE-2026-0000000020",
             "cad_type": "MCAD",
             "file_format": "STEP",
             "file_metadata": {"path": "/x.step", "size_bytes": 100},
@@ -138,7 +138,7 @@ class TestNormalizeCad:
 class TestNormalizeOther:
     def test_other_preserves_raw(self) -> None:
         raw = {
-            "id": "OTHER-HE-CAE-2026-000099",
+            "id": "OTHER-HE-CAE-2026-0000000099",
             "title": "free-form",
             "stuff": {"x": 1},
         }
@@ -151,20 +151,20 @@ class TestLegacyIdHandling:
     def test_doc_legacy_prefixed(self) -> None:
         raw = {
             "schema_version": "1.0",
-            "meta": {"doc_id": "HE-CAE-2026-000001", "title": "t"},
+            "meta": {"doc_id": "HE-CAE-2026-0000000001", "title": "t"},
             "sections": [],
         }
         rec = normalize(raw)
-        assert rec.id == "DOC-HE-CAE-2026-000001"
+        assert rec.id == "DOC-HE-CAE-2026-0000000001"
 
     def test_data_legacy_prefixed(self) -> None:
         raw = {
-            "id": "HE-CAE-2026-000002",
+            "id": "HE-CAE-2026-0000000002",
             "headers": ["a"],
             "rows": [[1]],
         }
         rec = normalize(raw)
-        assert rec.id == "DATA-HE-CAE-2026-000002"
+        assert rec.id == "DATA-HE-CAE-2026-0000000002"
         assert rec.data_type == "DATA"
 
 
@@ -238,7 +238,7 @@ async def test_db_write_creates_record(db_session) -> None:
     from api.ingest.db_writer import write_record
 
     raw = {
-        "id": "DATA-HE-CAE-2026-000010",
+        "id": "DATA-HE-CAE-2026-0000000010",
         "data_type": "DATA",
         "title": "test data",
         "headers": ["a", "b"],
@@ -250,7 +250,7 @@ async def test_db_write_creates_record(db_session) -> None:
     await session.commit()
 
     assert result.action == "inserted"
-    fetched = await session.get(models.Record, "DATA-HE-CAE-2026-000010")
+    fetched = await session.get(models.Record, "DATA-HE-CAE-2026-0000000010")
     assert fetched is not None
     assert fetched.title == "test data"
     assert fetched.data_type == "DATA"
@@ -268,7 +268,7 @@ async def test_db_write_idempotent(db_session) -> None:
     from api.ingest.db_writer import write_record
 
     raw = {
-        "id": "DATA-HE-CAE-2026-000011",
+        "id": "DATA-HE-CAE-2026-0000000011",
         "data_type": "DATA",
         "title": "v1",
         "headers": ["a"],
@@ -346,7 +346,7 @@ async def test_db_write_agent_junction(db_session) -> None:
     from api.ingest.db_writer import write_record
 
     raw = {
-        "id": "DATA-HE-CAE-2026-000050",
+        "id": "DATA-HE-CAE-2026-0000000050",
         "data_type": "DATA",
         "title": "agents test",
         "headers": ["a"],

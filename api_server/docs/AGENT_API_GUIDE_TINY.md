@@ -1,4 +1,4 @@
-# AGENT_API_GUIDE_TINY — AI Data Hub REST API
+# AGENT_API_GUIDE_TINY — Mobile eXperience AI Data Hub REST API
 
 > TINY 모델 (1B~3B) 전용 압축 가이드. 4K 컨텍스트 안에 들어간다.
 > 더 큰 모델은 `AGENT_API_GUIDE_SMALL.md` 보라.
@@ -21,7 +21,7 @@ Base URL: `http://localhost:8000`
 
 읽어라 (read this):
 - 모든 응답 (response) 은 JSON.
-- ID 형식: `DOC-HE-CAE-2026-000001` (5 토큰, 하이픈 구분).
+- ID 형식: `DOC-HE-CAE-2026-0000000001` (5 토큰, 하이픈 구분).
 - 인증 실패 → 401. 없는 ID → 404.
 
 DATA 한 줄 (one-line for DATA type):
@@ -51,7 +51,7 @@ DATA 한 줄 (one-line for DATA type):
 
 | 필드 (field) | 타입 (type) | 의미 (meaning) |
 |---|---|---|
-| `id` | str | 레코드 ID (예: `DOC-HE-CAE-2026-000001`) |
+| `id` | str | 레코드 ID (예: `DOC-HE-CAE-2026-0000000001`) |
 | `data_type` | str | DOC / DATA / SIM / CAD / LOG / FORM / OTHER |
 | `title` | str | 제목 (title) |
 | `summary` | str | 요약 (summary) |
@@ -92,7 +92,7 @@ DATA 한 줄 (one-line for DATA type):
        YES → POST /api/ask   body={"query":"<문장>","limit":5}
        STOP.
 
-  2. 정확한 ID (예: DOC-HE-CAE-2026-000001) 알고 있다 ?
+  2. 정확한 ID (예: DOC-HE-CAE-2026-0000000001) 알고 있다 ?
        YES → GET /api/records/{id}
        STOP.
 
@@ -148,7 +148,7 @@ DATA 한 줄 (one-line for DATA type):
 
 ```
 1. GET /api/records/{id}/attachments?kind=figure
-2. 응답[i].id   ← 예: DOC-HE-CAE-2026-000001-A001
+2. 응답[i].id   ← 예: DOC-HE-CAE-2026-0000000001-A001
 3. GET /attachments/{record_id}/A001.png   ← 정적 (static) 다운로드
 ```
 
@@ -168,7 +168,7 @@ DATA 한 줄 (one-line for DATA type):
 레코드 (record) 응답:
 
 ```json
-{"id":"DOC-HE-CAE-2026-000001","data_type":"DOC","title":"...","summary":"...","tags":["iga"],"content":{...}}
+{"id":"DOC-HE-CAE-2026-0000000001","data_type":"DOC","title":"...","summary":"...","tags":["iga"],"content":{...}}
 ```
 
 검색 (search) 응답:
@@ -282,7 +282,7 @@ POST  /api/convert/ingest      multipart 파일 → JSON → DB (seq=0 로 자�
 
 ```
 {DATA_TYPE}-{TEAM}-{GROUP}-{YEAR}-{SEQ}
-예: DOC-HE-CAE-2026-000001
+예: DOC-HE-CAE-2026-0000000001
 ```
 
 - `DATA_TYPE` : `DOC` / `DATA` / `SIM` / `CAD` / `LOG` / `FORM` / `OTHER`
@@ -295,7 +295,7 @@ POST  /api/convert/ingest      multipart 파일 → JSON → DB (seq=0 로 자�
 
 ```
 {record_id}-A{nnn}
-예: DOC-HE-CAE-2026-000001-A001
+예: DOC-HE-CAE-2026-0000000001-A001
 ```
 
 규칙 (rule): ID 받으면 그대로 path param 으로 쓰라. 인용부호 (quote) 추가 X.
@@ -338,7 +338,7 @@ offset : 0부터 시작
 LOGIN     →  헤더 X-API-Key: <plaintext>
 START     →  GET  /api/discover                     [start here]
 ASK       →  POST /api/ask  body={"query":"...","limit":5}
-GET       →  GET  /api/records/DOC-HE-CAE-2026-000001
+GET       →  GET  /api/records/DOC-HE-CAE-2026-0000000001
 SEARCH    →  GET  /api/search?mode=fts&q=<word>
 TAG       →  GET  /api/search?mode=tag&tags=<t1>
 SEMANTIC  →  GET  /api/search?mode=semantic&q=<word>
@@ -373,7 +373,7 @@ Body: {"query":"IGA 결과 보여줘","limit":3}
 응답 (response, shape only):
 
 ```json
-{"interpreted_query":{"source":"llm","filters":{"data_type":"DOC"}},"results":[{"id":"DOC-HE-CAE-2026-000001","title":"IGA tensile test report","summary":"..."}],"total_matched":3,"follow_up_queries":["IGA 시편 사진","IGA 시험 절차"]}
+{"interpreted_query":{"source":"llm","filters":{"data_type":"DOC"}},"results":[{"id":"DOC-HE-CAE-2026-0000000001","title":"IGA tensile test report","summary":"..."}],"total_matched":3,"follow_up_queries":["IGA 시편 사진","IGA 시험 절차"]}
 ```
 
 추출 (extract): `results[].id` → 다음 단계 `GET /api/records/{id}`.
@@ -390,7 +390,7 @@ Headers: X-API-Key: <key>
 응답 (shape):
 
 ```json
-{"mode":"fts","q":"battery","items":[{"record_id":"DOC-EV-Battery-2026-000007","title":"...","snippet":"..."}],"total":1,"limit":5,"offset":0}
+{"mode":"fts","q":"battery","items":[{"record_id":"DOC-EV-Battery-2026-0000000007","title":"...","snippet":"..."}],"total":1,"limit":5,"offset":0}
 ```
 
 추출: `items[].record_id` → `GET /api/records/{record_id}`.
@@ -400,7 +400,7 @@ Headers: X-API-Key: <key>
 요청:
 
 ```
-GET /api/records/DOC-HE-CAE-2026-000001
+GET /api/records/DOC-HE-CAE-2026-0000000001
 Headers: X-API-Key: <key>
 ```
 

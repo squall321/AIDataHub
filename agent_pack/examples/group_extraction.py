@@ -1,4 +1,4 @@
-"""AI Data Hub — 그룹/체크리스트 발췌 패턴.
+"""Mobile eXperience AI Data Hub — 그룹/체크리스트 발췌 패턴.
 
 작성자가 `tags=["group:CAE", "checklist", "scope:group"]` 같은
 그룹 메타를 박아둔 record 중에서 특정 그룹의 자료만 깔끔하게

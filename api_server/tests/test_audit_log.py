@@ -37,7 +37,7 @@ async def test_log_action_helper_writes_row(test_session_maker) -> None:
         await log_action(
             session,
             action="INSERT",
-            record_id="DOC-HE-CAE-2026-000777",
+            record_id="DOC-HE-CAE-2026-0000000777",
             actor="cli",
             field_changes={"title": [None, "test"]},
             request_id="req-abc",
@@ -49,7 +49,7 @@ async def test_log_action_helper_writes_row(test_session_maker) -> None:
         assert len(rows) == 1
         row = rows[0]
         assert row.action == "INSERT"
-        assert row.record_id == "DOC-HE-CAE-2026-000777"
+        assert row.record_id == "DOC-HE-CAE-2026-0000000777"
         assert row.actor == "cli"
         assert row.request_id == "req-abc"
         assert row.field_changes == {"title": [None, "test"]}
@@ -61,7 +61,7 @@ async def test_audit_event_on_insert_via_route(db_client, test_session_maker) ->
     from api.db.models import AuditLog
 
     payload = {
-        "id": "DOC-HE-CAE-2026-000111",
+        "id": "DOC-HE-CAE-2026-0000000111",
         "data_type": "DOC",
         "team": "HE",
         "group": "CAE",

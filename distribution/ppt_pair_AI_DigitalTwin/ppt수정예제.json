@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "meta": {
-    "doc_id": "DOC-HE-CAE-2026-009012",
+    "doc_id": "DOC-HE-CAE-2026-0000009012",
     "title": "구조 시뮬레이션 정합성 고도화 Vision",
     "source_format": "pptx",
     "source_file": "ppt수정예제.pptx",
@@ -221,7 +221,7 @@
             },
             {
               "type": "figure",
-              "ref": "DOC-HE-CAE-2026-009012-F001"
+              "ref": "DOC-HE-CAE-2026-0000009012-F001"
             },
             {
               "type": "paragraph",
@@ -229,7 +229,7 @@
             }
           ],
           "figure_refs": [
-            "DOC-HE-CAE-2026-009012-F001"
+            "DOC-HE-CAE-2026-0000009012-F001"
           ],
           "table_refs": [],
           "children": []
@@ -261,7 +261,7 @@
             },
             {
               "type": "figure",
-              "ref": "DOC-HE-CAE-2026-009012-F002"
+              "ref": "DOC-HE-CAE-2026-0000009012-F002"
             },
             {
               "type": "paragraph",
@@ -269,7 +269,7 @@
             }
           ],
           "figure_refs": [
-            "DOC-HE-CAE-2026-009012-F002"
+            "DOC-HE-CAE-2026-0000009012-F002"
           ],
           "table_refs": [],
           "children": []
@@ -366,7 +366,7 @@
             },
             {
               "type": "figure",
-              "ref": "DOC-HE-CAE-2026-009012-F003"
+              "ref": "DOC-HE-CAE-2026-0000009012-F003"
             },
             {
               "type": "paragraph",
@@ -374,7 +374,7 @@
             },
             {
               "type": "figure",
-              "ref": "DOC-HE-CAE-2026-009012-F004"
+              "ref": "DOC-HE-CAE-2026-0000009012-F004"
             },
             {
               "type": "paragraph",
@@ -382,8 +382,8 @@
             }
           ],
           "figure_refs": [
-            "DOC-HE-CAE-2026-009012-F003",
-            "DOC-HE-CAE-2026-009012-F004"
+            "DOC-HE-CAE-2026-0000009012-F003",
+            "DOC-HE-CAE-2026-0000009012-F004"
           ],
           "table_refs": [],
           "children": []
@@ -494,7 +494,7 @@
             },
             {
               "type": "figure",
-              "ref": "DOC-HE-CAE-2026-009012-F005"
+              "ref": "DOC-HE-CAE-2026-0000009012-F005"
             },
             {
               "type": "paragraph",
@@ -502,7 +502,7 @@
             }
           ],
           "figure_refs": [
-            "DOC-HE-CAE-2026-009012-F005"
+            "DOC-HE-CAE-2026-0000009012-F005"
           ],
           "table_refs": [],
           "children": []
@@ -538,7 +538,7 @@
             },
             {
               "type": "table",
-              "ref": "DOC-HE-CAE-2026-009012-T001"
+              "ref": "DOC-HE-CAE-2026-0000009012-T001"
             },
             {
               "type": "paragraph",
@@ -547,7 +547,7 @@
           ],
           "figure_refs": [],
           "table_refs": [
-            "DOC-HE-CAE-2026-009012-T001"
+            "DOC-HE-CAE-2026-0000009012-T001"
           ],
           "children": []
         }
@@ -586,12 +586,12 @@
             },
             {
               "type": "table",
-              "ref": "DOC-HE-CAE-2026-009012-T002"
+              "ref": "DOC-HE-CAE-2026-0000009012-T002"
             }
           ],
           "figure_refs": [],
           "table_refs": [
-            "DOC-HE-CAE-2026-009012-T002"
+            "DOC-HE-CAE-2026-0000009012-T002"
           ],
           "children": []
         }
@@ -604,7 +604,7 @@
       "blocks": [
         {
           "type": "figure",
-          "ref": "DOC-HE-CAE-2026-009012-F006"
+          "ref": "DOC-HE-CAE-2026-0000009012-F006"
         },
         {
           "type": "paragraph",
@@ -612,7 +612,7 @@
         }
       ],
       "figure_refs": [
-        "DOC-HE-CAE-2026-009012-F006"
+        "DOC-HE-CAE-2026-0000009012-F006"
       ],
       "table_refs": [],
       "children": []
@@ -661,7 +661,7 @@
             },
             {
               "type": "table",
-              "ref": "DOC-HE-CAE-2026-009012-T003"
+              "ref": "DOC-HE-CAE-2026-0000009012-T003"
             },
             {
               "type": "paragraph",
@@ -670,7 +670,7 @@
           ],
           "figure_refs": [],
           "table_refs": [
-            "DOC-HE-CAE-2026-009012-T003"
+            "DOC-HE-CAE-2026-0000009012-T003"
           ],
           "children": []
         }
@@ -744,51 +744,51 @@
   ],
   "figures": [
     {
-      "id": "DOC-HE-CAE-2026-009012-F001",
+      "id": "DOC-HE-CAE-2026-0000009012-F001",
       "number": 1,
       "caption": "Figure 1. 2023 국내 AI 도입 및 활용 현황 조사 | 인사이트리포트 | 삼성SDS",
       "section_ref": "1",
-      "image_path": "DOC-HE-CAE-2026-009012/F001.png"
+      "image_path": "DOC-HE-CAE-2026-0000009012/F001.png"
     },
     {
-      "id": "DOC-HE-CAE-2026-009012-F002",
+      "id": "DOC-HE-CAE-2026-0000009012-F002",
       "number": 2,
       "caption": "Figure 2. 기업의 AI 도입 장애 요인",
       "section_ref": "1",
-      "image_path": "DOC-HE-CAE-2026-009012/F002.png"
+      "image_path": "DOC-HE-CAE-2026-0000009012/F002.png"
     },
     {
-      "id": "DOC-HE-CAE-2026-009012-F003",
+      "id": "DOC-HE-CAE-2026-0000009012-F003",
       "number": 3,
       "caption": "Figure 3: Cartoon Trash Can Stock Illustrations – 7,821 Cartoon Trash ...",
       "section_ref": "2",
-      "image_path": "DOC-HE-CAE-2026-009012/F003.jpg"
+      "image_path": "DOC-HE-CAE-2026-0000009012/F003.jpg"
     },
     {
-      "id": "DOC-HE-CAE-2026-009012-F004",
+      "id": "DOC-HE-CAE-2026-0000009012-F004",
       "number": 4,
       "caption": "Figure 4: Cartoon Trash Can Stock Illustrations – 7,821 Cartoon Trash ...",
       "section_ref": "2",
-      "image_path": "DOC-HE-CAE-2026-009012/F004.jpg"
+      "image_path": "DOC-HE-CAE-2026-0000009012/F004.jpg"
     },
     {
-      "id": "DOC-HE-CAE-2026-009012-F005",
+      "id": "DOC-HE-CAE-2026-0000009012-F005",
       "number": 5,
       "caption": "Figure 5: DE] 빅데이터 저장소(Data Storage)",
       "section_ref": "3",
-      "image_path": "DOC-HE-CAE-2026-009012/F005.png"
+      "image_path": "DOC-HE-CAE-2026-0000009012/F005.png"
     },
     {
-      "id": "DOC-HE-CAE-2026-009012-F006",
+      "id": "DOC-HE-CAE-2026-0000009012-F006",
       "number": 6,
       "caption": "Figure 6: 고차원 데이터와 차원의 저주(High-dimensional data and curse of dimensionality)",
       "section_ref": "3",
-      "image_path": "DOC-HE-CAE-2026-009012/F006.png"
+      "image_path": "DOC-HE-CAE-2026-0000009012/F006.png"
     }
   ],
   "tables": [
     {
-      "id": "DOC-HE-CAE-2026-009012-T001",
+      "id": "DOC-HE-CAE-2026-0000009012-T001",
       "number": 1,
       "caption": "Table 1: 슬라이드 3 표",
       "section_ref": "3",
@@ -820,7 +820,7 @@
       ]
     },
     {
-      "id": "DOC-HE-CAE-2026-009012-T002",
+      "id": "DOC-HE-CAE-2026-0000009012-T002",
       "number": 2,
       "caption": "Table 2: 슬라이드 3 표",
       "section_ref": "3",
@@ -852,7 +852,7 @@
       ]
     },
     {
-      "id": "DOC-HE-CAE-2026-009012-T003",
+      "id": "DOC-HE-CAE-2026-0000009012-T003",
       "number": 3,
       "caption": "Table 3: 슬라이드 3 표",
       "section_ref": "3",
@@ -903,93 +903,93 @@
   "sources": [],
   "attachments": [
     {
-      "id": "DOC-HE-CAE-2026-009012-A001",
+      "id": "DOC-HE-CAE-2026-0000009012-A001",
       "number": 1,
       "kind": "figure",
       "caption": "Figure 1. 2023 국내 AI 도입 및 활용 현황 조사 | 인사이트리포트 | 삼성SDS",
       "section_ref": "1",
       "file_name": "A001.png",
-      "file_path": "DOC-HE-CAE-2026-009012/A001.png",
+      "file_path": "DOC-HE-CAE-2026-0000009012/A001.png",
       "mime_type": "image/png",
       "size_bytes": 80108,
       "hash_sha256": "8edef0a1e8a7abe5240bd121c8d5e5b4df90ca2756baaf4a8471ebf574786cc3",
       "extra": {
-        "figure_ref": "DOC-HE-CAE-2026-009012-F001"
+        "figure_ref": "DOC-HE-CAE-2026-0000009012-F001"
       }
     },
     {
-      "id": "DOC-HE-CAE-2026-009012-A002",
+      "id": "DOC-HE-CAE-2026-0000009012-A002",
       "number": 2,
       "kind": "figure",
       "caption": "Figure 2. 기업의 AI 도입 장애 요인",
       "section_ref": "1",
       "file_name": "A002.png",
-      "file_path": "DOC-HE-CAE-2026-009012/A002.png",
+      "file_path": "DOC-HE-CAE-2026-0000009012/A002.png",
       "mime_type": "image/png",
       "size_bytes": 86746,
       "hash_sha256": "25e9d13ccedfd8a8086871eee90588730be03df8abd6ce51621b673f5895740f",
       "extra": {
-        "figure_ref": "DOC-HE-CAE-2026-009012-F002"
+        "figure_ref": "DOC-HE-CAE-2026-0000009012-F002"
       }
     },
     {
-      "id": "DOC-HE-CAE-2026-009012-A003",
+      "id": "DOC-HE-CAE-2026-0000009012-A003",
       "number": 3,
       "kind": "figure",
       "caption": "Figure 3: Cartoon Trash Can Stock Illustrations – 7,821 Cartoon Trash ...",
       "section_ref": "2",
       "file_name": "A003.jpg",
-      "file_path": "DOC-HE-CAE-2026-009012/A003.jpg",
+      "file_path": "DOC-HE-CAE-2026-0000009012/A003.jpg",
       "mime_type": "image/jpeg",
       "size_bytes": 65833,
       "hash_sha256": "9d10d3e56f9a9eb5e085fd95aa8ef426987e738e2b1f52317caac7b913c48fe8",
       "extra": {
-        "figure_ref": "DOC-HE-CAE-2026-009012-F003"
+        "figure_ref": "DOC-HE-CAE-2026-0000009012-F003"
       }
     },
     {
-      "id": "DOC-HE-CAE-2026-009012-A004",
+      "id": "DOC-HE-CAE-2026-0000009012-A004",
       "number": 4,
       "kind": "figure",
       "caption": "Figure 4: Cartoon Trash Can Stock Illustrations – 7,821 Cartoon Trash ...",
       "section_ref": "2",
       "file_name": "A004.jpg",
-      "file_path": "DOC-HE-CAE-2026-009012/A004.jpg",
+      "file_path": "DOC-HE-CAE-2026-0000009012/A004.jpg",
       "mime_type": "image/jpeg",
       "size_bytes": 65833,
       "hash_sha256": "9d10d3e56f9a9eb5e085fd95aa8ef426987e738e2b1f52317caac7b913c48fe8",
       "extra": {
-        "figure_ref": "DOC-HE-CAE-2026-009012-F004"
+        "figure_ref": "DOC-HE-CAE-2026-0000009012-F004"
       }
     },
     {
-      "id": "DOC-HE-CAE-2026-009012-A005",
+      "id": "DOC-HE-CAE-2026-0000009012-A005",
       "number": 5,
       "kind": "figure",
       "caption": "Figure 5: DE] 빅데이터 저장소(Data Storage)",
       "section_ref": "3",
       "file_name": "A005.png",
-      "file_path": "DOC-HE-CAE-2026-009012/A005.png",
+      "file_path": "DOC-HE-CAE-2026-0000009012/A005.png",
       "mime_type": "image/png",
       "size_bytes": 102460,
       "hash_sha256": "9bbb5b392f4b957efba1c734fa6a58aeff156c7fc515378d492e230c105dacff",
       "extra": {
-        "figure_ref": "DOC-HE-CAE-2026-009012-F005"
+        "figure_ref": "DOC-HE-CAE-2026-0000009012-F005"
       }
     },
     {
-      "id": "DOC-HE-CAE-2026-009012-A006",
+      "id": "DOC-HE-CAE-2026-0000009012-A006",
       "number": 6,
       "kind": "figure",
       "caption": "Figure 6: 고차원 데이터와 차원의 저주(High-dimensional data and curse of dimensionality)",
       "section_ref": "3",
       "file_name": "A006.png",
-      "file_path": "DOC-HE-CAE-2026-009012/A006.png",
+      "file_path": "DOC-HE-CAE-2026-0000009012/A006.png",
       "mime_type": "image/png",
       "size_bytes": 975031,
       "hash_sha256": "33c3491ad5d1dd506fcd0f00b16875e9d6e9e6b655c85cf186420bc05881d217",
       "extra": {
-        "figure_ref": "DOC-HE-CAE-2026-009012-F006"
+        "figure_ref": "DOC-HE-CAE-2026-0000009012-F006"
       }
     }
   ]

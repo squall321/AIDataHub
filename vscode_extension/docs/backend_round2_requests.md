@@ -95,8 +95,8 @@ async def test_options_preflight_allows_x_api_key(client):
 **Proposal.** ingest 응답에 선택적으로:
 ```jsonc
 {
-  "record_id": "DOC-HE-CAE-2026-000001",
-  "record_url": "http://10.10.20.5:8000/api/records/DOC-HE-CAE-2026-000001",
+  "record_id": "DOC-HE-CAE-2026-0000000001",
+  "record_url": "http://10.10.20.5:8000/api/records/DOC-HE-CAE-2026-0000000001",
   ...
 }
 ```

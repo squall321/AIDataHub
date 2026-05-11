@@ -1,4 +1,4 @@
-﻿# AI Data Hub — Agent Direct-Connect Pack
+﻿# Mobile eXperience AI Data Hub — Agent Direct-Connect Pack
 
 > 다른 AI 에이전트가 본 시스템에 **즉시 직결** 하기 위한 자체 완결형 가이드 모음.
 > 이 폴더만 있으면 추가 코드 없이 검색·발견·적재 가능.
@@ -60,7 +60,7 @@ curl "http://110.15.177.125:8000/api/search?mode=fts&q=stress&limit=10"
 curl "http://110.15.177.125:8000/api/search?mode=tag&tags=IGA&tags=NURBS&limit=5"
 
 # 단일 record 본문
-curl http://110.15.177.125:8000/api/records/DOC-HE-CAE-2026-000001
+curl http://110.15.177.125:8000/api/records/DOC-HE-CAE-2026-0000000001
 
 # 자동 그룹 (semantic 클러스터)
 curl -X POST http://110.15.177.125:8000/api/groups/auto \
@@ -113,7 +113,7 @@ for it in data["items"]:
   "mode": "semantic",
   "items": [
     {
-      "record_id": "DOC-HE-CAE-2026-000001",
+      "record_id": "DOC-HE-CAE-2026-0000000001",
       "title": "KooRemapper Manual",
       "snippet": "…응력(stress) 변형률(strain)…",
       "score": 0.964,
@@ -129,7 +129,7 @@ for it in data["items"]:
 
 ```jsonc
 {
-  "id": "DOC-HE-CAE-2026-000001",
+  "id": "DOC-HE-CAE-2026-0000000001",
   "data_type": "DOC",
   "title": "KooRemapper Manual",
   "summary": "...",

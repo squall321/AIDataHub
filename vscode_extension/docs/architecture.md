@@ -1,4 +1,4 @@
-# Architecture — AI Data Hub Uploader
+# Architecture — Mobile eXperience AI Data Hub Uploader
 
 ## 1. 컴포넌트 토폴로지
 
@@ -100,13 +100,13 @@ src/
   ],
   "contributes": {
     "commands": [
-      { "command": "aidh.openUploader", "title": "AI Data Hub: Open Uploader" },
-      { "command": "aidh.openSettings", "title": "AI Data Hub: Settings" },
-      { "command": "aidh.resetConnection", "title": "AI Data Hub: Reset Connection" }
+      { "command": "aidh.openUploader", "title": "Mobile eXperience AI Data Hub: Open Uploader" },
+      { "command": "aidh.openSettings", "title": "Mobile eXperience AI Data Hub: Settings" },
+      { "command": "aidh.resetConnection", "title": "Mobile eXperience AI Data Hub: Reset Connection" }
     ],
     "viewsContainers": {
       "activitybar": [
-        { "id": "aidh", "title": "AI Data Hub", "icon": "media/icon.svg" }
+        { "id": "aidh", "title": "Mobile eXperience AI Data Hub", "icon": "media/icon.svg" }
       ]
     }
   }

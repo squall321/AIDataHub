@@ -108,7 +108,7 @@ async def seed_data_records(test_session_maker) -> dict[str, Any]:
 
     async with test_session_maker() as session:
         ss = Record(
-            id="DATA-HE-CAE-2026-008002",
+            id="DATA-HE-CAE-2026-0000008002",
             data_type="DATA",
             team="HE",
             group="CAE",
@@ -125,7 +125,7 @@ async def seed_data_records(test_session_maker) -> dict[str, Any]:
         )
         # 두 번째 DATA record (rows 적음, 다른 domain)
         small = Record(
-            id="DATA-HE-CAE-2026-008003",
+            id="DATA-HE-CAE-2026-0000008003",
             data_type="DATA",
             team="HE",
             group="CAE",
@@ -146,7 +146,7 @@ async def seed_data_records(test_session_maker) -> dict[str, Any]:
         )
         # DOC record (카탈로그 모드에서 제외되어야 함)
         doc = Record(
-            id="DOC-HE-CAE-2026-008004",
+            id="DOC-HE-CAE-2026-0000008004",
             data_type="DOC",
             team="HE",
             group="CAE",
@@ -162,9 +162,9 @@ async def seed_data_records(test_session_maker) -> dict[str, Any]:
         session.add_all([ss, small, doc])
         await session.commit()
     return {
-        "ss": "DATA-HE-CAE-2026-008002",
-        "small": "DATA-HE-CAE-2026-008003",
-        "doc": "DOC-HE-CAE-2026-008004",
+        "ss": "DATA-HE-CAE-2026-0000008002",
+        "small": "DATA-HE-CAE-2026-0000008003",
+        "doc": "DOC-HE-CAE-2026-0000008004",
     }
 
 
@@ -289,7 +289,7 @@ async def test_data_rows_where_invalid_column(
 
 @pytest.mark.asyncio
 async def test_data_rows_404_on_unknown(db_client, seed_data_records) -> None:
-    resp = await db_client.get("/api/data/DATA-XX-YY-2026-999999/rows")
+    resp = await db_client.get("/api/data/DATA-XX-YY-2026-0000999999/rows")
     assert resp.status_code == 404
 
 

@@ -34,7 +34,7 @@ async def _seed_clustered(test_session_maker, embedder) -> dict[str, str]:
     async with test_session_maker() as s:
         recs = [
             Record(
-                id="DOC-HE-AI-2026-100001",
+                id="DOC-HE-AI-2026-0000100001",
                 data_type="DOC",
                 team="HE",
                 group="AI",
@@ -48,7 +48,7 @@ async def _seed_clustered(test_session_maker, embedder) -> dict[str, str]:
                 content={"raw": "x"},
             ),
             Record(
-                id="DOC-HE-AI-2026-100002",
+                id="DOC-HE-AI-2026-0000100002",
                 data_type="DOC",
                 team="HE",
                 group="AI",
@@ -62,7 +62,7 @@ async def _seed_clustered(test_session_maker, embedder) -> dict[str, str]:
                 content={"raw": "x"},
             ),
             Record(
-                id="DOC-HE-AI-2026-100003",
+                id="DOC-HE-AI-2026-0000100003",
                 data_type="DOC",
                 team="HE",
                 group="AI",
@@ -76,7 +76,7 @@ async def _seed_clustered(test_session_maker, embedder) -> dict[str, str]:
                 content={"raw": "x"},
             ),
             Record(
-                id="DOC-HE-OPS-2026-200001",
+                id="DOC-HE-OPS-2026-0000200001",
                 data_type="DOC",
                 team="HE",
                 group="OPS",
@@ -90,7 +90,7 @@ async def _seed_clustered(test_session_maker, embedder) -> dict[str, str]:
                 content={"raw": "x"},
             ),
             Record(
-                id="DOC-HE-OPS-2026-200002",
+                id="DOC-HE-OPS-2026-0000200002",
                 data_type="DOC",
                 team="HE",
                 group="OPS",
@@ -112,7 +112,7 @@ async def _seed_clustered(test_session_maker, embedder) -> dict[str, str]:
         s.add_all(
             [
                 RecordSection(
-                    record_id="DOC-HE-AI-2026-100001",
+                    record_id="DOC-HE-AI-2026-0000100001",
                     section_id="1.1",
                     level=1,
                     title="개요",
@@ -121,7 +121,7 @@ async def _seed_clustered(test_session_maker, embedder) -> dict[str, str]:
                     embedding_model=embedder.name,
                 ),
                 RecordSection(
-                    record_id="DOC-HE-AI-2026-100002",
+                    record_id="DOC-HE-AI-2026-0000100002",
                     section_id="1.1",
                     level=1,
                     title="개요",
@@ -130,7 +130,7 @@ async def _seed_clustered(test_session_maker, embedder) -> dict[str, str]:
                     embedding_model=embedder.name,
                 ),
                 RecordSection(
-                    record_id="DOC-HE-AI-2026-100003",
+                    record_id="DOC-HE-AI-2026-0000100003",
                     section_id="1.1",
                     level=1,
                     title="개요",
@@ -139,7 +139,7 @@ async def _seed_clustered(test_session_maker, embedder) -> dict[str, str]:
                     embedding_model=embedder.name,
                 ),
                 RecordSection(
-                    record_id="DOC-HE-OPS-2026-200001",
+                    record_id="DOC-HE-OPS-2026-0000200001",
                     section_id="1.1",
                     level=1,
                     title="개요",
@@ -148,7 +148,7 @@ async def _seed_clustered(test_session_maker, embedder) -> dict[str, str]:
                     embedding_model=embedder.name,
                 ),
                 RecordSection(
-                    record_id="DOC-HE-OPS-2026-200002",
+                    record_id="DOC-HE-OPS-2026-0000200002",
                     section_id="1.1",
                     level=1,
                     title="개요",
@@ -161,11 +161,11 @@ async def _seed_clustered(test_session_maker, embedder) -> dict[str, str]:
         await s.commit()
 
     return {
-        "ai1": "DOC-HE-AI-2026-100001",
-        "ai2": "DOC-HE-AI-2026-100002",
-        "ai3": "DOC-HE-AI-2026-100003",
-        "oga1": "DOC-HE-OPS-2026-200001",
-        "oga2": "DOC-HE-OPS-2026-200002",
+        "ai1": "DOC-HE-AI-2026-0000100001",
+        "ai2": "DOC-HE-AI-2026-0000100002",
+        "ai3": "DOC-HE-AI-2026-0000100003",
+        "oga1": "DOC-HE-OPS-2026-0000200001",
+        "oga2": "DOC-HE-OPS-2026-0000200002",
     }
 
 
@@ -279,7 +279,7 @@ async def test_record_cluster_unknown_id(db_client, test_session_maker):
     """존재하지 않는 record → 404."""
     # 시드 없이 호출 — 단, conftest 의 db_client 가 빈 DB 라도 응답은 404.
     resp = await db_client.get(
-        "/api/records/DOC-HE-XX-2099-999999/cluster?mode=semantic"
+        "/api/records/DOC-HE-XX-2099-0000999999/cluster?mode=semantic"
     )
     assert resp.status_code == 404
 
@@ -323,13 +323,13 @@ async def test_records_bulk_missing(
 
     resp = await db_client.post(
         "/api/records/bulk",
-        json={"ids": [ids["ai1"], "DOC-NO-SUCH-2099-999999"]},
+        json={"ids": [ids["ai1"], "DOC-NO-SUCH-2099-0000999999"]},
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert len(body["items"]) == 1
     assert body["items"][0]["id"] == ids["ai1"]
-    assert body["missing"] == ["DOC-NO-SUCH-2099-999999"]
+    assert body["missing"] == ["DOC-NO-SUCH-2099-0000999999"]
 
 
 @pytest.mark.asyncio

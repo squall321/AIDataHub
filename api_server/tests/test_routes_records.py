@@ -53,7 +53,7 @@ async def test_get_missing_record_returns_404(db_client, seed_records) -> None:
 @pytest.mark.asyncio
 async def test_create_and_delete_record(db_client) -> None:
     payload = {
-        "id": "DOC-HE-CAE-2026-000099",
+        "id": "DOC-HE-CAE-2026-0000000099",
         "data_type": "DOC",
         "team": "HE",
         "group": "CAE",

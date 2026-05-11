@@ -1,4 +1,4 @@
-# AI Data Hub — Windows 서버 셋업 가이드
+# Mobile eXperience AI Data Hub — Windows 서버 셋업 가이드
 
 다른 Windows 서버에 한 번에 셋업한다. PostgreSQL + pgvector + API 서버 + 마이그레이션 + 헬스체크까지 자동.
 
@@ -80,7 +80,7 @@ distribution\
 [6/6] API 서버 백그라운드 기동 ...
 ```
 
-각 단계가 자동으로 진행된다. 마지막에 "AI Data Hub API" 라는 최소화된 콘솔 창이 작업 표시줄에 보이면 성공.
+각 단계가 자동으로 진행된다. 마지막에 "Mobile eXperience AI Data Hub API" 라는 최소화된 콘솔 창이 작업 표시줄에 보이면 성공.
 
 ### 4. 검증
 
@@ -124,7 +124,7 @@ distribution\
 | PG 인스톨러 다운로드 실패 | 방화벽/프록시 | `https://get.enterprisedb.com/postgresql/postgresql-18.0-1-windows-x64.exe` 수동 다운로드 → `%TEMP%\postgresql-18-installer.exe` 저장 후 재실행 |
 | `[WARN] pgvector 검증 실패` | 기존 PG 17/16 + ABI 불일치 | 배포 패키지의 vendor zip 은 PG 18 사전 빌드 binary. 16/17 환경이면 운영자에게 PG 16/17 용 vendor zip 별도 요청. ILIKE 폴백으로 서비스는 동작 |
 | `alembic upgrade head` 실패 | pgvector 미적용 + 0004 마이그레이션 | pgvector 재설치 후 `cd api_server && .venv\Scripts\activate && alembic upgrade head` |
-| 8000 포트 응답 없음 | run.bat 콘솔이 즉시 종료됨 | 작업표시줄의 "AI Data Hub API" 창에서 에러 확인. `cd api_server && run.bat` 직접 실행해 stdout 확인 |
+| 8000 포트 응답 없음 | run.bat 콘솔이 즉시 종료됨 | 작업표시줄의 "Mobile eXperience AI Data Hub API" 창에서 에러 확인. `cd api_server && run.bat` 직접 실행해 stdout 확인 |
 | 한글 깨짐 | 콘솔 코드페이지 | SERVER_QUICK_SETUP.bat 가 `chcp 65001` 자동 적용. CMD 폰트가 "굴림체" 면 안 보임 — "맑은 고딕" 권장 |
 
 ---
@@ -134,7 +134,7 @@ distribution\
 | 작업 | 명령 |
 |---|---|
 | 서버 시작 | `cd api_server && run.bat` |
-| 서버 종료 | "AI Data Hub API" 콘솔 창 닫기 또는 `taskkill /F /IM python.exe` |
+| 서버 종료 | "Mobile eXperience AI Data Hub API" 콘솔 창 닫기 또는 `taskkill /F /IM python.exe` |
 | 로그 확인 | run.bat 콘솔 창의 stdout (또는 LOG_FORMAT=json 시 jq 로 필터) |
 | .env 수정 | `notepad api_server\.env` → 저장 → 서버 재시작 |
 | DB 직접 접속 | `psql -U postgres -d ai_data` |
@@ -157,7 +157,7 @@ distribution\
    python -m api.cli issue-key --name ops
    ```
    출력된 plaintext 키를 클라이언트에게 전달.
-3. **방화벽 오픈**: 8000 포트 인바운드 허용 (`netsh advfirewall firewall add rule name="AI Data Hub" dir=in action=allow protocol=TCP localport=8000`).
+3. **방화벽 오픈**: 8000 포트 인바운드 허용 (`netsh advfirewall firewall add rule name="Mobile eXperience AI Data Hub" dir=in action=allow protocol=TCP localport=8000`).
 4. **클라이언트 셋업**: 클라이언트 PC 에서 `client_setup\setup.bat` 실행 — 자세한 절차는 **CLIENT_SETUP_GUIDE.md** 참조.
 
 ---

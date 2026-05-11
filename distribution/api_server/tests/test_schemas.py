@@ -23,7 +23,7 @@ from api.schemas import (
 # ---------------------------------------------------------------------------
 class TestIdFormat:
     def test_valid_canonical(self) -> None:
-        parts = parse_id("DOC-HE-CAE-2026-000001")
+        parts = parse_id("DOC-HE-CAE-2026-0000000001")
         assert parts == {
             "data_type": "DOC",
             "team": "HE",
@@ -34,54 +34,54 @@ class TestIdFormat:
 
     def test_valid_all_data_types(self) -> None:
         for dt in ("DOC", "DATA", "SIM", "CAD", "LOG", "FORM", "OTHER"):
-            parts = parse_id(f"{dt}-HE-CAE-2026-000001")
+            parts = parse_id(f"{dt}-HE-CAE-2026-0000000001")
             assert parts["data_type"] == dt
 
     def test_legacy_default_doc(self) -> None:
-        parts = parse_id("HE-CAE-2026-000001")
+        parts = parse_id("HE-CAE-2026-0000000001")
         assert parts["data_type"] == "DOC"
         assert parts["team"] == "HE"
         assert parts["group"] == "CAE"
         assert parts["year"] == 2026
         assert parts["seq"] == 1
-        assert is_legacy_id("HE-CAE-2026-000001") is True
-        assert is_legacy_id("DOC-HE-CAE-2026-000001") is False
+        assert is_legacy_id("HE-CAE-2026-0000000001") is True
+        assert is_legacy_id("DOC-HE-CAE-2026-0000000001") is False
 
     def test_legacy_with_explicit_default(self) -> None:
-        parts = parse_id("HE-CAE-2026-000001", default_data_type="DATA")
+        parts = parse_id("HE-CAE-2026-0000000001", default_data_type="DATA")
         assert parts["data_type"] == "DATA"
 
     def test_normalize_legacy(self) -> None:
-        assert normalize_id("HE-CAE-2026-000001") == "DOC-HE-CAE-2026-000001"
+        assert normalize_id("HE-CAE-2026-0000000001") == "DOC-HE-CAE-2026-0000000001"
         assert normalize_id(
-            "HE-CAE-2026-000001", default_data_type="SIM"
-        ) == "SIM-HE-CAE-2026-000001"
+            "HE-CAE-2026-0000000001", default_data_type="SIM"
+        ) == "SIM-HE-CAE-2026-0000000001"
 
     def test_normalize_canonical_unchanged(self) -> None:
         assert (
-            normalize_id("CAD-VD-PLM-2030-000123") == "CAD-VD-PLM-2030-000123"
+            normalize_id("CAD-VD-PLM-2030-0000000123") == "CAD-VD-PLM-2030-0000000123"
         )
 
     def test_format_id(self) -> None:
         assert (
-            format_id("DOC", "HE", "CAE", 2026, 1) == "DOC-HE-CAE-2026-000001"
+            format_id("DOC", "HE", "CAE", 2026, 1) == "DOC-HE-CAE-2026-0000000001"
         )
         assert (
             format_id("SIM", "MX", "DEV", 2099, 999_999)
-            == "SIM-MX-DEV-2099-999999"
+            == "SIM-MX-DEV-2099-0000999999"
         )
 
     @pytest.mark.parametrize(
         "bad",
         [
             "",
-            "FOO-HE-CAE-2026-000001",   # invalid data_type
-            "DOC-h-CAE-2026-000001",    # team too short / lowercase
-            "DOC-HE-cae-2026-000001",   # group lowercase
-            "DOC-HE-CAE-1999-000001",   # year out of range
+            "FOO-HE-CAE-2026-0000000001",   # invalid data_type
+            "DOC-h-CAE-2026-0000000001",    # team too short / lowercase
+            "DOC-HE-cae-2026-0000000001",   # group lowercase
+            "DOC-HE-CAE-1999-0000000001",   # year out of range
             "DOC-HE-CAE-2026-12345",    # seq not 6 digits
             "HE-CAE-2026-12345",        # legacy seq wrong width
-            "DOC-HE-CAE-2026-000001-extra",
+            "DOC-HE-CAE-2026-0000000001-extra",
             "DOC HE CAE 2026 000001",
         ],
     )
@@ -90,10 +90,10 @@ class TestIdFormat:
             parse_id(bad)
 
     def test_recordid_model_roundtrip(self) -> None:
-        rid = RecordID.from_string("DOC-HE-CAE-2026-000007")
+        rid = RecordID.from_string("DOC-HE-CAE-2026-0000000007")
         assert rid.data_type == "DOC"
         assert rid.seq == 7
-        assert rid.to_string() == "DOC-HE-CAE-2026-000007"
+        assert rid.to_string() == "DOC-HE-CAE-2026-0000000007"
 
     def test_recordid_validation_errors(self) -> None:
         with pytest.raises(ValidationError):
@@ -112,7 +112,7 @@ class TestIdFormat:
 class TestRecordIn:
     def test_minimal(self) -> None:
         r = RecordIn(
-            id="DOC-HE-CAE-2026-000001",
+            id="DOC-HE-CAE-2026-0000000001",
             data_type="DOC",
             title="hello",
             content={"meta": {}, "sections": []},
@@ -127,12 +127,12 @@ class TestRecordIn:
     def test_legacy_id_accepted(self) -> None:
         # RecordIn.validate_id 가 레거시도 허용 (정규화는 normalizer 가 담당).
         r = RecordIn(
-            id="HE-CAE-2026-000001",
+            id="HE-CAE-2026-0000000001",
             data_type="DOC",
             title="legacy id ok",
             content={},
         )
-        assert r.id == "HE-CAE-2026-000001"
+        assert r.id == "HE-CAE-2026-0000000001"
 
     def test_invalid_id(self) -> None:
         with pytest.raises(ValidationError):
@@ -146,7 +146,7 @@ class TestRecordIn:
     def test_invalid_data_type(self) -> None:
         with pytest.raises(ValidationError):
             RecordIn(
-                id="DOC-HE-CAE-2026-000001",
+                id="DOC-HE-CAE-2026-0000000001",
                 data_type="XYZ",  # type: ignore[arg-type]
                 title="x",
                 content={},
@@ -155,7 +155,7 @@ class TestRecordIn:
     def test_tags_must_be_strings(self) -> None:
         with pytest.raises(ValidationError):
             RecordIn(
-                id="DOC-HE-CAE-2026-000001",
+                id="DOC-HE-CAE-2026-0000000001",
                 data_type="DOC",
                 title="x",
                 content={},
@@ -175,7 +175,7 @@ class TestDocumentContent:
     def test_full(self) -> None:
         c = DocumentContent(
             schema_version="1.0",
-            meta={"doc_id": "DOC-HE-CAE-2026-000001", "title": "x"},
+            meta={"doc_id": "DOC-HE-CAE-2026-0000000001", "title": "x"},
             toc=[{"id": "1", "level": 1, "title": "Intro"}],
             sections=[
                 {"id": "1", "level": 1, "title": "Intro", "blocks": []},

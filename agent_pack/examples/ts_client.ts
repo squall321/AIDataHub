@@ -1,5 +1,5 @@
 /**
- * AI Data Hub — Minimal TypeScript client (fetch-based, browser/Node 모두 동작).
+ * Mobile eXperience AI Data Hub — Minimal TypeScript client (fetch-based, browser/Node 모두 동작).
  *
  * 사용법:
  *   import { client } from "./ts_client";

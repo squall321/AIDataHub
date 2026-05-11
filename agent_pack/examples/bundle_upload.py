@@ -1,4 +1,4 @@
-"""AI Data Hub — 사전 변환된 JSON + 자원 폴더를 ZIP 번들로 업로드.
+"""Mobile eXperience AI Data Hub — 사전 변환된 JSON + 자원 폴더를 ZIP 번들로 업로드.
 
 변환기 (Word/PPT/Excel/MD/PDF/HTML) 가 이미 출력해 둔 ``output/{doc_id}.json``
 + ``output/{doc_id}/`` (figures/attachments) 를 한꺼번에 서버에 적재한다.
@@ -7,7 +7,7 @@
 
 사용:
     # 변환기 출력 폴더 통째 zip + 업로드
-    python bundle_upload.py /path/to/output/DOC-HE-CAE-2026-000001.json
+    python bundle_upload.py /path/to/output/DOC-HE-CAE-2026-0000000001.json
 
     # 또는 미리 만든 zip 직접 업로드
     python bundle_upload.py /path/to/bundle.zip

@@ -28,7 +28,7 @@
 | 항목 | 변환기 출력 / 코드 위치 | normalizer 흡수 / DB |
 |---|---|---|
 | 페이로드 형식 | `schema_version="data.v1"` (별도 변종, 표준 7-키 아님). `excel_converter/core.py:125-159` | `_extract_data()` (`normalizer.py:147-160`) 가 `data_id`/`caption`/`headers`/`rows`/`units` 를 RecordIn 으로 매핑 |
-| 식별자 | top-level `data_id` (예: `DATA-HE-CAE-2026-000034`) | `RecordIn.id` |
+| 식별자 | top-level `data_id` (예: `DATA-HE-CAE-2026-0000000034`) | `RecordIn.id` |
 | 단위 | `units` (객체) **+ `units_map` (동일내용 alias)** 두 키 모두 출력. `core.py:145, 158` | 신규 소비자는 `units` 권장 |
 | `meta.agent_scope` (옵션) | `_META.agents` 배열을 `agent_scope` 로 출력 | normalizer 폴백 — `meta.agent_scope` 우선 |
 | 분류/생애주기 (0006 10개) | `_META` 시트의 `classification`/`status`/`domain`/`subject_keywords`/`source_system`/`language`/`derivation`/`quality_score`/`valid_from`/`valid_until` → `payload["meta"].*` → normalizer `_common_fields` 흡수 (`normalizer.py:240-274`) ✅ | `records.classification` 등 |
@@ -96,7 +96,7 @@ DATA JSON 으로 변환하기 위한 가이드다. Excel 은 본문 흐름(narra
 
 ```json
 {
-  "data_id": "DATA-HE-CAE-2026-000001",
+  "data_id": "DATA-HE-CAE-2026-0000000001",
   "schema_version": "data.v1",
   "caption": "측정결과",
   "team": "HE",
@@ -695,9 +695,9 @@ python -m excel_converter multi_sheet.xlsx \
 
 ```
 output/
-├── DATA-HE-CAE-2026-000100.json     ← 시트1
-├── DATA-HE-CAE-2026-000101.json     ← 시트2
-└── DATA-HE-CAE-2026-000102.json     ← 시트3
+├── DATA-HE-CAE-2026-0000000100.json     ← 시트1
+├── DATA-HE-CAE-2026-0000000101.json     ← 시트2
+└── DATA-HE-CAE-2026-0000000102.json     ← 시트3
 ```
 
 `per_sheet` 모드에서는 시트 수만큼 파일이 생성되고,

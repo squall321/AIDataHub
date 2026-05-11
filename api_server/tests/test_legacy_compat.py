@@ -80,7 +80,7 @@ def test_converter_cli_runs(tmp_path: Path) -> None:
 
 
 def test_converter_meta_doc_id_format(tmp_path: Path) -> None:
-    """doc_id 가 'HE-CAE-2026-000001' 형식을 유지하는지."""
+    """doc_id 가 'HE-CAE-2026-0000000001' 형식을 유지하는지."""
     if not TEST_DOCX.exists():
         pytest.skip(f"테스트용 docx 파일 없음: {TEST_DOCX}")
 
@@ -95,12 +95,12 @@ def test_converter_meta_doc_id_format(tmp_path: Path) -> None:
     payload = json.loads(json_files[0].read_text(encoding="utf-8"))
     doc_id = payload.get("meta", {}).get("doc_id", "")
     parts = doc_id.split("-")
-    # HE-CAE-2026-000001 → 4 parts
-    assert len(parts) == 4, f"예상 형식 'DIV-GROUP-YEAR-SEQ' 와 다름: {doc_id!r}"
+    # HE-CAE-2026-0000000001 → 4 parts (10-digit seq, v3)
+    assert len(parts) == 4, f"예상 형식 'TEAM-GROUP-YEAR-SEQ' 와 다름: {doc_id!r}"
     assert parts[0] == "HE"
     assert parts[1] == "CAE"
     assert parts[2] == "2026"
-    assert parts[3].isdigit() and len(parts[3]) == 6
+    assert parts[3].isdigit() and len(parts[3]) == 10
 
 
 def test_legacy_models_still_match() -> None:

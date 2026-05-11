@@ -17,25 +17,25 @@ async def faceted_seed(test_session_maker) -> dict[str, str]:
     # 주: id 형식 — DATA_TYPE-TEAM-GROUP-YEAR-SEQ
     seed_specs = [
         # (id, dtype, year, tags, agents, domain, classification, status, quality)
-        ("DOC-HE-CAE-2026-100001", "DOC", 2026, ["IGA", "NURBS"],
+        ("DOC-HE-CAE-2026-0000100001", "DOC", 2026, ["IGA", "NURBS"],
             ["iga-analyst"], "cae", "internal", "approved", 90),
-        ("DOC-HE-CAE-2026-100002", "DOC", 2026, ["IGA", "stress"],
+        ("DOC-HE-CAE-2026-0000100002", "DOC", 2026, ["IGA", "stress"],
             ["iga-analyst", "cae-reporter"], "cae", "internal", "approved", 85),
-        ("DOC-HE-CAE-2025-100003", "DOC", 2025, ["IGA"],
+        ("DOC-HE-CAE-2025-0000100003", "DOC", 2025, ["IGA"],
             ["iga-analyst"], "cae", "internal", "review", 70),
-        ("DOC-HE-EDU-2026-100004", "DOC", 2026, ["lecture", "NURBS"],
+        ("DOC-HE-EDU-2026-0000100004", "DOC", 2026, ["lecture", "NURBS"],
             ["edu-tutor"], "lecture", "public", "approved", 60),
-        ("DOC-HE-EDU-2026-100005", "DOC", 2026, ["lecture"],
+        ("DOC-HE-EDU-2026-0000100005", "DOC", 2026, ["lecture"],
             ["edu-tutor"], "lecture", "public", "draft", 50),
-        ("DOC-HE-CAE-2026-100006", "DOC", 2026, ["낙하시험"],
+        ("DOC-HE-CAE-2026-0000100006", "DOC", 2026, ["낙하시험"],
             ["cae-reporter"], "cae", "internal", "approved", 80),
-        ("DOC-HE-CAE-2026-100007", "DOC", 2026, ["낙하시험", "stress"],
+        ("DOC-HE-CAE-2026-0000100007", "DOC", 2026, ["낙하시험", "stress"],
             ["cae-reporter"], "cae", "internal", "approved", 75),
-        ("DATA-HE-CAE-2026-100008", "DATA", 2026, ["SS400", "stress"],
+        ("DATA-HE-CAE-2026-0000100008", "DATA", 2026, ["SS400", "stress"],
             ["material-reviewer"], "material-test", "internal", "approved", 88),
-        ("DATA-HE-CAE-2026-100009", "DATA", 2026, ["battery"],
+        ("DATA-HE-CAE-2026-0000100009", "DATA", 2026, ["battery"],
             ["cae-reporter"], "material-test", "internal", "approved", 82),
-        ("DATA-HE-CAE-2025-100010", "DATA", 2025, ["IGA"],
+        ("DATA-HE-CAE-2025-0000100010", "DATA", 2025, ["IGA"],
             ["iga-analyst"], "cae", "internal", "review", 65),
     ]
     for rid, dt, year, tags, agents, domain, cls, status, q in seed_specs:
@@ -212,7 +212,7 @@ async def test_by_tags_all_match_default(
     assert body["match"] == "all"
     # 두 태그 모두 가진 record: 100001 만
     assert body["total"] == 1
-    assert body["items"][0]["id"] == "DOC-HE-CAE-2026-100001"
+    assert body["items"][0]["id"] == "DOC-HE-CAE-2026-0000100001"
 
 
 @pytest.mark.asyncio

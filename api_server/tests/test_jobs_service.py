@@ -53,7 +53,7 @@ async def test_maybe_schedule_auto_embed_off_returns_none():
     from api.services import jobs as job_svc
 
     settings.auto_embed_on_insert = False
-    result = job_svc.maybe_schedule_auto_embed("DOC-HE-CAE-2026-000099")
+    result = job_svc.maybe_schedule_auto_embed("DOC-HE-CAE-2026-0000000099")
     assert result is None
     assert job_svc.list_jobs(kind="embed") == []
 
@@ -66,9 +66,9 @@ async def test_maybe_schedule_auto_embed_on_returns_job():
     original = settings.auto_embed_on_insert
     settings.auto_embed_on_insert = True
     try:
-        job = job_svc.maybe_schedule_auto_embed("DOC-HE-CAE-2026-000099")
+        job = job_svc.maybe_schedule_auto_embed("DOC-HE-CAE-2026-0000000099")
         assert job is not None
         assert job.kind == "embed"
-        assert job.payload.get("record_id") == "DOC-HE-CAE-2026-000099"
+        assert job.payload.get("record_id") == "DOC-HE-CAE-2026-0000000099"
     finally:
         settings.auto_embed_on_insert = original

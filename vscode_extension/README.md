@@ -1,13 +1,13 @@
-# AI Data Hub Uploader (VS Code Extension)
+# Mobile eXperience AI Data Hub Uploader (VS Code Extension)
 
-`AI_data/api_server` 를 백엔드로 사용하여, 사업부 문서/데이터를 **VS Code 안에서 드래그&드롭만으로 적재**할 수 있게 해주는 확장.
+`AI_data/api_server` 를 백엔드로 사용하여, 사업부 문서/데이터를 **VS Code 안에서 드래그&드롭만으로 적재**할 수 있게 해주는 확장. v0.8 부터 앱 표시명은 **Mobile eXperience AI Data Hub**.
 
-> **상태**: P1~P7 완료 — Welcome / DropZone / Form / Upload(progress) / Result 화면 동작 + `.vsix` 패키징 완료.
+> **상태**: v0.8.0 — Welcome / DropZone / Form / Upload(progress) / Result / Search / Agents CRUD / Agent Word template download 동작 + `.vsix` 패키징 완료.
 
 ## Install (end users)
 
 ```powershell
-code --install-extension ai-data-hub-uploader-0.7.0.vsix
+code --install-extension ai-data-hub-uploader-0.8.0.vsix
 ```
 
 자세한 사용법 및 트러블슈팅은 [`USER_GUIDE.md`](USER_GUIDE.md) 참고.
@@ -18,15 +18,15 @@ code --install-extension ai-data-hub-uploader-0.7.0.vsix
 npm install
 npx tsc -p .                                                      # → out/
 npx @vscode/vsce package --allow-missing-repository --no-dependencies
-# → ai-data-hub-uploader-0.7.0.vsix
+# → ai-data-hub-uploader-0.8.0.vsix
 # 또는 F5 (Extension Development Host) 로 디버그
 ```
 
-활성화 시 connected=false 면 새 탭에 Welcome 자동 오픈. URL/API Key 입력 후 Save & Continue → DropZone → 파일 드롭 → 폼 → Send (또는 Send DRY-RUN 으로 변환 결과만 미리보기).
+활성화 시 connected=false 면 새 탭에 Welcome 자동 오픈. URL/API Key 입력 후 Save & Continue → DropZone → 파일 드롭 → 폼 → Send (또는 Send DRY-RUN 으로 변환 결과만 미리보기). Agents 탭에서 에이전트 행을 펼치면 **📄 Download Word template** 버튼으로 해당 에이전트용 Word 템플릿 (.docx) 을 저장 다이얼로그로 받아볼 수 있음 (v0.8).
 
 ## 목표
 
-- 비개발자/현장 사용자도 CLI 없이 파일을 AI Data Hub 에 적재.
+- 비개발자/현장 사용자도 CLI 없이 파일을 Mobile eXperience AI Data Hub 에 적재.
 - 백엔드 IP/API Key 만 한 번 설정하면, 이후는 파일을 끌어다 놓고 메타데이터를 채운 뒤 **Send** 버튼 한 번으로 끝.
 
 ## UX 한 줄 요약

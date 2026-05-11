@@ -1,7 +1,7 @@
 # rule-code-sync 완료 보고서
 
 > **상태**: 완료  
-> **프로젝트**: AI Data Hub — Conversion Rules Synchronization  
+> **프로젝트**: Mobile eXperience AI Data Hub — Conversion Rules Synchronization  
 > **완료일**: 2026-05-10  
 > **PDCA 사이클**: Audit-Driven Multi-Phase (v1.2 doc-fix + v1.3 code-fix)
 
@@ -313,7 +313,7 @@ pytest api_server/tests/
 # 1. Prepare
 doc_json = {
   "meta": {
-    "doc_id": "DOC-TEST-E2E-2026-000001",
+    "doc_id": "DOC-TEST-E2E-2026-0000000001",
     "title": "Test Doc",
     "classification": "confidential",  # P0-5 대상
     "status": "draft",

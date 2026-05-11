@@ -1,4 +1,4 @@
-# AI Data Hub — 남은 작업 정리 (재구성)
+# Mobile eXperience AI Data Hub — 남은 작업 정리 (재구성)
 
 > 2026-05-09 갱신. 직전 갭 분석 (`REMAINING_JOBS_GAP_2026-05-09.md`) 결과 5개 트랙 중
 > A·B·C·D 완료, E 부분 완료. **남은 작업은 약 1.5 인일 분량의 polish 만 존재.**

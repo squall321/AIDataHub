@@ -1,13 +1,13 @@
-# UX Flow — AI Data Hub Uploader
+# UX Flow — Mobile eXperience AI Data Hub Uploader
 
 ## 화면 1. 설치 직후 첫 활성화 (Welcome / Settings)
 
 **트리거**: `extension.ts.activate()` 안에서 `globalState.get('aidh.connected') !== true` 일 때 자동으로 Webview Panel 을 새 탭에 연다.
 
 ```
-┌─ AI Data Hub  •  Welcome  ─────────────────────────────────┐
+┌─ Mobile eXperience AI Data Hub  •  Welcome  ─────────────────────────────────┐
 │                                                            │
-│   👋  Connect to your AI Data Hub server                    │
+│   👋  Connect to your Mobile eXperience AI Data Hub server                    │
 │                                                            │
 │   Server URL                                               │
 │   [ http://10.10.20.5:8000              ]                  │
@@ -33,7 +33,7 @@
 ## 화면 2. Drop Zone
 
 ```
-┌─ AI Data Hub  •  Upload  ────────────────────[⚙ Settings]──┐
+┌─ Mobile eXperience AI Data Hub  •  Upload  ────────────────────[⚙ Settings]──┐
 │                                                            │
 │                                                            │
 │        ╔══════════════════════════════════════════╗        │
@@ -68,7 +68,7 @@
 **Sending (진행률)**:
 
 ```
-┌─ AI Data Hub  •  Sending...  ──────────────────────────────┐
+┌─ Mobile eXperience AI Data Hub  •  Sending...  ──────────────────────────────┐
 │                                                            │
 │  📂 iga_guide.docx                                         │
 │                                                            │
@@ -83,11 +83,11 @@
 **Success**:
 
 ```
-┌─ AI Data Hub  •  Done  ────────────────────────────────────┐
+┌─ Mobile eXperience AI Data Hub  •  Done  ────────────────────────────────────┐
 │                                                            │
 │  ✅  Uploaded                                              │
 │                                                            │
-│  Record ID:  DOC-HE-CAE-2026-000001                        │
+│  Record ID:  DOC-HE-CAE-2026-0000000001                        │
 │  Status:     inserted                                      │
 │  Sections:   12                                            │
 │                                                            │
@@ -100,7 +100,7 @@
 **Error**:
 
 ```
-┌─ AI Data Hub  •  Failed  ──────────────────────────────────┐
+┌─ Mobile eXperience AI Data Hub  •  Failed  ──────────────────────────────────┐
 │                                                            │
 │  ❌  Upload failed                                          │
 │                                                            │

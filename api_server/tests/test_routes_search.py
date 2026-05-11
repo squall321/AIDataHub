@@ -86,7 +86,7 @@ async def test_search_semantic_with_embeddings(
 
     async with test_session_maker() as s:
         rec = Record(
-            id="DOC-HE-AI-2026-099001",
+            id="DOC-HE-AI-2026-0000099001",
             data_type="DOC",
             team="HE",
             group="AI",
@@ -121,5 +121,5 @@ async def test_search_semantic_with_embeddings(
     assert body["mode"] == "semantic"
     assert body["total"] >= 1
     top = body["items"][0]
-    assert top["record_id"] == "DOC-HE-AI-2026-099001"
+    assert top["record_id"] == "DOC-HE-AI-2026-0000099001"
     assert top["score"] >= 0.99  # 동일 텍스트 → 결정론적 cosine 1.0

@@ -2,11 +2,11 @@
 
 공식 ID 포맷:
     {DATA_TYPE}-{TEAM}-{GROUP}-{YEAR}-{SEQ:06d}
-    예: DOC-HE-CAE-2026-000001
+    예: DOC-HE-CAE-2026-0000000001
 
 레거시 ID 포맷 (DATA_TYPE 접두사 누락):
     {TEAM}-{GROUP}-{YEAR}-{SEQ:06d}
-    예: HE-CAE-2026-000001
+    예: HE-CAE-2026-0000000001
     → 파싱 시 ``data_type`` 인수 또는 기본값 ``"DOC"``로 보강한다.
 
 규칙:

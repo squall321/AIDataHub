@@ -37,7 +37,7 @@ async def test_figure_file_served(tmp_path: Path, monkeypatch) -> None:
 
     # 단독 마운트로 검증 (글로벌 settings 변경 없이도 정적 마운트 동작 확인)
     figures_dir = tmp_path / "figures"
-    doc_dir = figures_dir / "DOC-HE-CAE-2026-000001"
+    doc_dir = figures_dir / "DOC-HE-CAE-2026-0000000001"
     doc_dir.mkdir(parents=True)
     # 최소 PNG 시그니처 (8바이트) — content-type 추론에 충분
     png_bytes = b"\x89PNG\r\n\x1a\n"
@@ -54,7 +54,7 @@ async def test_figure_file_served(tmp_path: Path, monkeypatch) -> None:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         resp = await ac.get(
-            "/figures/DOC-HE-CAE-2026-000001/F001.png"
+            "/figures/DOC-HE-CAE-2026-0000000001/F001.png"
         )
     assert resp.status_code == 200
     ctype = resp.headers.get("content-type", "")
@@ -72,7 +72,7 @@ def test_ingest_copies_figures(tmp_path: Path) -> None:
     except ImportError as exc:  # pragma: no cover
         pytest.skip(f"ingest module not importable: {exc}")
 
-    doc_id = "DOC-HE-CAE-2026-000001"
+    doc_id = "DOC-HE-CAE-2026-0000000001"
 
     # 입력: src_root/{doc_id}/F001.png + 형식 보존용 JSON 동봉
     src_root = tmp_path / "src"
@@ -107,7 +107,7 @@ def test_copy_figures_missing_source_returns_zero(tmp_path: Path) -> None:
         pytest.skip(f"ingest module not importable: {exc}")
 
     n = copy_figures(
-        "DOC-HE-CAE-2026-999999",
+        "DOC-HE-CAE-2026-0000999999",
         source_root=tmp_path / "no_such",
         figures_dir=tmp_path / "out",
     )

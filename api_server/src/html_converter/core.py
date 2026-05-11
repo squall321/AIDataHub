@@ -72,11 +72,11 @@ class HtmlConverterOptions:
 
 
 # ---------------------------------------------------------------------------
-# ID helpers — DOC-{team}-{group}-{year}-{seq:06d}
+# ID helpers — DOC-{team}-{group}-{year}-{seq:010d}
 # ---------------------------------------------------------------------------
 
 def _make_doc_id(opts: HtmlConverterOptions) -> str:
-    return f"DOC-{opts.team}-{opts.group}-{opts.year}-{opts.seq:06d}"
+    return f"DOC-{opts.team}-{opts.group}-{opts.year}-{opts.seq:010d}"
 
 
 def _make_fig_id(doc_id: str, n: int) -> str:

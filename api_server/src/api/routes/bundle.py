@@ -16,8 +16,8 @@
 (A) 변환기 출력 컨벤션 (권장):
 
     bundle.zip
-    ├── DOC-HE-CAE-2026-000001.json    ← 메인 JSON (이름 = doc_id 또는 자유)
-    └── DOC-HE-CAE-2026-000001/        ← 자원 폴더 (이름 = doc_id 정확히)
+    ├── DOC-HE-CAE-2026-0000000001.json    ← 메인 JSON (이름 = doc_id 또는 자유)
+    └── DOC-HE-CAE-2026-0000000001/        ← 자원 폴더 (이름 = doc_id 정확히)
         ├── F001.png
         ├── F002.png
         └── A001.xlsx
@@ -249,7 +249,7 @@ async def ingest_bundle(
     Response 201::
 
         {
-          "id": "DOC-HE-CAE-2026-000001",
+          "id": "DOC-HE-CAE-2026-0000000001",
           "data_type": "DOC",
           "title": "...",
           "figures_copied": 12,

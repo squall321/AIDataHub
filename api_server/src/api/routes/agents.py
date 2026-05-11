@@ -114,4 +114,60 @@ async def delete_agent(
         raise HTTPException(status_code=404, detail=f"agent not found: {agent_type}")
 
 
+@router.get(
+    "/{agent_type}/template",
+    summary="agent expected-schema 기반 Word 템플릿 생성·다운로드",
+)
+async def download_agent_template(
+    agent_type: str,
+    session: AsyncSession = Depends(get_session),
+):
+    """agent 의 expected schema 를 반영한 ``.docx`` 즉석 생성.
+
+    Response: ``application/vnd.openxmlformats-officedocument.wordprocessingml.document``
+    바이너리. ``Content-Disposition: attachment; filename=agent_<type>_template.docx``.
+    """
+    from fastapi.responses import Response
+
+    from api.services import doc_type_svc, template_svc
+
+    agent = await agent_svc.get_agent(session, agent_type)
+    if agent is None:
+        raise HTTPException(status_code=404, detail=f"agent not found: {agent_type}")
+
+    # doc_type 보조 정보 (없으면 None 으로 두고 generic 섹션 사용)
+    doc_type_name: str | None = None
+    doc_type_desc = ""
+    expected_sections: list[str] | None = None
+    if agent.required_doc_type:
+        dt = await doc_type_svc.get_doc_type(session, agent.required_doc_type)
+        if dt is not None:
+            doc_type_name = dt.name
+            doc_type_desc = dt.description or ""
+            expected_sections = list(dt.expected_sections or [])
+
+    docx_bytes = template_svc.generate_agent_template(
+        agent_type=agent.agent_type,
+        agent_name=agent.name,
+        agent_description=agent.description or "",
+        required_doc_type=agent.required_doc_type,
+        required_tags=list(agent.required_tags or []),
+        excluded_tags=list(agent.excluded_tags or []),
+        doc_type_name=doc_type_name,
+        doc_type_description=doc_type_desc,
+        expected_sections=expected_sections,
+    )
+    filename = template_svc.template_filename(agent.agent_type)
+    return Response(
+        content=docx_bytes,
+        media_type=(
+            "application/vnd.openxmlformats-officedocument."
+            "wordprocessingml.document"
+        ),
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
+
+
 __all__ = ["router"]

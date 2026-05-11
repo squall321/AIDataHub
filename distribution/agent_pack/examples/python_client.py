@@ -1,4 +1,4 @@
-"""AI Data Hub — Minimal Python client (stdlib only).
+"""Mobile eXperience AI Data Hub — Minimal Python client (stdlib only).
 
 다른 AI agent 가 이 한 파일만 import 해서 즉시 검색·발견 가능.
 의존성: Python 3.10+, 표준 라이브러리만.
@@ -147,7 +147,7 @@ client = AIDataHubClient()
 
 # ------------------------------------------------------------------ self test
 def _self_test() -> int:
-    print(f"=== AI Data Hub self-test ({BASE}) ===")
+    print(f"=== Mobile eXperience AI Data Hub self-test ({BASE}) ===")
     try:
         h = client.health()
         print(f"[OK] health: status={h.get('status')} version={h.get('version')}")

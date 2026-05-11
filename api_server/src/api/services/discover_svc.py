@@ -200,7 +200,7 @@ async def build_discover_payload(
 
     payload: dict[str, Any] = {
         "version": "1.0",
-        "title": "AI Data Hub",
+        "title": "Mobile eXperience AI Data Hub",
         "description": "사업부 문서·데이터 통합 허브 (DOC/DATA/SIM/CAD/LOG/FORM/OTHER)",
         "total_records": total_records,
         "by_data_type": by_type,
@@ -300,7 +300,7 @@ def build_json_schema() -> dict[str, Any]:
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "https://ai-data-hub/api/schema",
-        "title": "AI Data Hub — Record",
+        "title": "Mobile eXperience AI Data Hub — Record",
         "description": (
             "단일 데이터 레코드 (Word/Excel/PDF/Markdown/PowerPoint → JSON → DB). "
             "data_type 별로 content 페이로드 모양이 달라진다."
@@ -314,7 +314,7 @@ def build_json_schema() -> dict[str, Any]:
                     "^(DOC|DATA|SIM|CAD|LOG|FORM|OTHER)-"
                     "[A-Z]{2,4}-[A-Z]{2,5}-20[2-9][0-9]-[0-9]{6}$"
                 ),
-                "description": "레코드 ID (예: DOC-HE-CAE-2026-000001).",
+                "description": "레코드 ID (예: DOC-HE-CAE-2026-0000000001).",
             },
             "data_type": {
                 "type": "string",
@@ -489,19 +489,19 @@ def build_json_schema() -> dict[str, Any]:
         ],
         "examples": [
             {
-                "id": "DOC-HE-CAE-2026-000001",
+                "id": "DOC-HE-CAE-2026-0000000001",
                 "data_type": "DOC",
                 "title": "IGA 가이드",
                 "agents": ["iga-analyst"],
                 "content": {
-                    "meta": {"doc_id": "HE-CAE-2026-000001"},
+                    "meta": {"doc_id": "HE-CAE-2026-0000000001"},
                     "sections": [
                         {"id": "1", "level": 1, "title": "개요", "blocks": []}
                     ],
                 },
             },
             {
-                "id": "DATA-HE-CAE-2026-000002",
+                "id": "DATA-HE-CAE-2026-0000000002",
                 "data_type": "DATA",
                 "title": "배터리 셀 측정 데이터",
                 "content": {
@@ -584,7 +584,7 @@ _ALL_HINTS: dict[str, list[dict[str, str]]] = {
         },
         {
             "hint": "특정 record 의 표만 추출은 /api/records/{id}/tables.",
-            "sample_endpoint": "GET /api/records/DATA-HE-CAE-2026-000002/tables",
+            "sample_endpoint": "GET /api/records/DATA-HE-CAE-2026-0000000002/tables",
             "why_useful": "headers/rows 만 잘라서 받는다.",
         },
     ],
@@ -603,7 +603,7 @@ _ALL_HINTS: dict[str, list[dict[str, str]]] = {
     "attachments": [
         {
             "hint": "첨부 메타 조회는 /api/records/{id}/attachments.",
-            "sample_endpoint": "GET /api/records/DOC-HE-CAE-2026-000001/attachments",
+            "sample_endpoint": "GET /api/records/DOC-HE-CAE-2026-0000000001/attachments",
             "why_useful": "kind/caption/file_path 메타. 바이너리는 /attachments/{...}.",
         },
         {
@@ -620,7 +620,7 @@ _ALL_HINTS: dict[str, list[dict[str, str]]] = {
         },
         {
             "hint": "파생/번역/추출 관계는 parent_record_id (self-FK).",
-            "sample_endpoint": "GET /api/records?parent_record_id=DOC-HE-CAE-2026-000001",
+            "sample_endpoint": "GET /api/records?parent_record_id=DOC-HE-CAE-2026-0000000001",
             "why_useful": "원본 → 파생 트리.",
         },
         {
@@ -656,7 +656,7 @@ def list_hint_contexts() -> list[str]:
 # ---------------------------------------------------------------------------
 # /api/docs/llm.txt
 # ---------------------------------------------------------------------------
-_LLM_DOC_TEMPLATE = """# AI Data Hub — LLM Quick Reference
+_LLM_DOC_TEMPLATE = """# Mobile eXperience AI Data Hub — LLM Quick Reference
 
 > 이 한 페이지가 허브 전체를 설명한다. 백엔드 source 를 읽지 마라.
 > 가장 먼저 `GET /api/discover` 를 호출해라.
@@ -674,7 +674,7 @@ _LLM_DOC_TEMPLATE = """# AI Data Hub — LLM Quick Reference
 - **capabilities**: content 모양 라벨 (sections/blocks/tables/figures/...).
 
 ## 3. ID format
-`{DATA_TYPE}-{TEAM}-{GROUP}-{YEAR}-{SEQ:06d}` — 예: `DOC-HE-CAE-2026-000001`.
+`{DATA_TYPE}-{TEAM}-{GROUP}-{YEAR}-{SEQ:010d}` — 예: `DOC-HE-CAE-2026-0000000001`.
 - DATA_TYPE ∈ {DOC, DATA, SIM, CAD, LOG, FORM, OTHER}
 - TEAM 2-4자, GROUP 2-5자, YEAR 2020-2099, SEQ 6자리.
 - 레거시 (접두사 누락) 도 ingest 단계에서 자동 보강.

@@ -18,7 +18,7 @@ export class UploaderPanel {
     }
     const panel = vscode.window.createWebviewPanel(
       VIEW_TYPE,
-      'AI Data Hub',
+      'Mobile eXperience AI Data Hub',
       column,
       {
         enableScripts: true,
@@ -113,12 +113,12 @@ export class UploaderPanel {
         if (msg.ok) {
           const status = msg.status ? ` (${msg.status})` : '';
           void vscode.window.showInformationMessage(
-            `AI Data Hub: uploaded ${msg.recordId ?? 'record'}${status}`,
+            `Mobile eXperience AI Data Hub: uploaded ${msg.recordId ?? 'record'}${status}`,
           );
         } else if (msg.httpStatus === 401) {
           // Auth failed → offer re-entry of API key right from the toast.
           const choice = await vscode.window.showErrorMessage(
-            'AI Data Hub: API key invalid (401). Re-enter your key?',
+            'Mobile eXperience AI Data Hub: API key invalid (401). Re-enter your key?',
             'Re-enter API key',
             'Cancel',
           );
@@ -128,7 +128,7 @@ export class UploaderPanel {
         } else {
           const detail = msg.requestId ? ` [request_id=${msg.requestId}]` : '';
           void vscode.window.showErrorMessage(
-            `AI Data Hub upload failed: ${msg.error ?? 'unknown error'}${detail}`,
+            `Mobile eXperience AI Data Hub upload failed: ${msg.error ?? 'unknown error'}${detail}`,
           );
         }
         return;
@@ -276,6 +276,48 @@ export class UploaderPanel {
         }
         return;
       }
+      // ---- v0.8.0 Word template download for an agent ----
+      case 'downloadAgentTemplateRequest': {
+        const client = await this.getClient();
+        if (!client) {
+          this.post({ type: 'downloadAgentTemplateResponse', reqId: msg.reqId, ok: false, error: 'Not connected' });
+          return;
+        }
+        try {
+          const { bytes, filename } = await client.getAgentTemplate(msg.agentType);
+          // Default Save dialog into the workspace folder if any, otherwise
+          // VS Code falls back to user home; defaultUri must include the file
+          // name to populate the dialog.
+          const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
+          const defaultUri = wsRoot
+            ? vscode.Uri.joinPath(wsRoot, filename)
+            : vscode.Uri.file(filename);
+          const target = await vscode.window.showSaveDialog({
+            defaultUri,
+            filters: { Word: ['docx'] },
+            saveLabel: 'Save template',
+          });
+          if (!target) {
+            this.post({ type: 'downloadAgentTemplateResponse', reqId: msg.reqId, ok: false, error: 'cancelled' });
+            return;
+          }
+          await vscode.workspace.fs.writeFile(target, new Uint8Array(bytes));
+          this.post({
+            type: 'downloadAgentTemplateResponse',
+            reqId: msg.reqId,
+            ok: true,
+            savedPath: target.fsPath,
+          });
+        } catch (err) {
+          this.post({
+            type: 'downloadAgentTemplateResponse',
+            reqId: msg.reqId,
+            ok: false,
+            error: formatError(err),
+          });
+        }
+        return;
+      }
       // ---- v0.7.0 Doc-types ----
       case 'listDocTypesRequest': {
         const client = await this.getClient();
@@ -392,7 +434,7 @@ export class UploaderPanel {
    */
   private async promptForApiKey(): Promise<void> {
     const newKey = await vscode.window.showInputBox({
-      title: 'AI Data Hub — API Key',
+      title: 'Mobile eXperience AI Data Hub — API Key',
       prompt: 'Enter your API key. It will be stored in VS Code SecretStorage.',
       password: true,
       ignoreFocusOut: true,

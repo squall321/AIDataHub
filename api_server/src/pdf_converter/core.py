@@ -10,7 +10,7 @@
 - 표는 ``page.extract_tables()`` 로 추출 → ``tables[]`` 등록 + 본문 흐름에 ref 블록.
 - 그림은 ``page.images`` 메타로 베스트 노력 (실제 이미지 추출은 향후 OCR 통합과 함께).
 
-ID 형식: ``DOC-{team}-{group}-{year}-{seq:06d}``
+ID 형식: ``DOC-{team}-{group}-{year}-{seq:010d}``
 서브 ID: -F (figure) / -T (table) / -A (attachment).
 """
 from __future__ import annotations
@@ -87,11 +87,11 @@ class PdfConverterOptions:
 
 
 # ---------------------------------------------------------------------------
-# ID helpers — DOC-{team}-{group}-{year}-{seq:06d}
+# ID helpers — DOC-{team}-{group}-{year}-{seq:010d}
 # ---------------------------------------------------------------------------
 
 def _make_doc_id(opts: PdfConverterOptions) -> str:
-    return f"DOC-{opts.team}-{opts.group}-{opts.year}-{opts.seq:06d}"
+    return f"DOC-{opts.team}-{opts.group}-{opts.year}-{opts.seq:010d}"
 
 
 def _make_fig_id(doc_id: str, n: int) -> str:

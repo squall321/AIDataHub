@@ -295,7 +295,7 @@ attach id : DOC-{div}-{group}-{year}-{seq:06d}-A{nnn}
 cross-platform 호환성을 위해 항상 POSIX-style (forward slash) 상대경로:
 
 ```
-"DOC-HE-CAE-2026-000001/A001.png"
+"DOC-HE-CAE-2026-0000000001/A001.png"
 ```
 
 API 서버의 `/attachments` 정적 마운트가 이 경로 prefix 를 그대로 사용한다.
@@ -660,9 +660,9 @@ $env:PYTHONPATH = "d:\Personal\AI_data\api_server\src"
 
 ```
 output/
-├── DOC-HE-CAE-2026-000001.json
-├── DOC-HE-CAE-2026-000001.warnings.log
-└── DOC-HE-CAE-2026-000001/
+├── DOC-HE-CAE-2026-0000000001.json
+├── DOC-HE-CAE-2026-0000000001.warnings.log
+└── DOC-HE-CAE-2026-0000000001/
     ├── F001.png
     ├── F002.jpg
     ├── A001.png

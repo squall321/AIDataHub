@@ -266,6 +266,42 @@ export class ApiClient {
     return (await res.json()) as SearchItem[];
   }
 
+  /**
+   * GET /api/agents/{agent_type}/template — Word (.docx) template for this agent.
+   *
+   * Server returns `application/vnd.openxmlformats-officedocument.wordprocessingml.document`
+   * with a `Content-Disposition: attachment; filename=agent_<type>_template.docx`
+   * header. We parse the filename out of that header so the host can offer it
+   * as the default `Save As` name; falls back to `agent_<type>_template.docx`.
+   */
+  async getAgentTemplate(agentType: string): Promise<{ bytes: ArrayBuffer; filename: string }> {
+    // The endpoint returns binary; do NOT advertise Accept: application/json
+    // (the server may 406 in strict configs). Pass only the API key header.
+    const headers: Record<string, string> = {};
+    if (this.apiKey) headers['X-API-Key'] = this.apiKey;
+    const res = await fetch(
+      joinUrl(this.baseUrl, `/api/agents/${encodeURIComponent(agentType)}/template`),
+      { method: 'GET', headers },
+    );
+    if (!res.ok) throw await parseError(res);
+    const bytes = await res.arrayBuffer();
+    const fallback = `agent_${agentType}_template.docx`;
+    const cd = res.headers.get('content-disposition') || res.headers.get('Content-Disposition') || '';
+    let filename = fallback;
+    if (cd) {
+      // RFC 5987: filename*=UTF-8''foo.docx — prefer that if present.
+      const star = /filename\*\s*=\s*[^']*''([^;]+)/i.exec(cd);
+      if (star && star[1]) {
+        try { filename = decodeURIComponent(star[1].trim().replace(/^"|"$/g, '')); }
+        catch { /* keep fallback */ }
+      } else {
+        const plain = /filename\s*=\s*"?([^";]+)"?/i.exec(cd);
+        if (plain && plain[1]) filename = plain[1].trim();
+      }
+    }
+    return { bytes, filename };
+  }
+
   /** POST /api/agents — create (201, or 409 on conflict). */
   async createAgent(body: AgentInT): Promise<AgentOutT> {
     const res = await fetch(joinUrl(this.baseUrl, '/api/agents'), {

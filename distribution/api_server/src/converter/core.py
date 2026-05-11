@@ -792,7 +792,7 @@ class Converter:
         파일은 ``{output_dir}/{doc_id}/A{nnn}.{ext}`` 에 저장되며,
         ``Attachment.file_path`` 에는 cross-platform 호환을 위해 항상
         POSIX-style (forward slashes) 상대경로를 채워 넣는다 (예:
-        ``"DOC-HE-CAE-2026-000001/A001.pdf"``).
+        ``"DOC-HE-CAE-2026-0000000001/A001.pdf"``).
 
         kind 가 아직 ``"other"`` 로 남아있는 첨부는 part 의 확장자/MIME
         으로 다시 추정한다.

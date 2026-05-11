@@ -1,4 +1,4 @@
-"""AI Data Hub — 새 문서 적재 (ingest) 데모.
+"""Mobile eXperience AI Data Hub — 새 문서 적재 (ingest) 데모.
 
 Agent 가 외부에서 문서 파일을 받아 본 시스템에 적재하는 흐름.
 다음 두 경로 중 선택:
@@ -99,7 +99,7 @@ def upload_and_ingest(
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="Ingest a document into AI Data Hub")
+    p = argparse.ArgumentParser(description="Ingest a document into Mobile eXperience AI Data Hub")
     p.add_argument("file", help="input file (.docx/.pptx/.xlsx/.md/.html/.pdf)")
     p.add_argument("--team", required=True, help="대문자 (예: HE)")
     p.add_argument("--group", required=True, help="대문자 (예: CAE)")

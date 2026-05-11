@@ -132,7 +132,7 @@ python -m converter "d:\tmp\iga_guide_test.docx" `
   --output-dir output
 
 # 2) JSON → DB
-python -m api.ingest .\output\HE-CAE-2026-000001.json
+python -m api.ingest .\output\HE-CAE-2026-0000000001.json
 ```
 
 방법 B — **JSON 파일 직접**:

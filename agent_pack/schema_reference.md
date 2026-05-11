@@ -11,7 +11,7 @@
 ```jsonc
 {
   // 식별 (id 에서 team/group/year/seq 모두 도출)
-  "id": "DOC-HE-CAE-2026-000001",
+  "id": "DOC-HE-CAE-2026-0000000001",
   "data_type": "DOC",       // DOC | DATA | SIM | CAD | LOG | FORM | OTHER
   "team": "HE",
   "group": "CAE",
@@ -129,7 +129,7 @@
                           // PPT 차트 placeholder 는 kind="chart".
   "mime": "image/png",
   "caption": "Figure 1: NURBS 기저함수",
-  "file_path": "DOC-HE-CAE-2026-000001/A001.png",  // POSIX 상대 경로
+  "file_path": "DOC-HE-CAE-2026-0000000001/A001.png",  // POSIX 상대 경로
   "size_bytes": 12345
 }
 ```
@@ -164,9 +164,9 @@ DIV / GROUP: 대문자 2~5자 (회사 표준)
 YYYY: 4자리 연도
 6digits: 0-padded sequence
 
-예: DOC-HE-CAE-2026-000001
-    DATA-HE-MFG-2026-000034
-    SIM-HE-CAE-2025-000007
+예: DOC-HE-CAE-2026-0000000001
+    DATA-HE-MFG-2026-0000000034
+    SIM-HE-CAE-2025-0000000007
 ```
 
 `id` 만 있으면 `team/group/year/seq` 모두 파싱 가능. agent 가 별도 필드로 전달할 필요 없음.
@@ -183,7 +183,7 @@ YYYY: 4자리 연도
   "q": "KooRemapper",
   "items": [
     {
-      "record_id": "DOC-HE-CAE-2026-000001",
+      "record_id": "DOC-HE-CAE-2026-0000000001",
       "title": "KooRemapper Manual",
       "data_type": "DOC",
       "section_id": "16.3",          // semantic 만 (어느 섹션이 매칭됐는지)

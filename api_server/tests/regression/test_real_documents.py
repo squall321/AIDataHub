@@ -30,7 +30,7 @@ def _convert_docx(path: Path, *, seq: int, output_dir: Path) -> dict[str, Any]:
     from converter.core import Converter, ConverterOptions
 
     opts = ConverterOptions(
-        division="HE", team="CAE", year=2026, seq=seq, output_dir=output_dir
+        team="HE", group="CAE", year=2026, seq=seq, output_dir=output_dir
     )
     return Converter(opts).convert(str(path)).to_dict()
 
@@ -39,8 +39,8 @@ def _convert_md(path: Path, *, seq: int, output_dir: Path) -> dict[str, Any]:
     from md_converter.core import MarkdownConverter, MarkdownConverterOptions
 
     opts = MarkdownConverterOptions(
-        division="HE",
-        team="CAE",
+        team="HE",
+        group="CAE",
         year=2026,
         seq=seq,
         output_dir=output_dir,
@@ -52,8 +52,8 @@ def _convert_pptx(path: Path, *, seq: int, output_dir: Path) -> dict[str, Any]:
     from ppt_converter.core import PptxConverter, PptxConverterOptions
 
     opts = PptxConverterOptions(
-        division="HE",
-        team="CAE",
+        team="HE",
+        group="CAE",
         year=2026,
         seq=seq,
         output_dir=output_dir,
@@ -65,8 +65,8 @@ def _convert_pdf(path: Path, *, seq: int, output_dir: Path) -> dict[str, Any]:
     from pdf_converter.core import PdfConverter, PdfConverterOptions
 
     opts = PdfConverterOptions(
-        division="HE",
-        team="CAE",
+        team="HE",
+        group="CAE",
         year=2026,
         seq=seq,
         output_dir=output_dir,
@@ -84,15 +84,15 @@ def _convert_xlsx(path: Path, *, seq: int, output_dir: Path) -> dict[str, Any]:
     )
 
     opts = XlsxConverterOptions(
-        division="HE",
-        team="CAE",
+        team="HE",
+        group="CAE",
         year=2026,
         start_seq=seq,
         output_dir=output_dir,
     )
     sheets = XlsxConverter(opts).convert(path)
     payload = _excel_sheets_to_dict(sheets, opts)
-    req = ConvertRequest(division="HE", team="CAE", year=2026, seq=seq)
+    req = ConvertRequest(team="HE", group="CAE", year=2026, seq=seq)
     return _augment_data_payload(payload, req)
 
 

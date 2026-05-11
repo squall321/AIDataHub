@@ -17,7 +17,7 @@ async def test_next_seq_normalizes_division_team_case(test_session):
 
     test_session.add(
         Record(
-            id="DOC-HE-CAE-2026-000003",
+            id="DOC-HE-CAE-2026-0000000003",
             data_type="DOC",
             team="HE",
             group="CAE",

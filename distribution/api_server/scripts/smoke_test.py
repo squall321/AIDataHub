@@ -10,7 +10,7 @@
             ``Base.metadata.create_all`` 로 대체. PG 환경에서는 ``alembic
             upgrade head`` 가 동등한 작업을 수행한다.)
         3) ``api.seed`` 표준 에이전트 5종 적재
-        4) ``AI_data/examples/HE-CAE-2026-000001.json`` 로드 → ingest
+        4) ``AI_data/examples/HE-CAE-2026-0000000001.json`` 로드 → ingest
         5) ``AgentRecord`` 매핑 (record1 → iga-analyst)
         6) FastAPI ASGI 앱을 ``httpx.AsyncClient`` 로 in-process 부팅
         7) 주요 GET 엔드포인트 호출 후 200 + payload 검증
@@ -191,8 +191,8 @@ async def run() -> int:
         return 1
 
     # ---- (3) 샘플 레코드 ingest --------------------------------------------
-    step(3, "ingest sample HE-CAE-2026-000001.json")
-    sample_path = ROOT.parent / "examples" / "HE-CAE-2026-000001.json"
+    step(3, "ingest sample HE-CAE-2026-0000000001.json")
+    sample_path = ROOT.parent / "examples" / "HE-CAE-2026-0000000001.json"
     if not sample_path.is_file():
         fail(f"sample not found at {sample_path}")
         return 1

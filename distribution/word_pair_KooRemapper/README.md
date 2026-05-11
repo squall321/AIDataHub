@@ -10,8 +10,8 @@
 |------|------|
 | `original.docx` | 수정 전 — 양식 미적용 docx (Heading 스타일은 풍부, 메타 비어 있음) |
 | `rule_compliant.docx` | 수정 후 — `core_properties` 채움 + 마커 5종 본문 첫머리에 삽입 |
-| `original.json` | 수정 전 변환 결과 (`HE-CAE-2026-007001`) |
-| `rule_compliant.json` | 수정 후 변환 결과 (`HE-CAE-2026-007002`) |
+| `original.json` | 수정 전 변환 결과 (`HE-CAE-2026-0000007001`) |
+| `rule_compliant.json` | 수정 후 변환 결과 (`HE-CAE-2026-0000007002`) |
 
 ## 메타 비교
 

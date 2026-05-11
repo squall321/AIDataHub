@@ -1,6 +1,6 @@
-# AI Data Hub — 클라이언트 셋업 가이드
+# Mobile eXperience AI Data Hub — 클라이언트 셋업 가이드
 
-> 클라이언트 측에서 AI Data Hub API 를 소비하는 모든 주체를 위한 **참조 문서**.
+> 클라이언트 측에서 Mobile eXperience AI Data Hub API 를 소비하는 모든 주체를 위한 **참조 문서**.
 > 입문 / 빠른 시작은 `client_setup/README.md` 를 보고, 이 문서는 reference 로 활용하라.
 
 ---
@@ -29,7 +29,7 @@
   ```bat
   code --install-extension vscode_extension\ai-data-hub-uploader-0.6.0.vsix
   ```
-- 사용: VS Code 명령 팔레트 → `AI Data Hub: Open Uploader` → Webview 5-step
+- 사용: VS Code 명령 팔레트 → `Mobile eXperience AI Data Hub: Open Uploader` → Webview 5-step
   (Welcome → DropZone → Form → Sending → Result)
 - API Key 저장: VS Code SecretStorage (`aidh.apiKey`) — 평문 디스크 저장 X
 - 자세한 사용법: [`vscode_extension/USER_GUIDE.md`](./vscode_extension/USER_GUIDE.md)
@@ -130,7 +130,7 @@ guide_dir = docs                                ; 가이드 저장 폴더
 #### 시스템 프롬프트 예시
 
 ```text
-You are an AI assistant connected to the AI Data Hub at {base_url}.
+You are an AI assistant connected to the Mobile eXperience AI Data Hub at {base_url}.
 For queries about company documents, follow this workflow:
   1) POST /api/ask with body {"q": "..."} for natural language
   2) GET /api/search?mode=semantic&q=... for keyword
@@ -216,7 +216,7 @@ ask.bat "이 문서의 핵심 내용은?"
 search.bat semantic "stress strain"
 
 :: 5) 비슷한 자료 찾기
-related.bat DOC-HE-CAE-2026-001001
+related.bat DOC-HE-CAE-2026-0000001001
 
 :: (옵션) 모델 가이드 다시 보기
 show_guide.bat

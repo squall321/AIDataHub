@@ -110,7 +110,7 @@ def test_basic_per_sheet_conversion(tmp_path):
     s = sheets[0]
     assert s.headers == ["시간", "하중", "변형률"]
     assert s.rows == [[0.0, 0.0, 0.0], [0.1, 12.5, 0.02]]
-    assert s.data_id == "DATA-HE-CAE-2026-000001"
+    assert s.data_id == "DATA-HE-CAE-2026-0000000001"
     assert s.caption == "측정"
 
 

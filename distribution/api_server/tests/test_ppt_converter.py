@@ -236,7 +236,7 @@ def test_meta_fields_set(sample_pptx: Path, tmp_path: Path) -> None:
     result = converter.convert(sample_pptx)
 
     meta = result.meta
-    assert meta["doc_id"] == "DOC-HE-CAE-2026-000001"
+    assert meta["doc_id"] == "DOC-HE-CAE-2026-0000000001"
     assert meta["source_format"] == "pptx"
     assert meta["doc_type"] == "slide"
     assert meta["department"] == "HE-CAE"

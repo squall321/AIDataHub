@@ -1,4 +1,4 @@
-"""AI Data Hub — Discovery walkthrough.
+"""Mobile eXperience AI Data Hub — Discovery walkthrough.
 
 Agent 가 시스템에 처음 접속해 무엇이 있는지 1~2분 내에 파악하는 과정.
 4단계 호출로 시스템 윤곽 → 첫 검색까지.
@@ -13,7 +13,7 @@ from python_client import client
 
 def main() -> int:
     print("=" * 60)
-    print(" AI Data Hub — Discovery walkthrough")
+    print(" Mobile eXperience AI Data Hub — Discovery walkthrough")
     print(f" base = {client.base}")
     print("=" * 60)
 

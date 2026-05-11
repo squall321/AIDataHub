@@ -1,4 +1,4 @@
-# AI Agent Onboarding — AI Data Hub
+# AI Agent Onboarding — Mobile eXperience AI Data Hub
 
 > **If you are an AI agent reading this, this document is your starting point.**
 > You should be able to use the entire hub from this single file plus
@@ -11,7 +11,7 @@ and an MCP stdio server. Every record has:
 
 | field | meaning |
 |---|---|
-| `id` | human-readable code, e.g. `DOC-HE-CAE-2026-000001` |
+| `id` | human-readable code, e.g. `DOC-HE-CAE-2026-0000000001` |
 | `data_type` | `DOC` / `DATA` / `SIM` / `CAD` / `LOG` / `FORM` / `OTHER` |
 | `division`, `team`, `year`, `seq` | parsed from the id |
 | `title`, `summary`, `tags[]` | human metadata |
@@ -112,8 +112,8 @@ GET /api/data?agent=iga-analyst&query=IGA&limit=5
 ### 4.2 "User wants the table from a specific report"
 
 ```
-GET /api/records/DOC-HE-CAE-2026-000001
-GET /api/records/DOC-HE-CAE-2026-000001/tables
+GET /api/records/DOC-HE-CAE-2026-0000000001
+GET /api/records/DOC-HE-CAE-2026-0000000001/tables
 ```
 
 ### 4.3 "User wants high-quality approved documents in 2026"
@@ -126,7 +126,7 @@ ask("2026년 approved quality 80 이상 문서")
 ### 4.4 "User wants to find related records to a known one"
 
 ```
-find_related("DOC-HE-CAE-2026-000001", mode="auto")
+find_related("DOC-HE-CAE-2026-0000000001", mode="auto")
 # returns related[] (graph + tags + semantic merged) + by_mode breakdown
 ```
 

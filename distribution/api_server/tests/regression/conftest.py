@@ -79,7 +79,7 @@ def sample_docx(tmp_path: Path, png_bytes: bytes) -> Path:
     table.cell(0, 0).text = "항목"
     table.cell(0, 1).text = "값"
     table.cell(1, 0).text = "ID"
-    table.cell(1, 1).text = "DOC-HE-CAE-2026-100001"
+    table.cell(1, 1).text = "DOC-HE-CAE-2026-0000100001"
     table.cell(2, 0).text = "분류"
     table.cell(2, 1).text = "internal"
 

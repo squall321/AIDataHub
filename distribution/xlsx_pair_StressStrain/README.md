@@ -10,8 +10,8 @@
 |------|------|
 | `original.xlsx` | 수정 전 — 헤더 단위 없음, `_META`/`_GLOSSARY` 없음 |
 | `rule_compliant.xlsx` | 수정 후 — 헤더 단위 명시(`Strain (-)`, `Stress (MPa)`), Region 컬럼, `_META` 시트(15 키), `_GLOSSARY` 시트(3컬럼 정의) |
-| `original.json` | 수정 전 변환 결과 (`DATA-HE-CAE-2026-008001`) |
-| `rule_compliant.json` | 수정 후 변환 결과 (`DATA-HE-CAE-2026-008002`) |
+| `original.json` | 수정 전 변환 결과 (`DATA-HE-CAE-2026-0000008001`) |
+| `rule_compliant.json` | 수정 후 변환 결과 (`DATA-HE-CAE-2026-0000008002`) |
 
 ## 핵심 메시지
 

@@ -46,7 +46,7 @@ async def test_llm_doc_id_pattern_documented(db_client) -> None:
     resp = await db_client.get("/api/docs/llm.txt")
     body = resp.text
     # ID 포맷 문구가 들어있어야 한다
-    assert "DOC-HE-CAE-2026-000001" in body or "DATA_TYPE" in body
+    assert "DOC-HE-CAE-2026-0000000001" in body or "DATA_TYPE" in body
 
 
 @pytest.mark.asyncio

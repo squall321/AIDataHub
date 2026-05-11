@@ -1,4 +1,4 @@
-# AI Data Hub — 배포 패키지
+# Mobile eXperience AI Data Hub — 배포 패키지
 
 이 폴더에는 **사업부 문서 → AI-친화 JSON 변환 시스템**의 모든 핵심 자료가 들어 있다.
 

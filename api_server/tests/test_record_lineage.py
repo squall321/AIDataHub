@@ -8,14 +8,14 @@ async def _seed_chain(session, mk):
     """A → B → C → D 의 4-세대 체인을 생성한다."""
     from api.db.models import Record
 
-    parents = [None, "DOC-HE-CAE-2026-000401",
-               "DOC-HE-CAE-2026-000402",
-               "DOC-HE-CAE-2026-000403"]
+    parents = [None, "DOC-HE-CAE-2026-0000000401",
+               "DOC-HE-CAE-2026-0000000402",
+               "DOC-HE-CAE-2026-0000000403"]
     ids = [
-        "DOC-HE-CAE-2026-000401",
-        "DOC-HE-CAE-2026-000402",
-        "DOC-HE-CAE-2026-000403",
-        "DOC-HE-CAE-2026-000404",
+        "DOC-HE-CAE-2026-0000000401",
+        "DOC-HE-CAE-2026-0000000402",
+        "DOC-HE-CAE-2026-0000000403",
+        "DOC-HE-CAE-2026-0000000404",
     ]
     for idx, (rid, parent) in enumerate(zip(ids, parents)):
         session.add(

@@ -113,7 +113,7 @@ curl -X POST "http://10.20.30.40:8000/api/auth/keys/verify" -H "X-API-Key: <발�
 응답 패널에 다음 형태로 표시:
 
 ```
-✓ DOC-HE-CAE-2026-000001  (created)
+✓ DOC-HE-CAE-2026-0000000001  (created)
   title: KooRemapper IGA 변환 매뉴얼
   capabilities: [sections, blocks, tables, figures]
   warnings: 0

@@ -1,4 +1,4 @@
-# AGENT_API_GUIDE — AI Data Hub REST API
+# AGENT_API_GUIDE — Mobile eXperience AI Data Hub REST API
 
 > Reference for AI agents (3B–7B). Read once, start analyzing.
 > Companion: `AGENT_ONBOARDING.md` (intro). This file = full reference.
@@ -10,7 +10,7 @@
 REST + MCP API. Single PostgreSQL backend (`records` table). Stores documents (문서, document) / tables (표, data) / simulations (시뮬레이션, sim) / CAD / logs / forms. Returns JSON. Optional natural-language query endpoint `POST /api/ask`.
 
 Base URL (default): `http://localhost:8000`
-Service title: `AI Data Hub`
+Service title: `Mobile eXperience AI Data Hub`
 Contract version: `1.0`
 
 ---
@@ -47,7 +47,7 @@ Key issuance flow:
 
 | 필드 (field) | 타입 (type) | NULL | 의미 (meaning) | 예시 (example) |
 |---|---|---|---|---|
-| `id` | str(80) PK | no | record id, 사람이 읽음 | `DOC-HE-CAE-2026-000001` |
+| `id` | str(80) PK | no | record id, 사람이 읽음 | `DOC-HE-CAE-2026-0000000001` |
 | `data_type` | str(20) | no | enum: DOC/DATA/SIM/CAD/LOG/FORM/OTHER | `DOC` |
 | `team` | str(10) | no | 팀 (team) 코드 | `HE` |
 | `group` | str(20) | no | 그룹 (group) 코드 | `CAE` |
@@ -73,14 +73,14 @@ Key issuance flow:
 | `subject_keywords` | text[] | no | 주제 키워드 배열 | `{"battery","cell"}` |
 | `source_system` | str(50) | yes | 출처 시스템 | `"PLM"` |
 | `language` | str(10) | no | 기본 `"ko"`. enum: ko/en/mixed/ja/zh | `"ko"` |
-| `parent_record_id` | str(80) FK | yes | self-FK to records.id | `"DOC-HE-CAE-2026-000001"` |
+| `parent_record_id` | str(80) FK | yes | self-FK to records.id | `"DOC-HE-CAE-2026-0000000001"` |
 | `derivation` | str(20) | no | enum (§12), 기본 `"original"` | `"translated"` |
 | `capabilities` | text[] | no | 자동 산출 라벨 배열 (§12) | `{"sections","tables"}` |
 | `quality_score` | smallint | yes | 0..100 | `85` |
 | `valid_from` | date | yes | 유효 시작일 | `2026-01-01` |
 | `valid_until` | date | yes | 유효 종료일 | `2026-12-31` |
 | `agent_hints` | text | yes | 에이전트용 자유 힌트 텍스트 | `"figure 3 has key plot"` |
-| `related_record_ids` | text[] | no | 수동 큐레이션 관련 ID 배열 | `{"DOC-HE-CAE-2025-000123"}` |
+| `related_record_ids` | text[] | no | 수동 큐레이션 관련 ID 배열 | `{"DOC-HE-CAE-2025-0000000123"}` |
 | `query_examples` | text[] | no | 자연어 쿼리 예시 | `{"IGA 결과 보여줘"}` |
 | `access_pattern` | str(20) | no | enum (§12), 기본 `"occasional"` | `"frequent"` |
 | `deleted_at` | timestamptz | yes | soft-delete 시간 (NULL = 활성) | `null` |
@@ -96,7 +96,7 @@ Unique constraint: `(data_type, team, group, year, seq)`.
 | 필드 | 타입 | NULL | 의미 | 예시 |
 |---|---|---|---|---|
 | `id` | bigserial PK | no | 내부 PK | `1234` |
-| `record_id` | str(80) FK | no | parent record id | `DOC-HE-CAE-2026-000001` |
+| `record_id` | str(80) FK | no | parent record id | `DOC-HE-CAE-2026-0000000001` |
 | `section_id` | str(20) | no | 섹션 식별자 | `"S001"` |
 | `level` | smallint | no | 헤딩 레벨 (1=H1) | `2` |
 | `title` | text | no | 섹션 제목 | `"3.1 시험 절차"` |
@@ -113,13 +113,13 @@ Unique: `(record_id, section_id)`.
 
 | 필드 | 타입 | NULL | 의미 | 예시 |
 |---|---|---|---|---|
-| `id` | str(80) PK | no | `{record_id}-A{nnn}` | `DOC-HE-CAE-2026-000001-A001` |
-| `record_id` | str(80) FK | no | parent | `DOC-HE-CAE-2026-000001` |
+| `id` | str(80) PK | no | `{record_id}-A{nnn}` | `DOC-HE-CAE-2026-0000000001-A001` |
+| `record_id` | str(80) FK | no | parent | `DOC-HE-CAE-2026-0000000001` |
 | `number` | int | no | 1부터 시작 | `1` |
 | `kind` | str(20) | no | enum (§12), 9 종 | `"figure"` |
 | `caption` | text | no | 캡션 필수, placeholder `"(캡션 누락 — 검수 필요)"` | `"Stress curve"` |
 | `file_name` | text | yes | 원본 파일명 | `"fig3.png"` |
-| `file_path` | text | yes | attachments_dir 기준 상대 경로 | `"DOC-HE-CAE-2026-000001/A001.png"` |
+| `file_path` | text | yes | attachments_dir 기준 상대 경로 | `"DOC-HE-CAE-2026-0000000001/A001.png"` |
 | `mime_type` | str(100) | yes | MIME | `"image/png"` |
 | `size_bytes` | bigint | yes | 바이트 크기 | `204800` |
 | `hash_sha256` | str(64) | yes | 파일 해시 | `"abcd..."` |
@@ -170,7 +170,7 @@ Binary 위치: `/attachments/{record_id}/A{nnn}.{ext}` (static mount). Figure bi
 | `YEAR` | 4 digits, 2020..2099 | `2026` |
 | `SEQ` | 6 digits zero-pad, 000001..999999 | `000001` |
 
-Example: `DOC-HE-CAE-2026-000001`
+Example: `DOC-HE-CAE-2026-0000000001`
 
 ### 4.2 Legacy pattern (data_type 누락 — 호환)
 
@@ -184,7 +184,7 @@ Parsed with default `data_type="DOC"`. `normalize_id()` adds prefix.
 
 ```
 {record_id}-A{number:03d}
-예: DOC-HE-CAE-2026-000001-A001
+예: DOC-HE-CAE-2026-0000000001-A001
 ```
 
 (레거시: `-F{nnn}` 도 허용)
@@ -302,7 +302,7 @@ Static mounts:
 ### 6.3 응답 모양 (response shape)
 
 ```json
-{"mode":"fts","q":"IGA","items":[{"record_id":"DOC-HE-CAE-2026-000001","title":"...","data_type":"DOC","section_id":"S003","section_title":"...","snippet":"...","tags":[]}],"total":7,"limit":20,"offset":0}
+{"mode":"fts","q":"IGA","items":[{"record_id":"DOC-HE-CAE-2026-0000000001","title":"...","data_type":"DOC","section_id":"S003","section_title":"...","snippet":"...","tags":[]}],"total":7,"limit":20,"offset":0}
 ```
 
 `mode=semantic` 의 `items[].score` 는 0..1 (1 = 동일).
@@ -499,7 +499,7 @@ mode 비교 — `/api/records/{id}/cluster`:
 
 | 키 | 타입 | 의미 | 예시 |
 |---|---|---|---|
-| `id` | str | 레코드 ID | `"DOC-HE-CAE-2026-000001"` |
+| `id` | str | 레코드 ID | `"DOC-HE-CAE-2026-0000000001"` |
 | `data_type` | str | 콘텐츠 타입 | `"DOC"` |
 | `team`, `group` | str | 분류 키 | `"HE"`, `"CAE"` |
 | `year`, `seq` | int | 분류 키 | `2026`, `1` |
@@ -536,13 +536,13 @@ mode 비교 — `/api/records/{id}/cluster`:
 ### 9.5 AttachmentOut
 
 ```json
-{"id":"DOC-HE-CAE-2026-000001-A001","record_id":"...","number":1,"kind":"figure","caption":"...","file_name":"fig.png","file_path":"DOC-HE-CAE-2026-000001/A001.png","mime_type":"image/png","size_bytes":204800,"hash_sha256":"...","section_ref":"S003","extra":{},"created_at":"..."}
+{"id":"DOC-HE-CAE-2026-0000000001-A001","record_id":"...","number":1,"kind":"figure","caption":"...","file_name":"fig.png","file_path":"DOC-HE-CAE-2026-0000000001/A001.png","mime_type":"image/png","size_bytes":204800,"hash_sha256":"...","section_ref":"S003","extra":{},"created_at":"..."}
 ```
 
 ### 9.6 Discover payload (`GET /api/discover`)
 
 ```json
-{"version":"1.0","title":"AI Data Hub","total_records":N,"by_data_type":{"DOC":x,"DATA":y},"by_division":{"HE":n},"by_classification":{"internal":n},"agents":[{"agent_type":"iga-analyst","name":"...","record_count":k,"common_tags":[],"data_types":[],"sample_query":"/api/data?agent=iga-analyst"}],"data_types_explained":{"DOC":"...","DATA":"..."},"starting_points":["GET /api/agents","..."],"schema_url":"/api/schema","hints_url":"/api/hints","llm_doc_url":"/api/docs/llm.txt","ask_url":"/api/ask","generated_at":"..."}
+{"version":"1.0","title":"Mobile eXperience AI Data Hub","total_records":N,"by_data_type":{"DOC":x,"DATA":y},"by_division":{"HE":n},"by_classification":{"internal":n},"agents":[{"agent_type":"iga-analyst","name":"...","record_count":k,"common_tags":[],"data_types":[],"sample_query":"/api/data?agent=iga-analyst"}],"data_types_explained":{"DOC":"...","DATA":"..."},"starting_points":["GET /api/agents","..."],"schema_url":"/api/schema","hints_url":"/api/hints","llm_doc_url":"/api/docs/llm.txt","ask_url":"/api/ask","generated_at":"..."}
 ```
 
 ---
@@ -685,7 +685,7 @@ LOGIN     →  X-API-Key: <plaintext>
 DISCOVER  →  GET  /api/discover                   [start here]
 ASK       →  POST /api/ask {"query":"...","limit":5}
 LIST      →  GET  /api/records?data_type=DOC&year=2026&limit=20
-GET       →  GET  /api/records/{DOC-HE-CAE-2026-000001}
+GET       →  GET  /api/records/{DOC-HE-CAE-2026-0000000001}
 SEARCH    →  GET  /api/search?mode=fts&q=IGA      (or mode=tag&tags=...&tags=...)
 SEMANTIC  →  GET  /api/search?mode=semantic&q=...
 AGENT     →  GET  /api/data?agent=iga-analyst&query=...&limit=5

@@ -11,7 +11,7 @@ async def test_diff_meta_changes(db_client, test_session_maker) -> None:
 
     async with test_session_maker() as session:
         rec_a = Record(
-            id="DOC-HE-CAE-2026-000201",
+            id="DOC-HE-CAE-2026-0000000201",
             data_type="DOC",
             team="HE",
             group="CAE",
@@ -24,7 +24,7 @@ async def test_diff_meta_changes(db_client, test_session_maker) -> None:
             content={},
         )
         rec_b = Record(
-            id="DOC-HE-CAE-2026-000202",
+            id="DOC-HE-CAE-2026-0000000202",
             data_type="DOC",
             team="HE",
             group="CAE",
@@ -40,13 +40,13 @@ async def test_diff_meta_changes(db_client, test_session_maker) -> None:
         await session.commit()
 
     resp = await db_client.get(
-        "/api/records/DOC-HE-CAE-2026-000202/diff",
-        params={"from": "DOC-HE-CAE-2026-000201"},
+        "/api/records/DOC-HE-CAE-2026-0000000202/diff",
+        params={"from": "DOC-HE-CAE-2026-0000000201"},
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["from"] == "DOC-HE-CAE-2026-000201"
-    assert body["to"] == "DOC-HE-CAE-2026-000202"
+    assert body["from"] == "DOC-HE-CAE-2026-0000000201"
+    assert body["to"] == "DOC-HE-CAE-2026-0000000202"
     meta = body["meta_changes"]
     assert "title" in meta
     assert meta["title"] == ["원본 제목", "변경 제목"]
@@ -60,7 +60,7 @@ async def test_diff_section_changes(db_client, test_session_maker) -> None:
 
     async with test_session_maker() as session:
         rec_a = Record(
-            id="DOC-HE-CAE-2026-000301",
+            id="DOC-HE-CAE-2026-0000000301",
             data_type="DOC",
             team="HE",
             group="CAE",
@@ -73,7 +73,7 @@ async def test_diff_section_changes(db_client, test_session_maker) -> None:
             content={},
         )
         rec_b = Record(
-            id="DOC-HE-CAE-2026-000302",
+            id="DOC-HE-CAE-2026-0000000302",
             data_type="DOC",
             team="HE",
             group="CAE",
@@ -122,8 +122,8 @@ async def test_diff_section_changes(db_client, test_session_maker) -> None:
         await session.commit()
 
     resp = await db_client.get(
-        "/api/records/DOC-HE-CAE-2026-000302/diff",
-        params={"from": "DOC-HE-CAE-2026-000301"},
+        "/api/records/DOC-HE-CAE-2026-0000000302/diff",
+        params={"from": "DOC-HE-CAE-2026-0000000301"},
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()

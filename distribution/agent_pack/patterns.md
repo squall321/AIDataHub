@@ -149,7 +149,7 @@ curl -s -X POST "$BASE/api/groups/auto" \
 ## 9. 단일 record 의 시맨틱 이웃
 
 ```bash
-curl -s "$BASE/api/records/DOC-HE-CAE-2026-000001/cluster?top_k=10" | jq
+curl -s "$BASE/api/records/DOC-HE-CAE-2026-0000000001/cluster?top_k=10" | jq
 ```
 
 해당 record 와 가장 가까운 10개 record (cosine 거리 순).
@@ -186,13 +186,13 @@ curl -s "$BASE/api/search/faceted?tag=group:CAE&status=approved&agent=iga-analys
 
 ```bash
 # Record 본문 (sections 트리 + tables + attachments)
-curl -s "$BASE/api/records/DOC-HE-CAE-2026-000001" | jq '.content.sections[0]'
+curl -s "$BASE/api/records/DOC-HE-CAE-2026-0000000001" | jq '.content.sections[0]'
 
 # 첨부 이미지 직접 다운로드
-curl -O "$BASE/attachments/DOC-HE-CAE-2026-000001/A001.png"
+curl -O "$BASE/attachments/DOC-HE-CAE-2026-0000000001/A001.png"
 
 # 그림 (figures 별칭)
-curl -O "$BASE/figures/DOC-HE-CAE-2026-000001/F001.png"
+curl -O "$BASE/figures/DOC-HE-CAE-2026-0000000001/F001.png"
 ```
 
 ---
@@ -201,13 +201,13 @@ curl -O "$BASE/figures/DOC-HE-CAE-2026-000001/F001.png"
 
 ```bash
 # 표 행 (페이지네이션)
-curl -s "$BASE/api/data/DATA-HE-CAE-2026-000034/rows?limit=100" | jq
+curl -s "$BASE/api/data/DATA-HE-CAE-2026-0000000034/rows?limit=100" | jq
 
 # 컬럼 메타 (단위·설명)
-curl -s "$BASE/api/data/DATA-HE-CAE-2026-000034/columns" | jq
+curl -s "$BASE/api/data/DATA-HE-CAE-2026-0000000034/columns" | jq
 
 # 집계 (예: stress 평균)
-curl -s "$BASE/api/data/DATA-HE-CAE-2026-000034/aggregate?func=avg&col=stress" | jq
+curl -s "$BASE/api/data/DATA-HE-CAE-2026-0000000034/aggregate?func=avg&col=stress" | jq
 ```
 
 ---
@@ -224,7 +224,7 @@ cd api_server
   --tags KooRemapper,IGA --output-dir output
 ```
 
-출력: `output/DOC-HE-CAE-2026-000007.json` + `output/DOC-HE-CAE-2026-000007/F*.png` + ...
+출력: `output/DOC-HE-CAE-2026-0000000007.json` + `output/DOC-HE-CAE-2026-0000000007/F*.png` + ...
 
 ### B. HTTP 원본 업로드 → 서버 변환 + 적재
 
@@ -248,20 +248,20 @@ A 경로로 변환해두고 (또는 작성자가 손으로 만든 JSON), `output
 ```bash
 # 변환기 출력 폴더 통째로 zip
 cd output
-zip -r DOC-HE-CAE-2026-000007.zip \
-  DOC-HE-CAE-2026-000007.json \
-  DOC-HE-CAE-2026-000007/
+zip -r DOC-HE-CAE-2026-0000000007.zip \
+  DOC-HE-CAE-2026-0000000007.json \
+  DOC-HE-CAE-2026-0000000007/
 
 # 업로드
 curl -X POST "$BASE/api/ingest/bundle" \
-  -F "file=@DOC-HE-CAE-2026-000007.zip"
+  -F "file=@DOC-HE-CAE-2026-0000000007.zip"
 ```
 
 응답:
 
 ```jsonc
 {
-  "id": "DOC-HE-CAE-2026-000007",
+  "id": "DOC-HE-CAE-2026-0000000007",
   "data_type": "DOC",
   "title": "...",
   "figures_copied": 12,
@@ -278,7 +278,7 @@ curl -X POST "$BASE/api/ingest/bundle" \
 Python 헬퍼: [`examples/bundle_upload.py`](./examples/bundle_upload.py) — JSON 경로만 주면 자동으로 zip 만들어 업로드.
 
 ```bash
-python examples/bundle_upload.py output/DOC-HE-CAE-2026-000007.json
+python examples/bundle_upload.py output/DOC-HE-CAE-2026-0000000007.json
 ```
 
 ### 언제 어느 경로?
@@ -314,7 +314,7 @@ curl -X POST "$BASE/api/convert/ingest?detect_multi_tables=true" \
 agent 가 적재 후 메타를 보강할 때 (예: `agent_hints` 추가):
 
 ```bash
-curl -X PATCH "$BASE/api/records/DOC-HE-CAE-2026-000001" \
+curl -X PATCH "$BASE/api/records/DOC-HE-CAE-2026-0000000001" \
   -H "Content-Type: application/json" \
   -d '{
     "agent_hints": "이 매뉴얼은 IGA 변환의 standard reference. 예제는 16장 이후.",

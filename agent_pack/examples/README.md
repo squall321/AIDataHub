@@ -36,7 +36,7 @@ python ingest_record.py /path/to/doc.docx \
   --agents iga-analyst --tags KooRemapper,IGA
 
 # 7) 사전 변환된 번들 업로드 (JSON + 자원 폴더 자동 zip)
-python bundle_upload.py /path/to/output/DOC-HE-CAE-2026-000007.json
+python bundle_upload.py /path/to/output/DOC-HE-CAE-2026-0000000007.json
 
 # 또는 미리 만든 zip 직접 업로드
 python bundle_upload.py /path/to/bundle.zip

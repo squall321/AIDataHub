@@ -29,12 +29,12 @@ export function renderHtml(): string {
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="${csp}" />
-  <title>AI Data Hub</title>
+  <title>Mobile eXperience AI Data Hub</title>
   <style>${styles()}</style>
 </head>
 <body>
   <header>
-    <div class="title">AI Data Hub Uploader</div>
+    <div class="title">Mobile eXperience AI Data Hub Uploader</div>
     <nav id="tabnav" class="tabnav" style="display:none">
       <button class="tab" data-tab="upload">Upload</button>
       <button class="tab" data-tab="bundle">Bundle</button>
@@ -500,18 +500,19 @@ function clientScript(): string {
 
   function setTab(t){ state.tab = t; render(); }
 
-  function rpc(type, extra){
+  function rpc(type, extra, timeoutMs){
     return new Promise((resolve, reject) => {
       const reqId = _reqIdSeq++;
       _pendingReq.set(reqId, { resolve, reject });
       send(Object.assign({ type, reqId }, extra || {}));
-      // 30s timeout safety
+      // Default 30s timeout safety. Some flows (file save dialogs) need longer.
+      const t = (typeof timeoutMs === 'number' && timeoutMs > 0) ? timeoutMs : 30000;
       setTimeout(() => {
         if (_pendingReq.has(reqId)) {
           _pendingReq.delete(reqId);
           reject(new Error('Request timed out'));
         }
-      }, 30000);
+      }, t);
     });
   }
 
@@ -542,7 +543,7 @@ function clientScript(): string {
   function renderWelcome(){
     const wrap = el('div');
     wrap.innerHTML = \`
-      <h1>👋 Connect to your AI Data Hub server</h1>
+      <h1>👋 Connect to your Mobile eXperience AI Data Hub server</h1>
       <p class="subtle">Enter your backend URL and API key. The key is stored in VS Code SecretStorage.</p>
       <label>Server URL</label>
       <input id="i-url" type="text" placeholder="http://110.15.177.125:8000" value="\${escapeHtml(state.config.baseUrl)}" />
@@ -810,7 +811,7 @@ function clientScript(): string {
         </div>
         <div>
           <label>Seq *</label>
-          <input id="i-seq" type="number" min="1" max="999999" value="1" />
+          <input id="i-seq" type="number" min="1" max="2147483647" value="1" />
           <div id="e-seq" class="field-error"></div>
         </div>
       </div>
@@ -1021,7 +1022,7 @@ function clientScript(): string {
     if (!v.team)  errors.set('team', 'Required');
     if (!v.group) errors.set('group', 'Required');
     if (!Number.isFinite(v.year) || v.year < 1990 || v.year > 2100) errors.set('year', '1990–2100');
-    if (!Number.isFinite(v.seq) || v.seq < 1 || v.seq > 999999) errors.set('seq', '1–999999');
+    if (!Number.isFinite(v.seq) || v.seq < 1 || v.seq > 2147483647) errors.set('seq', '1–2,147,483,647');
     if (v.quality_score !== null && (v.quality_score < 0 || v.quality_score > 100)) errors.set('quality', '0–100');
     if (v.valid_from && v.valid_until && v.valid_from > v.valid_until) errors.set('valid', 'from > until');
     if (state.upload.file && opts.max_upload_mb && state.upload.file.file.size > opts.max_upload_mb * 1024 * 1024) {
@@ -1876,6 +1877,7 @@ function clientScript(): string {
         var atype = node.getAttribute('data-agent');
         if (action === 'edit') openAgentForm(atype);
         else if (action === 'delete') confirmDeleteAgent(atype);
+        else if (action === 'download-template') downloadAgentTemplate(atype, node);
         else if (action === 'view-records') {
           state.tab = 'search';
           state.search.filters = Object.assign({}, state.search.filters || {}, { agent: atype });
@@ -1933,6 +1935,7 @@ function clientScript(): string {
       + '<div class="toolbar">'
       + '  <button data-action="edit" data-agent="' + escapeHtml(ag.agent_type) + '">Edit</button>'
       + '  <button data-action="delete" data-agent="' + escapeHtml(ag.agent_type) + '" class="secondary">Delete</button>'
+      + '  <button data-action="download-template" data-agent="' + escapeHtml(ag.agent_type) + '" class="secondary" title="Download a Word (.docx) template prefilled for this agent">📄 Download Word template</button>'
       + '  <a href="#" data-action="view-records" data-agent="' + escapeHtml(ag.agent_type) + '" style="align-self:center;margin-left:6px">View records →</a>'
       + '</div>'
       + '</div>';
@@ -2356,6 +2359,43 @@ function clientScript(): string {
       });
   }
 
+  function downloadAgentTemplate(agentType, btn){
+    // Visual feedback on the button itself so the user sees something
+    // happen while VS Code's save dialog warms up + the fetch round-trips.
+    var origLabel = null;
+    if (btn && btn.tagName === 'BUTTON') {
+      origLabel = btn.textContent;
+      btn.textContent = 'Preparing…';
+      btn.disabled = true;
+    }
+    function restore(){
+      if (btn && btn.tagName === 'BUTTON' && origLabel != null) {
+        btn.textContent = origLabel;
+        btn.disabled = false;
+      }
+    }
+    // 5-minute timeout — user may pause on the Save dialog.
+    rpc('downloadAgentTemplateRequest', { agentType: agentType }, 5 * 60 * 1000)
+      .then(function(resp){
+        restore();
+        if (resp && resp.savedPath) {
+          state.agents.banner = { kind: 'ok', text: 'Saved to ' + resp.savedPath };
+        } else {
+          // ok=true but no savedPath shouldn't happen, fall back to generic.
+          state.agents.banner = { kind: 'ok', text: 'Template saved.' };
+        }
+        render();
+        setTimeout(function(){ if (state.agents.banner) { state.agents.banner = null; render(); } }, 5000);
+      })
+      .catch(function(err){
+        restore();
+        var msg = String((err && err.message) || err);
+        if (msg === 'cancelled') return; // user cancelled save dialog — stay quiet
+        state.agents.banner = { kind: 'err', text: 'Download failed: ' + msg };
+        render();
+      });
+  }
+
   function confirmDeleteAgent(agentType){
     // Use a host-side confirmation via postMessage: host shows native warning
     // dialog. Simpler — embed an inline confirm-only RPC. For minimum surface
@@ -2456,6 +2496,7 @@ function clientScript(): string {
                || m.type === 'listAgentsResponse' || m.type === 'getAgentRecordsResponse'
                || m.type === 'createAgentResponse' || m.type === 'updateAgentResponse'
                || m.type === 'deleteAgentResponse'
+               || m.type === 'downloadAgentTemplateResponse'
                || m.type === 'listDocTypesResponse' || m.type === 'createDocTypeResponse') {
       const p = _pendingReq.get(m.reqId);
       if (!p) return;

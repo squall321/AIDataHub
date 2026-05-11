@@ -1,4 +1,4 @@
-# AI Data Hub — 원터치 배포
+# Mobile eXperience AI Data Hub — 원터치 배포
 
 다른 서버 (Linux 사내 서버 / 클라우드 VM / Windows + Docker Desktop) 에 한 번에 셋업한다.
 

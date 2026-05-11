@@ -10,13 +10,13 @@
 ppt_pair_AI_DigitalTwin/
 ├── ppt예제.pptx                          ← 수정 전 PPT
 ├── ppt수정예제.pptx                       ← 수정 후 PPT
-├── ppt예제.json                          ← 수정 전 변환 결과 (doc_id = DOC-HE-CAE-2026-009011)
-├── ppt수정예제.json                       ← 수정 후 변환 결과 (doc_id = DOC-HE-CAE-2026-009012)
-├── DOC-HE-CAE-2026-009011/               ← ppt예제.json 의 attachments 가 가리키는 폴더
+├── ppt예제.json                          ← 수정 전 변환 결과 (doc_id = DOC-HE-CAE-2026-0000009011)
+├── ppt수정예제.json                       ← 수정 후 변환 결과 (doc_id = DOC-HE-CAE-2026-0000009012)
+├── DOC-HE-CAE-2026-0000009011/               ← ppt예제.json 의 attachments 가 가리키는 폴더
 │   ├── F001.png ~ F006.png              (figure 6장 — 슬라이드 본문 그림)
 │   ├── A001.png ~ A006.png              (attachment kind=figure 사본)
 │   └── ... (총 12 파일, 2.6 MB)
-├── DOC-HE-CAE-2026-009012/               ← ppt수정예제.json 의 attachments 가 가리키는 폴더
+├── DOC-HE-CAE-2026-0000009012/               ← ppt수정예제.json 의 attachments 가 가리키는 폴더
 │   └── ... (동일한 그림 사본 12 파일)
 └── README.md (이 파일)
 ```
@@ -28,20 +28,20 @@ ppt_pair_AI_DigitalTwin/
 ```json
 "figures": [
   {
-    "id": "DOC-HE-CAE-2026-009011-F001",
-    "image_path": "DOC-HE-CAE-2026-009011/F001.png"   ← 이 폴더 기준 상대 경로
+    "id": "DOC-HE-CAE-2026-0000009011-F001",
+    "image_path": "DOC-HE-CAE-2026-0000009011/F001.png"   ← 이 폴더 기준 상대 경로
   }
 ],
 "attachments": [
   {
-    "id": "DOC-HE-CAE-2026-009011-A001",
+    "id": "DOC-HE-CAE-2026-0000009011-A001",
     "kind": "figure",
-    "file_path": "DOC-HE-CAE-2026-009011/A001.png"
+    "file_path": "DOC-HE-CAE-2026-0000009011/A001.png"
   }
 ]
 ```
 
-→ 이 README 와 같은 위치에서 상대 경로로 그대로 열린다 (`./DOC-HE-CAE-2026-009011/F001.png`).
+→ 이 README 와 같은 위치에서 상대 경로로 그대로 열린다 (`./DOC-HE-CAE-2026-0000009011/F001.png`).
 → DB 적재 시에는 `/attachments/{file_path}` 정적 마운트를 통해 동일 path 로 접근.
 
 ## 파일

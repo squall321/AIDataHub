@@ -337,7 +337,7 @@ async def seed_records(test_session_maker):
         session.add_all([agent_iga, agent_oga])
 
         rec1 = Record(
-            id="DOC-HE-CAE-2026-000001",
+            id="DOC-HE-CAE-2026-0000000001",
             data_type="DOC",
             team="HE",
             group="CAE",
@@ -350,7 +350,7 @@ async def seed_records(test_session_maker):
             content={"raw": "..."},
         )
         rec2 = Record(
-            id="DATA-HE-CAE-2026-000002",
+            id="DATA-HE-CAE-2026-0000000002",
             data_type="DATA",
             team="HE",
             group="CAE",
@@ -363,7 +363,7 @@ async def seed_records(test_session_maker):
             content={"rows": []},
         )
         rec3 = Record(
-            id="DOC-HE-CAE-2025-000003",
+            id="DOC-HE-CAE-2025-0000000003",
             data_type="DOC",
             team="HE",
             group="CAE",
@@ -417,9 +417,9 @@ async def seed_records(test_session_maker):
         await session.commit()
 
     return {
-        "rec1": "DOC-HE-CAE-2026-000001",
-        "rec2": "DATA-HE-CAE-2026-000002",
-        "rec3": "DOC-HE-CAE-2025-000003",
+        "rec1": "DOC-HE-CAE-2026-0000000001",
+        "rec2": "DATA-HE-CAE-2026-0000000002",
+        "rec3": "DOC-HE-CAE-2025-0000000003",
     }
 
 
@@ -430,7 +430,7 @@ async def seed_records(test_session_maker):
 def sample_doc_record_dict() -> dict[str, Any]:
     """DOC variant: 변환기 산출 JSON 형태 (top-level meta/sections, normalize() 입력용)."""
     return {
-        "id": "DOC-HE-CAE-2026-000001",
+        "id": "DOC-HE-CAE-2026-0000000001",
         "data_type": "DOC",
         "schema_version": "1.0",
         "tags": ["iga", "lsdyna", "guide"],
@@ -441,7 +441,7 @@ def sample_doc_record_dict() -> dict[str, Any]:
         "version": "1.0",
         "source_file": "iga_guide_test.docx",
         "meta": {
-            "doc_id": "HE-CAE-2026-000001",
+            "doc_id": "HE-CAE-2026-0000000001",
             "title": "IGA 가이드 (테스트)",
             "summary": "Isogeometric analysis 워크플로 가이드.",
             "author": "qa-bot",
@@ -487,7 +487,7 @@ def sample_doc_record_dict() -> dict[str, Any]:
 def sample_data_record_dict() -> dict[str, Any]:
     """DATA variant: headers/rows top-level + agent 메타."""
     return {
-        "id": "DATA-HE-CAE-2026-000002",
+        "id": "DATA-HE-CAE-2026-0000000002",
         "data_type": "DATA",
         "title": "배터리 펀치 시험 결과",
         "summary": "노일 관통 시험 변형률 측정.",
@@ -510,7 +510,7 @@ def sample_data_record_dict() -> dict[str, Any]:
 def sample_sim_record_dict() -> dict[str, Any]:
     """SIM variant: solver + inputs/outputs."""
     return {
-        "id": "SIM-HE-CAE-2026-000003",
+        "id": "SIM-HE-CAE-2026-0000000003",
         "data_type": "SIM",
         "title": "Battery Side Crash 시뮬레이션",
         "summary": "측면 충돌 LS-DYNA explicit 해석.",
@@ -531,7 +531,7 @@ def sample_sim_record_dict() -> dict[str, Any]:
 def sample_cad_record_dict() -> dict[str, Any]:
     """CAD variant: cad_type + file_format + file_metadata."""
     return {
-        "id": "CAD-HE-CAE-2026-000004",
+        "id": "CAD-HE-CAE-2026-0000000004",
         "data_type": "CAD",
         "title": "배터리 모듈 CAD 모델",
         "summary": "STEP 파일 + 메타.",

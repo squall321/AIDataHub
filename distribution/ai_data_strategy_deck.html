@@ -1402,7 +1402,7 @@ tr:hover td{background:var(--light);}
    <table>
     <thead><tr><th>ID 종류</th><th>형식</th><th>예시</th></tr></thead>
     <tbody>
-     <tr><td>문서</td><td><code>{팀}-{그룹}-{연도}-{6자리}</code></td><td><code>HE-CAE-2026-000001</code></td></tr>
+     <tr><td>문서</td><td><code>{팀}-{그룹}-{연도}-{6자리}</code></td><td><code>HE-CAE-2026-0000000001</code></td></tr>
      <tr><td>섹션</td><td><code>{숫자}.{숫자}</code></td><td><code>1.2</code>, <code>2.3.1</code></td></tr>
      <tr><td>그림</td><td><code>{doc_id}-F{3자리}</code></td><td><code>...-F001</code></td></tr>
      <tr><td>표</td><td><code>{doc_id}-T{3자리}</code></td><td><code>...-T001</code></td></tr>
@@ -1762,7 +1762,7 @@ tr:hover td{background:var(--light);}
     <p style="font-family:'Consolas','Menlo',monospace;font-size:.78rem;color:#86efac;">
 $ python -m converter file.docx \<br/>
 &nbsp;&nbsp;--team HE --group CAE --year 2026 --seq 1<br/>
-$ python -m api.ingest output/HE-CAE-2026-000001.json
+$ python -m api.ingest output/HE-CAE-2026-0000000001.json
     </p>
    </div>
    <div class="card accent" style="margin-top:.6rem;">
@@ -1845,7 +1845,7 @@ $ python -m api.ingest output/HE-CAE-2026-000001.json
  <h2 class="slide-title">실증: <span>iga_guide.docx → JSON</span></h2>
  <div class="slide-sub">Heading 스타일 미적용 레거시 문서 → 변환기 통과 결과. 휴리스틱 감지 → 12장 자동 인식.</div>
 
- <h3 class="sec">변환 결과 (HE-CAE-2026-000001)</h3>
+ <h3 class="sec">변환 결과 (HE-CAE-2026-0000000001)</h3>
  <div class="stat-grid">
   <div class="stat-box"><div class="stat-num">13</div><div class="stat-label">최상위 섹션</div></div>
   <div class="stat-box teal"><div class="stat-num">52</div><div class="stat-label">TOC 항목 (트리 깊이 3)</div></div>
@@ -1902,7 +1902,7 @@ $ python -m api.ingest output/HE-CAE-2026-000001.json
   <p style="color:#7c2d12;">변환 결과 JSON 1건 + 백엔드(<strong>5종 변환기 + 13 routers + 9 마이그레이션 + pgvector 임베딩 + audit_log 거버넌스 + RAG-friendly Discovery API</strong>, <strong>283 테스트 통과</strong>) 적재 → 검색·시맨틱 조회·에이전트별 슬라이스 즉시 가능.</p>
  </div>
 
- <div class="slide-footer">결과 파일 — AI_data/examples/HE-CAE-2026-000001.json (49 KB) · warnings.log (75건)</div>
+ <div class="slide-footer">결과 파일 — AI_data/examples/HE-CAE-2026-0000000001.json (49 KB) · warnings.log (75건)</div>
 </section>
 
 <!-- ===== SLIDE 21: 휴리스틱 헤딩 감지 ===== -->
@@ -2127,7 +2127,7 @@ $ python -m api.ingest output/HE-CAE-2026-000001.json
   <div class="wf-step" style="border-color:var(--orange);">
    <span class="wf-n" style="background:var(--orange);">4</span>
    <div class="wf-t" style="color:var(--orange);">결과 확인</div>
-   <div class="wf-d">응답 — record_id (예 <code>DOC-HE-CAE-2026-000001</code>) + status(created/updated/skipped).</div>
+   <div class="wf-d">응답 — record_id (예 <code>DOC-HE-CAE-2026-0000000001</code>) + status(created/updated/skipped).</div>
   </div>
  </div>
 
@@ -2227,7 +2227,7 @@ $ python -m api.ingest output/HE-CAE-2026-000001.json
  <div class="json-block"><span class="comment">// records 테이블에 추가된 4개 컬럼</span>
 {
   <span class="key">"agent_hints"</span>: <span class="str">"이 보고서는 NURBS 차수 선택 가이드. 평판/쉘은 pr=2,ps=2,pt=1."</span>,
-  <span class="key">"related_record_ids"</span>: [<span class="str">"DOC-HE-CAE-2026-000002"</span>, <span class="str">"SIM-HE-CAE-2026-000045"</span>],
+  <span class="key">"related_record_ids"</span>: [<span class="str">"DOC-HE-CAE-2026-0000000002"</span>, <span class="str">"SIM-HE-CAE-2026-0000000045"</span>],
   <span class="key">"query_examples"</span>: [<span class="str">"IGA 차수 어떻게 정해?"</span>, <span class="str">"NURBS 연속성 비교"</span>],
   <span class="key">"access_pattern"</span>: <span class="str">"sequential_then_table"</span>
 }</div>

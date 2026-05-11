@@ -53,7 +53,7 @@ def test_basic_headings(opts):
     """
     result, payload = _convert(md, opts)
 
-    assert result.meta["doc_id"] == "DOC-HE-CAE-2026-000001"
+    assert result.meta["doc_id"] == "DOC-HE-CAE-2026-0000000001"
     assert result.meta["source_format"] == "md"
     # 최상위 sections 1개 (Title)
     assert len(result.sections) == 1
@@ -242,9 +242,9 @@ def test_doc_id_format(opts):
     md = "# Hello\n\nbody.\n"
     result, _ = _convert(md, opts)
     # DOC-{div}-{group}-{year}-{seq:06d}
-    assert result.meta["doc_id"] == "DOC-HE-CAE-2026-000001"
+    assert result.meta["doc_id"] == "DOC-HE-CAE-2026-0000000001"
     fig_md = "# X\n\n![alt](a.png)\n"
     converter = MarkdownConverter(opts)
     r2 = converter.convert_text(fig_md, source_file="x.md")
-    assert r2.figures[0].id == "DOC-HE-CAE-2026-000001-F001"
-    assert r2.attachments[0].id == "DOC-HE-CAE-2026-000001-A001"
+    assert r2.figures[0].id == "DOC-HE-CAE-2026-0000000001-F001"
+    assert r2.attachments[0].id == "DOC-HE-CAE-2026-0000000001-A001"

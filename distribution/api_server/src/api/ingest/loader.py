@@ -105,7 +105,7 @@ def copy_attachments(
     분리자 차이도 자동 흡수된다.
 
     Args:
-        doc_id: 레코드 ID (예: ``"DOC-HE-CAE-2026-000001"``).
+        doc_id: 레코드 ID (예: ``"DOC-HE-CAE-2026-0000000001"``).
         source_root: 원본 루트 (예: 변환기 ``output_dir``).
         attachments_dir: 대상 루트 (보통 ``settings.attachments_dir``).
 

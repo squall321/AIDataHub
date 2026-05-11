@@ -75,8 +75,8 @@ def _make_buggy_doc(
     return Record(
         id=rid,
         data_type="DOC",
-        division=parts[1],
-        team=parts[2],
+        team=parts[1],
+        group=parts[2],
         year=int(parts[3]),
         seq=int(parts[4]),
         title="Buggy Doc",
@@ -103,7 +103,7 @@ def _make_buggy_doc(
 
 @pytest.mark.asyncio
 async def test_compute_backfill_proposes_meta_values(test_session_maker):
-    rec = _make_buggy_doc(rid="DOC-HE-CAE-2026-900001")
+    rec = _make_buggy_doc(rid="DOC-HE-CAE-2026-0000900001")
     proposals = compute_backfill(rec)
     # meta 의 값들이 모두 후보로 올라야 한다.
     assert proposals.get("classification") == "confidential"
@@ -129,9 +129,9 @@ async def test_run_backfill_writes_columns(test_session_maker):
     from api.db.models import Record
 
     rids = [
-        "DOC-HE-CAE-2026-900101",
-        "DOC-HE-CAE-2026-900102",
-        "DOC-HE-CAE-2026-900103",
+        "DOC-HE-CAE-2026-0000900101",
+        "DOC-HE-CAE-2026-0000900102",
+        "DOC-HE-CAE-2026-0000900103",
     ]
 
     async with test_session_maker() as session:
@@ -181,7 +181,7 @@ async def test_run_backfill_writes_columns(test_session_maker):
 
 @pytest.mark.asyncio
 async def test_run_backfill_diagnose_mode(test_session_maker):
-    rid = "DOC-HE-CAE-2026-900201"
+    rid = "DOC-HE-CAE-2026-0000900201"
     async with test_session_maker() as session:
         session.add(_make_buggy_doc(rid=rid))
         await session.commit()
@@ -207,7 +207,7 @@ async def test_backfill_skips_already_correct_records(test_session_maker):
     """이미 올바른 컬럼 값을 가진 record 는 변경 후보가 되지 않는다."""
     from api.db.models import Record
 
-    rid = "DOC-HE-CAE-2026-900301"
+    rid = "DOC-HE-CAE-2026-0000900301"
     async with test_session_maker() as session:
         rec = _make_buggy_doc(rid=rid)
         # 이미 backfill 된 상태로 가정.

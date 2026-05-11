@@ -173,7 +173,7 @@ Markdown 변환기와 동일 정책.
 
 ```json
 {
-  "id": "DOC-HE-CAE-2026-000001-T001",
+  "id": "DOC-HE-CAE-2026-0000000001-T001",
   "number": 1,
   "caption": "Table 1: 매핑 결과",
   "section_ref": "1",
@@ -364,8 +364,8 @@ python -m html_converter input.html \
 
 ```
 output/
-├── DOC-HE-CAE-2026-000007.json
-└── DOC-HE-CAE-2026-000007.warnings.log    (경고가 있을 때만)
+├── DOC-HE-CAE-2026-0000000007.json
+└── DOC-HE-CAE-2026-0000000007.warnings.log    (경고가 있을 때만)
 ```
 
 ### 9.4 라이브러리 사용

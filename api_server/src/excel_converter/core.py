@@ -12,7 +12,7 @@
 - --skip-blank-rows 로 데이터 사이의 빈 행을 제거할 수 있다
 
 caption 은 시트 이름.
-data_id 는 ``DATA-{team}-{group}-{year}-{seq:06d}`` 포맷.
+data_id 는 ``DATA-{team}-{group}-{year}-{seq:010d}`` 포맷.
 """
 from __future__ import annotations
 
@@ -862,7 +862,7 @@ class XlsxConverter:
     # ---- internals ---------------------------------------------------
 
     def _data_id(self, seq: int) -> str:
-        return f"DATA-{self.options.team}-{self.options.group}-{self.options.year}-{seq:06d}"
+        return f"DATA-{self.options.team}-{self.options.group}-{self.options.year}-{seq:010d}"
 
     def _convert_sheet(self, ws: Worksheet, seq: int) -> Optional[ConvertedSheet]:
         merge_lookup = _build_merge_lookup(ws)

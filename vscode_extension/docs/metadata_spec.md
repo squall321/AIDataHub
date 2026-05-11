@@ -63,7 +63,7 @@
 ## 3. UI 폼 예시 (mock)
 
 ```
-┌─ AI Data Hub Uploader ─────────────────────────────────────┐
+┌─ Mobile eXperience AI Data Hub Uploader ─────────────────────────────────────┐
 │  📂 iga_guide.docx          (DOC, 1.2 MB)        [Remove]  │
 │                                                            │
 │  🏢 Identification                                         │

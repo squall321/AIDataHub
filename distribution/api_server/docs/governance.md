@@ -1,6 +1,6 @@
 # Governance
 
-AI Data Hub 의 거버넌스 정책 — 누가 무엇을 보고, 변경하고, 삭제할 수 있는가.
+Mobile eXperience AI Data Hub 의 거버넌스 정책 — 누가 무엇을 보고, 변경하고, 삭제할 수 있는가.
 관련 마이그레이션: **0008 (Agent 31)**.
 
 ## 핵심 원칙
@@ -71,9 +71,9 @@ ISO8601 문자열, `set/tuple` → list, 그 외는 `str()` 캐스트).
 `parent_record_id` self-FK 를 따라 부모 ↔ 자식이 연결된다.
 
 ```
-DOC-HE-CAE-2026-000001 (v1.0, original)
-    └── DOC-HE-CAE-2026-000002 (v2.0, derivation="extracted", parent=000001)
-            └── DOC-HE-CAE-2026-000003 (v3.0, derivation="translated", parent=000002)
+DOC-HE-CAE-2026-0000000001 (v1.0, original)
+    └── DOC-HE-CAE-2026-0000000002 (v2.0, derivation="extracted", parent=000001)
+            └── DOC-HE-CAE-2026-0000000003 (v3.0, derivation="translated", parent=000002)
 ```
 
 ### 새 리비전 생성 절차

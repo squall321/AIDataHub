@@ -1,4 +1,4 @@
-"""Locust 부하 시나리오 — AI Data Hub API.
+"""Locust 부하 시나리오 — Mobile eXperience AI Data Hub API.
 
 총 4개 시나리오를 클래스 단위로 정의했고, ``--tags`` 또는 클래스 선택으로
 하나만 실행하거나 가중치 비율로 섞어서 실행할 수 있다.

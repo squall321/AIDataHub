@@ -1,6 +1,6 @@
 # API Reference
 
-AI Data Hub REST API. 베이스 URL: `http://localhost:8000`.
+Mobile eXperience AI Data Hub REST API. 베이스 URL: `http://localhost:8000`.
 모든 응답은 JSON.
 
 > 본 문서는 Agent 3 의 라우터 계약(`/api/data`, `/api/records`, `/api/search`,
@@ -260,7 +260,7 @@ VS Code 확장 등 클라이언트가 폼 옵션을 일관되게 받기 위한 *
   "query": "offset",
   "results": [
     {
-      "record_id": "DOC-HE-CAE-2026-000001",
+      "record_id": "DOC-HE-CAE-2026-0000000001",
       "title": "IGA 가이드",
       "data_type": "DOC",
       "section_id": "1.1",
@@ -302,7 +302,7 @@ curl -s "http://localhost:8000/api/data?agent=iga-analyst&query=offset&limit=5"
 {
   "items": [
     {
-      "id": "DOC-HE-CAE-2026-000001",
+      "id": "DOC-HE-CAE-2026-0000000001",
       "data_type": "DOC",
       "team": "HE",
       "group": "CAE",
@@ -327,12 +327,12 @@ curl: `curl -s "http://localhost:8000/api/records?data_type=DOC&limit=10"`
 
 단일 레코드 전체 페이로드(섹션 포함).
 
-- path `id`: 레코드 ID (예: `DOC-HE-CAE-2026-000001`).
+- path `id`: 레코드 ID (예: `DOC-HE-CAE-2026-0000000001`).
 - 응답: `Record` 모델 + `sections[]`.
 
 ```json
 {
-  "id": "DOC-HE-CAE-2026-000001",
+  "id": "DOC-HE-CAE-2026-0000000001",
   "data_type": "DOC",
   "team": "HE",
   "group": "CAE",
@@ -358,7 +358,7 @@ curl: `curl -s "http://localhost:8000/api/records?data_type=DOC&limit=10"`
 }
 ```
 
-curl: `curl -s http://localhost:8000/api/records/DOC-HE-CAE-2026-000001`
+curl: `curl -s http://localhost:8000/api/records/DOC-HE-CAE-2026-0000000001`
 
 에러: `404 Not Found`.
 
@@ -381,7 +381,7 @@ curl: `curl -s http://localhost:8000/api/records/DOC-HE-CAE-2026-000001`
   "q": "battery crash",
   "results": [
     {
-      "record_id": "SIM-HE-CAE-2026-000003",
+      "record_id": "SIM-HE-CAE-2026-0000000003",
       "title": "Battery Side Crash 시뮬레이션",
       "score": 1.42
     }
@@ -456,7 +456,7 @@ curl: `curl -s http://localhost:8000/api/analytics/distribution`
 ```json
 {
   "items": [
-    {"id": "DOC-HE-CAE-2026-000001", "title": "...", "data_type": "DOC",
+    {"id": "DOC-HE-CAE-2026-0000000001", "title": "...", "data_type": "DOC",
      "read_count": 42, "last_accessed_at": "2026-05-08T12:34:56+00:00"}
   ],
   "total": 1,
@@ -472,12 +472,12 @@ curl: `curl -s http://localhost:8000/api/analytics/distribution`
 
 ```json
 {
-  "record_id": "DOC-HE-CAE-2026-000004",
-  "self": {"id": "DOC-HE-CAE-2026-000004", "data_type": "DOC", "title": "G3", "version": "4.0", "status": "draft", "derivation": "extracted", "parent_record_id": "DOC-HE-CAE-2026-000003", "content_hash": null, "deleted_at": null, "created_at": "..."},
+  "record_id": "DOC-HE-CAE-2026-0000000004",
+  "self": {"id": "DOC-HE-CAE-2026-0000000004", "data_type": "DOC", "title": "G3", "version": "4.0", "status": "draft", "derivation": "extracted", "parent_record_id": "DOC-HE-CAE-2026-0000000003", "content_hash": null, "deleted_at": null, "created_at": "..."},
   "ancestors": [
-    {"id": "DOC-HE-CAE-2026-000003", "...": "..."},
-    {"id": "DOC-HE-CAE-2026-000002", "...": "..."},
-    {"id": "DOC-HE-CAE-2026-000001", "...": "..."}
+    {"id": "DOC-HE-CAE-2026-0000000003", "...": "..."},
+    {"id": "DOC-HE-CAE-2026-0000000002", "...": "..."},
+    {"id": "DOC-HE-CAE-2026-0000000001", "...": "..."}
   ],
   "descendants": [],
   "ancestor_count": 3,
@@ -494,8 +494,8 @@ curl: `curl -s http://localhost:8000/api/analytics/distribution`
 
 ```json
 {
-  "from": "DOC-HE-CAE-2026-000001",
-  "to":   "DOC-HE-CAE-2026-000002",
+  "from": "DOC-HE-CAE-2026-0000000001",
+  "to":   "DOC-HE-CAE-2026-0000000002",
   "meta_changes": {
     "title": ["원본 제목", "변경 제목"],
     "tags":  [["a"], ["a", "b"]]
@@ -612,13 +612,13 @@ curl -X POST http://localhost:8000/api/convert/ \
 
 ```json
 {
-  "record_id": "DOC-HE-CAE-2026-000001",
+  "record_id": "DOC-HE-CAE-2026-0000000001",
   "status": "inserted",
   "sections_written": 12,
   "assigned_seq": 1,
   "attachments_persisted": 3,
   "record": {
-    "id": "DOC-HE-CAE-2026-000001",
+    "id": "DOC-HE-CAE-2026-0000000001",
     "data_type": "DOC",
     "title": "IGA 가이드",
     "summary": "...",
@@ -665,13 +665,13 @@ curl -X POST http://localhost:8000/api/convert/ingest \
 요청 본문 (JSON):
 
 ```json
-{ "record_id": "DOC-HE-CAE-2026-000001" }
+{ "record_id": "DOC-HE-CAE-2026-0000000001" }
 ```
 
 또는 다수 레코드:
 
 ```json
-{ "record_ids": ["DOC-HE-CAE-2026-000001", "DOC-HE-CAE-2026-000002"] }
+{ "record_ids": ["DOC-HE-CAE-2026-0000000001", "DOC-HE-CAE-2026-0000000002"] }
 ```
 
 본문이 비어 있으면 (`{}`) 모든 미임베딩 섹션을 대상으로 한다.
@@ -689,7 +689,7 @@ curl -X POST http://localhost:8000/api/convert/ingest \
   "created_at": 1746676120.83,
   "started_at": 1746676120.85,
   "finished_at": null,
-  "payload": {"record_id": "DOC-HE-CAE-2026-000001"}
+  "payload": {"record_id": "DOC-HE-CAE-2026-0000000001"}
 }
 ```
 
@@ -720,7 +720,7 @@ curl -X POST http://localhost:8000/api/convert/ingest \
 
 | 위치 | 이름 | 타입 | 필수 | 설명 |
 |------|------|------|------|------|
-| path | `doc_id`   | string | Y | 레코드 ID (예: `DOC-HE-CAE-2026-000001`) |
+| path | `doc_id`   | string | Y | 레코드 ID (예: `DOC-HE-CAE-2026-0000000001`) |
 | path | `filename` | string | Y | 파일명 (예: `F001.png`)                  |
 
 - 마운트: FastAPI `StaticFiles`. 파일 시스템 루트는 환경변수 `FIGURES_DIR`
@@ -734,7 +734,7 @@ curl:
 
 ```bash
 curl -s -o F001.png \
-  "http://localhost:8000/figures/DOC-HE-CAE-2026-000001/F001.png"
+  "http://localhost:8000/figures/DOC-HE-CAE-2026-0000000001/F001.png"
 ```
 
 > 참고: 그림 바이너리가 아직 추출되지 않은 문서(예: 기존 텍스트 전용 문서)는

@@ -1,4 +1,4 @@
-# Load Test — AI Data Hub API
+# Load Test — Mobile eXperience AI Data Hub API
 
 Locust 기반 부하 시나리오 4종.
 

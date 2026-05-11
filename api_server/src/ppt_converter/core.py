@@ -152,7 +152,7 @@ _CAPTION_MAX_LEN = 120
 # ID helpers (Word 변환기와 동일한 포맷)
 # ---------------------------------------------------------------------------
 def _make_doc_id(opts: PptxConverterOptions) -> str:
-    return f"DOC-{opts.team}-{opts.group}-{opts.year}-{opts.seq:06d}"
+    return f"DOC-{opts.team}-{opts.group}-{opts.year}-{opts.seq:010d}"
 
 
 def _make_fig_id(doc_id: str, n: int) -> str:

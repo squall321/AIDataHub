@@ -1,20 +1,23 @@
 """레코드 ID 파싱·검증 유틸리티.
 
-공식 ID 포맷:
-    {DATA_TYPE}-{TEAM}-{GROUP}-{YEAR}-{SEQ:06d}
-    예: DOC-HE-CAE-2026-000001
+공식 ID 포맷 (v3 — 2026-05-11~):
+    {DATA_TYPE}-{TEAM}-{GROUP}-{YEAR}-{SEQ:010d}
+    예: DOC-HE-CAE-2026-0000000001
 
-레거시 ID 포맷 (DATA_TYPE 접두사 누락):
-    {TEAM}-{GROUP}-{YEAR}-{SEQ:06d}
-    예: HE-CAE-2026-000001
-    → 파싱 시 ``data_type`` 인수 또는 기본값 ``"DOC"``로 보강한다.
+레거시 ID 포맷:
+    - v2 (8-digit seq): DOC-HE-CAE-2026-00000001 — 파싱 OK
+    - v1 (6-digit seq): DOC-HE-CAE-2026-000001  — 파싱 OK
+    - v0 (DATA_TYPE 접두사 누락): HE-CAE-2026-... — ``data_type`` 인수 보강 후 파싱
 
 규칙:
     - ``DATA_TYPE``: ``DOC | DATA | SIM | CAD | LOG | FORM | OTHER``
     - ``TEAM``: 2~4자 대문자 ASCII (HE, DA, MX, VD …)
     - ``GROUP``    : 2~5자 대문자 ASCII (CAE, MFG, QA, DEV, PLM …)
     - ``YEAR``    : 4자리 (2020~2099)
-    - ``SEQ``     : 6자리 zero-pad (000001~999999)
+    - ``SEQ``     : **6~12자리** zero-pad (regex 는 6+ 자리 허용 — 미래
+      BIGINT 마이그레이션 까지 확장 여지). 신규 생성은 10자리
+      = 1..2,147,483,647 (INTEGER 컬럼 한계, 약 21억).
+      더 필요하면 ``records.seq`` 를 BIGINT 로 마이그레이션 후 SEQ_MAX 상향.
 
 본 모듈은 데이터베이스/스키마 양쪽에서 import 되므로 외부 의존성을 최소화한다.
 """
@@ -43,21 +46,26 @@ DataType = Literal["DOC", "DATA", "SIM", "CAD", "LOG", "FORM", "OTHER"]
 # DATA_TYPE 알터네이션. 길이 내림차순으로 정렬해 부분 일치를 방지한다.
 _DATA_TYPE_ALT = "|".join(sorted(DATA_TYPES, key=len, reverse=True))
 
-# 정식 ID
+# 신규 zero-pad 폭: 10자리 (display). 실제 INTEGER 한계 = 2,147,483,647.
+# 정규식은 6~12자리 허용 (legacy 6/8자리 호환 + 미래 BIGINT 확장 여지).
+SEQ_PAD_WIDTH = 10
+SEQ_MAX = 2_147_483_647   # INT32 max (PG INTEGER 컬럼 한계). BIGINT 이주 시 상향.
+
+# 정식 ID — seq 는 6~12자리 허용
 ID_PATTERN = re.compile(
     rf"^(?P<data_type>{_DATA_TYPE_ALT})"
     r"-(?P<team>[A-Z]{2,4})"
     r"-(?P<group>[A-Z]{2,5})"
     r"-(?P<year>20[2-9][0-9])"
-    r"-(?P<seq>\d{6})$"
+    r"-(?P<seq>\d{6,12})$"
 )
 
-# 레거시 ID (data_type 누락)
+# 레거시 ID (data_type 누락, v0)
 LEGACY_ID_PATTERN = re.compile(
     r"^(?P<team>[A-Z]{2,4})"
     r"-(?P<group>[A-Z]{2,5})"
     r"-(?P<year>20[2-9][0-9])"
-    r"-(?P<seq>\d{6})$"
+    r"-(?P<seq>\d{6,12})$"
 )
 
 
@@ -106,8 +114,8 @@ def parse_id(id: str, default_data_type: str = "DOC") -> dict:
 
     raise ValueError(
         f"Invalid record id {id!r}: expected "
-        "'{DATA_TYPE}-{TEAM}-{GROUP}-{YYYY}-{NNNNNN}' "
-        "or legacy '{TEAM}-{GROUP}-{YYYY}-{NNNNNN}'"
+        "'{DATA_TYPE}-{TEAM}-{GROUP}-{YYYY}-{NNNNNNNNNN}' (10-digit seq) "
+        "or legacy '{TEAM}-{GROUP}-{YYYY}-{6-12digit}' (backward-compat)"
     )
 
 
@@ -135,10 +143,10 @@ def format_id(
         raise ValueError(f"group must be 2-5 uppercase ASCII letters, got {group!r}")
     if not (2020 <= int(year) <= 2099):
         raise ValueError(f"year must be in 2020..2099, got {year!r}")
-    if not (1 <= int(seq) <= 999_999):
-        raise ValueError(f"seq must be in 1..999999, got {seq!r}")
+    if not (1 <= int(seq) <= SEQ_MAX):
+        raise ValueError(f"seq must be in 1..{SEQ_MAX}, got {seq!r}")
 
-    return f"{data_type}-{team}-{group}-{int(year)}-{int(seq):06d}"
+    return f"{data_type}-{team}-{group}-{int(year)}-{int(seq):0{SEQ_PAD_WIDTH}d}"
 
 
 def normalize_id(id: str, default_data_type: str = "DOC") -> str:
@@ -170,7 +178,7 @@ class RecordID(BaseModel):
     team: str = Field(..., min_length=2, max_length=4)
     group: str = Field(..., min_length=2, max_length=5)
     year: int = Field(..., ge=2020, le=2099)
-    seq: int = Field(..., ge=1, le=999_999)
+    seq: int = Field(..., ge=1, le=SEQ_MAX)
 
     @field_validator("team")
     @classmethod

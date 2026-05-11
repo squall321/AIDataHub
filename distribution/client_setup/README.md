@@ -1,6 +1,6 @@
-# AI Data Hub 클라이언트 셋업
+# Mobile eXperience AI Data Hub 클라이언트 셋업
 
-이 폴더의 배치 파일들로 **사용자가 신경쓰지 않고** AI Data Hub API 를 사용한다.
+이 폴더의 배치 파일들로 **사용자가 신경쓰지 않고** Mobile eXperience AI Data Hub API 를 사용한다.
 모든 명령은 **Windows 탐색기에서 더블클릭** 또는 **명령 프롬프트** 에서 실행 가능.
 
 ## 빠른 시작 (3단계)
@@ -71,7 +71,7 @@ search.bat tag "IGA,NURBS"
 한 레코드 전체 조회 (`GET /api/records/{id}`).
 
 ```bat
-get.bat DOC-HE-CAE-2026-001001
+get.bat DOC-HE-CAE-2026-0000001001
 ```
 
 ### `ingest.bat "<file_path>"`
@@ -87,8 +87,8 @@ ingest.bat "C:\Users\me\Documents\report.docx"
 비슷한 레코드 찾기 (`GET /api/records/{id}/related`).
 
 ```bat
-related.bat DOC-HE-CAE-2026-001001
-related.bat DOC-HE-CAE-2026-001001 tag 10
+related.bat DOC-HE-CAE-2026-0000001001
+related.bat DOC-HE-CAE-2026-0000001001 tag 10
 ```
 
 ### `show_guide.bat`
@@ -166,8 +166,8 @@ setup.bat
 :: 2) 일상 사용
 ask.bat "배터리 낙하 시뮬레이션 결과는?"
 search.bat semantic "stress concentration"
-get.bat DOC-HE-CAE-2026-001001
-related.bat DOC-HE-CAE-2026-001001
+get.bat DOC-HE-CAE-2026-0000001001
+related.bat DOC-HE-CAE-2026-0000001001
 
 :: 3) 새 자료 적재
 ingest.bat "C:\reports\new_iga_analysis.docx"

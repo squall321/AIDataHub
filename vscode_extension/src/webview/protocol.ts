@@ -50,6 +50,8 @@ export type WebviewToHost =
   | { type: 'createAgentRequest'; reqId: number; payload: AgentInT }
   | { type: 'updateAgentRequest'; reqId: number; agentType: string; patch: AgentPatchT }
   | { type: 'deleteAgentRequest'; reqId: number; agentType: string }
+  // ---- v0.8.0 Agent Word template download ----
+  | { type: 'downloadAgentTemplateRequest'; reqId: number; agentType: string }
   // ---- v0.7.0 Doc-types ----
   | { type: 'listDocTypesRequest'; reqId: number }
   | { type: 'createDocTypeRequest'; reqId: number; payload: DocTypeInT }
@@ -91,6 +93,8 @@ export type HostToWebview =
   | { type: 'createAgentResponse'; reqId: number; ok: boolean; payload?: AgentOutT; error?: string; httpStatus?: number }
   | { type: 'updateAgentResponse'; reqId: number; ok: boolean; payload?: AgentOutT; error?: string; httpStatus?: number }
   | { type: 'deleteAgentResponse'; reqId: number; ok: boolean; agentType?: string; error?: string; httpStatus?: number }
+  // ---- v0.8.0 Agent Word template download ----
+  | { type: 'downloadAgentTemplateResponse'; reqId: number; ok: boolean; savedPath?: string; error?: string }
   // ---- v0.7.0 Doc-types responses ----
   | { type: 'listDocTypesResponse'; reqId: number; ok: boolean; payload?: DocTypeOutT[]; error?: string }
   | { type: 'createDocTypeResponse'; reqId: number; ok: boolean; payload?: DocTypeOutT; error?: string; httpStatus?: number }

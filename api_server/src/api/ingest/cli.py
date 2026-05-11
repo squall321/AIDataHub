@@ -4,7 +4,7 @@
     python -m api.ingest <path> [--db-url URL] [--dry-run] [--recursive]
 
 예시:
-    python -m api.ingest AI_data/examples/HE-CAE-2026-000001.json --dry-run
+    python -m api.ingest AI_data/examples/HE-CAE-2026-0000000001.json --dry-run
     python -m api.ingest AI_data/examples/ --recursive
     python -m api.ingest myfile.json --db-url postgresql+asyncpg://localhost/test
 """

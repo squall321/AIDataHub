@@ -1,20 +1,23 @@
-# AI Data Hub Uploader — User Guide
+# Mobile eXperience AI Data Hub Uploader — User Guide
 
-A VS Code extension to interact with your AI Data Hub backend (`api_server`) directly from VS Code:
+A VS Code extension to interact with your Mobile eXperience AI Data Hub backend (`api_server`) directly from VS Code:
 
 - **Upload tab** — drag a document (`.docx` / `.pdf` / `.pptx` / `.md` / `.html` / `.xlsx`) → server converts → DB 적재. Advanced metadata (classification / status / domain / derivation / valid_from-until / quality_score / language / parent_record_id / subject_keywords / source_system) supported.
 - **Bundle tab** — drop a pre-converted `.zip` (JSON + figures/attachments folder) → `POST /api/ingest/bundle` → server skips conversion, places resources at static mounts.
 - **Search tab** — semantic / fts / tag 검색 + faceted filter (data_type / classification / domain / agent) + record detail viewer + `/api/discover` 전체 카탈로그.
 - **Agents tab (v0.6)** — full CRUD on agent definitions via `/api/agents`: list / view / create / edit / delete. Changes invalidate the Upload tab's agent dropdown cache so newly registered agents become pickable immediately.
 - **Agents — Expected schema (v0.7)** — agents can declare a `required_doc_type`, plus `required_tags` and `excluded_tags`. Pick `+ Add new doc_type...` in the dropdown to define a brand-new doc_type inline without leaving the form.
+- **Agents — Download Word template (v0.8)** — every agent row's expanded detail block now exposes a **📄 Download Word template** button that fetches `GET /api/agents/{agent_type}/template` and saves the `.docx` to a location you pick via VS Code's native Save dialog.
 
 No CLI, no `curl`, no Python.
 
+> **What's new in v0.8.0** — the app is rebranded to **Mobile eXperience AI Data Hub**: command palette entries, webview title, banner heading, info / error toasts, and the package displayName all carry the new name. Functionally, every agent now ships with a downloadable Word (.docx) template. In the Agents tab, click any agent row to expand it, then click **📄 Download Word template** — VS Code opens a Save dialog defaulted to `agent_<type>_template.docx`; choose a path and the file is written via `vscode.workspace.fs.writeFile`. A banner at the top of the Agents tab confirms `Saved to <path>` or surfaces the error. Server endpoint: `GET /api/agents/{agent_type}/template` (Content-Type `application/vnd.openxmlformats-officedocument.wordprocessingml.document`).
+>
 > **What's new in v0.7.0** — Agents tab gains three new fields (`required_doc_type`, `required_tags`, `excluded_tags`) tucked under an **Expected schema (optional)** disclosure. When the dropdown's `+ Add new doc_type...` is chosen, an inline mini-form lets you create a new `/api/doc-types` entry (`code`, `name`, `description`, `expected_sections`) without losing form context. New code is auto-selected on success; 409 conflicts surface inline. The agent list's expanded detail panel now shows a schema hint section (or "(any)" when nothing is constrained).
 >
 > **What's new in v0.6.0** — fourth tab **Agents** for managing agent definitions inline (no DB shell required). Agent list shows `agent_type` / name / data types / description; click a row to inline-expand the full record with **Edit** / **Delete** / **View records** actions. New / Edit form supports chip-input common tags and a `DOC/DATA/SIM/CAD/LOG/FORM/OTHER` checkbox grid for data types.
 
-**Version**: 0.7.0 (2026-05-11) — Agents expected-schema fields + inline doc_type creation. Previous: 0.6.0 = Agents CRUD tab.
+**Version**: 0.8.0 (2026-05-11) — Rebrand to *Mobile eXperience AI Data Hub* + per-agent Word template download from the expanded agent detail block. Previous: 0.7.0 = Agents expected-schema fields + inline doc_type creation. 0.6.0 = Agents CRUD tab.
 
 ---
 
@@ -23,27 +26,27 @@ No CLI, no `curl`, no Python.
 ### From the `.vsix` (recommended)
 
 ```powershell
-code --install-extension ai-data-hub-uploader-0.6.0.vsix
+code --install-extension ai-data-hub-uploader-0.8.0.vsix
 ```
 
 The extension ships with the prebuilt JS in `out/`. No `npm install` required on the user side.
 
 ### Verify
 
-`Ctrl+Shift+P` → start typing `AI Data Hub` — you should see three commands:
+`Ctrl+Shift+P` → start typing `Mobile eXperience AI Data Hub` — you should see three commands:
 
-- **AI Data Hub: Open Uploader**
-- **AI Data Hub: Settings**
-- **AI Data Hub: Reset Connection**
+- **Mobile eXperience AI Data Hub: Open Uploader**
+- **Mobile eXperience AI Data Hub: Settings**
+- **Mobile eXperience AI Data Hub: Reset Connection**
 
 ---
 
 ## 2. First launch
 
-The first time the extension activates (or whenever its connection state is reset) it opens a **Webview tab titled `AI Data Hub`** with the **Settings (Welcome) screen**:
+The first time the extension activates (or whenever its connection state is reset) it opens a **Webview tab titled `Mobile eXperience AI Data Hub`** with the **Settings (Welcome) screen**:
 
 ```
-👋 Connect to your AI Data Hub server
+👋 Connect to your Mobile eXperience AI Data Hub server
    Server URL  [ http://10.10.20.5:8000        ]
    API Key     [ ••••••••••••••••••••••••••     ]
    [ Test Connection ]   [ Save & Continue ]
@@ -118,7 +121,7 @@ Click **Send DRY-RUN** instead of *Send to Backend* to call `POST /api/convert/`
 `Send to Backend` issues `POST /api/convert/ingest` as `multipart/form-data` from the webview using `XMLHttpRequest` so you get a real-time **upload progress bar**. On success a toast shows:
 
 ```
-AI Data Hub: uploaded DOC-HE-CAE-2026-000001 (inserted)
+Mobile eXperience AI Data Hub: uploaded DOC-HE-CAE-2026-0000000001 (inserted)
 ```
 
 `status` is one of `inserted` / `updated` / `skipped` (skipped = identical content hash already in the DB).
@@ -190,6 +193,17 @@ The expanded detail panel in the agent list also surfaces these three values (or
 
 The new doc_type is immediately usable for this agent and any future agent forms. Existing records' `meta.doc_type` field (set by the backend's normalizer or by Advanced metadata on upload) is matched against the agent's `required_doc_type` at retrieval time.
 
+### 4b.4 Download Word template (v0.8)
+
+Every agent now ships with a downloadable Word (.docx) skeleton that authors can fill out and re-upload via the **Upload** tab.
+
+1. In the Agents tab, click the row of the agent you want a template for. The detail panel expands.
+2. Click **📄 Download Word template** in the detail-panel toolbar (next to Edit / Delete).
+3. VS Code opens a native **Save** dialog defaulted to `agent_<agent_type>_template.docx` (filename comes from the server's `Content-Disposition` header). Pick a folder and click **Save template**.
+4. A green banner at the top of the Agents tab reads `Saved to <full path>`; if the request failed, a red banner shows the error code. Cancelling the dialog is silent.
+
+Wire-level: `GET /api/agents/{agent_type}/template` → `application/vnd.openxmlformats-officedocument.wordprocessingml.document` → host writes via `vscode.workspace.fs.writeFile`. No bytes ever traverse the webview ↔ host bridge.
+
 ### Errors
 
 | HTTP | Cause |
@@ -204,9 +218,9 @@ The new doc_type is immediately usable for this agent and any future agent forms
 
 | Command palette | Effect |
 |-----------------|--------|
-| `AI Data Hub: Open Uploader` | Open / focus the panel. |
-| `AI Data Hub: Settings` | Same panel — switch to Settings screen via the ⚙ in the header. |
-| `AI Data Hub: Reset Connection` | Wipe baseUrl + apiKey + connected flag → next open re-runs the Welcome screen. |
+| `Mobile eXperience AI Data Hub: Open Uploader` | Open / focus the panel. |
+| `Mobile eXperience AI Data Hub: Settings` | Same panel — switch to Settings screen via the ⚙ in the header. |
+| `Mobile eXperience AI Data Hub: Reset Connection` | Wipe baseUrl + apiKey + connected flag → next open re-runs the Welcome screen. |
 
 ---
 
@@ -218,12 +232,12 @@ The new doc_type is immediately usable for this agent and any future agent forms
 - Corporate firewall / VPN may block; try the IP form rather than the hostname.
 
 ### B. "Invalid API key" repeatedly
-- Run `AI Data Hub: Reset Connection`, then re-enter both URL and key.
+- Run `Mobile eXperience AI Data Hub: Reset Connection`, then re-enter both URL and key.
 - Confirm the key isn't expired with the backend admin (`api_server` `keys` table).
 - The webview never sees the API key in plain text after save — only the host has it in `SecretStorage`.
 
 ### C. The panel is blank / shows "Loading metadata options…" forever
-- The cached enum response from `/api/meta/options` may be stale. Run `AI Data Hub: Reset Connection` (clears cache) and reconnect.
+- The cached enum response from `/api/meta/options` may be stale. Run `Mobile eXperience AI Data Hub: Reset Connection` (clears cache) and reconnect.
 - Open the Webview Developer Tools (`Help → Toggle Developer Tools` while focused on the panel) to inspect console errors.
 
 ### D. Drag-and-drop doesn't react
@@ -250,7 +264,7 @@ code .
 # In VS Code: F5 to launch an "Extension Development Host" window.
 ```
 
-In the new window: `Ctrl+Shift+P` → `AI Data Hub: Open Uploader`. Live reload by pressing `Ctrl+R` in that window after changes are recompiled (`npx tsc -w`).
+In the new window: `Ctrl+Shift+P` → `Mobile eXperience AI Data Hub: Open Uploader`. Live reload by pressing `Ctrl+R` in that window after changes are recompiled (`npx tsc -w`).
 
 ---
 

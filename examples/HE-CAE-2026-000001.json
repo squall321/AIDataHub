@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "meta": {
-    "doc_id": "HE-CAE-2026-000001",
+    "doc_id": "HE-CAE-2026-0000000001",
     "title": "iga_guide_test",
     "source_format": "docx",
     "source_file": "iga_guide_test.docx",
@@ -318,7 +318,7 @@
             },
             {
               "type": "table",
-              "ref": "HE-CAE-2026-000001-T001"
+              "ref": "HE-CAE-2026-0000000001-T001"
             },
             {
               "type": "paragraph",
@@ -327,7 +327,7 @@
           ],
           "figure_refs": [],
           "table_refs": [
-            "HE-CAE-2026-000001-T001"
+            "HE-CAE-2026-0000000001-T001"
           ],
           "children": []
         },
@@ -556,12 +556,12 @@
           "blocks": [
             {
               "type": "table",
-              "ref": "HE-CAE-2026-000001-T002"
+              "ref": "HE-CAE-2026-0000000001-T002"
             }
           ],
           "figure_refs": [],
           "table_refs": [
-            "HE-CAE-2026-000001-T002"
+            "HE-CAE-2026-0000000001-T002"
           ],
           "children": []
         }
@@ -647,12 +647,12 @@
             },
             {
               "type": "table",
-              "ref": "HE-CAE-2026-000001-T003"
+              "ref": "HE-CAE-2026-0000000001-T003"
             }
           ],
           "figure_refs": [],
           "table_refs": [
-            "HE-CAE-2026-000001-T003"
+            "HE-CAE-2026-0000000001-T003"
           ],
           "children": []
         }
@@ -677,7 +677,7 @@
             },
             {
               "type": "table",
-              "ref": "HE-CAE-2026-000001-T004"
+              "ref": "HE-CAE-2026-0000000001-T004"
             },
             {
               "type": "paragraph",
@@ -698,7 +698,7 @@
           ],
           "figure_refs": [],
           "table_refs": [
-            "HE-CAE-2026-000001-T004"
+            "HE-CAE-2026-0000000001-T004"
           ],
           "children": []
         },
@@ -731,12 +731,12 @@
           "blocks": [
             {
               "type": "table",
-              "ref": "HE-CAE-2026-000001-T005"
+              "ref": "HE-CAE-2026-0000000001-T005"
             }
           ],
           "figure_refs": [],
           "table_refs": [
-            "HE-CAE-2026-000001-T005"
+            "HE-CAE-2026-0000000001-T005"
           ],
           "children": []
         },
@@ -747,7 +747,7 @@
           "blocks": [
             {
               "type": "table",
-              "ref": "HE-CAE-2026-000001-T006"
+              "ref": "HE-CAE-2026-0000000001-T006"
             },
             {
               "type": "paragraph",
@@ -756,7 +756,7 @@
           ],
           "figure_refs": [],
           "table_refs": [
-            "HE-CAE-2026-000001-T006"
+            "HE-CAE-2026-0000000001-T006"
           ],
           "children": []
         },
@@ -771,7 +771,7 @@
             },
             {
               "type": "table",
-              "ref": "HE-CAE-2026-000001-T007"
+              "ref": "HE-CAE-2026-0000000001-T007"
             },
             {
               "type": "paragraph",
@@ -780,7 +780,7 @@
           ],
           "figure_refs": [],
           "table_refs": [
-            "HE-CAE-2026-000001-T007"
+            "HE-CAE-2026-0000000001-T007"
           ],
           "children": []
         }
@@ -855,7 +855,7 @@
             },
             {
               "type": "table",
-              "ref": "HE-CAE-2026-000001-T008"
+              "ref": "HE-CAE-2026-0000000001-T008"
             },
             {
               "type": "paragraph",
@@ -872,7 +872,7 @@
           ],
           "figure_refs": [],
           "table_refs": [
-            "HE-CAE-2026-000001-T008"
+            "HE-CAE-2026-0000000001-T008"
           ],
           "children": []
         },
@@ -909,12 +909,12 @@
             },
             {
               "type": "table",
-              "ref": "HE-CAE-2026-000001-T009"
+              "ref": "HE-CAE-2026-0000000001-T009"
             }
           ],
           "figure_refs": [],
           "table_refs": [
-            "HE-CAE-2026-000001-T009"
+            "HE-CAE-2026-0000000001-T009"
           ],
           "children": []
         },
@@ -955,12 +955,12 @@
             },
             {
               "type": "table",
-              "ref": "HE-CAE-2026-000001-T010"
+              "ref": "HE-CAE-2026-0000000001-T010"
             }
           ],
           "figure_refs": [],
           "table_refs": [
-            "HE-CAE-2026-000001-T010"
+            "HE-CAE-2026-0000000001-T010"
           ],
           "children": []
         },
@@ -979,12 +979,12 @@
             },
             {
               "type": "table",
-              "ref": "HE-CAE-2026-000001-T011"
+              "ref": "HE-CAE-2026-0000000001-T011"
             }
           ],
           "figure_refs": [],
           "table_refs": [
-            "HE-CAE-2026-000001-T011"
+            "HE-CAE-2026-0000000001-T011"
           ],
           "children": []
         },
@@ -999,12 +999,12 @@
             },
             {
               "type": "table",
-              "ref": "HE-CAE-2026-000001-T012"
+              "ref": "HE-CAE-2026-0000000001-T012"
             }
           ],
           "figure_refs": [],
           "table_refs": [
-            "HE-CAE-2026-000001-T012"
+            "HE-CAE-2026-0000000001-T012"
           ],
           "children": []
         },
@@ -1027,7 +1027,7 @@
             },
             {
               "type": "table",
-              "ref": "HE-CAE-2026-000001-T013"
+              "ref": "HE-CAE-2026-0000000001-T013"
             },
             {
               "type": "code",
@@ -1036,7 +1036,7 @@
           ],
           "figure_refs": [],
           "table_refs": [
-            "HE-CAE-2026-000001-T013"
+            "HE-CAE-2026-0000000001-T013"
           ],
           "children": []
         },
@@ -1051,12 +1051,12 @@
             },
             {
               "type": "table",
-              "ref": "HE-CAE-2026-000001-T014"
+              "ref": "HE-CAE-2026-0000000001-T014"
             }
           ],
           "figure_refs": [],
           "table_refs": [
-            "HE-CAE-2026-000001-T014"
+            "HE-CAE-2026-0000000001-T014"
           ],
           "children": []
         }
@@ -1081,12 +1081,12 @@
             },
             {
               "type": "table",
-              "ref": "HE-CAE-2026-000001-T015"
+              "ref": "HE-CAE-2026-0000000001-T015"
             }
           ],
           "figure_refs": [],
           "table_refs": [
-            "HE-CAE-2026-000001-T015"
+            "HE-CAE-2026-0000000001-T015"
           ],
           "children": []
         },
@@ -1109,12 +1109,12 @@
             },
             {
               "type": "table",
-              "ref": "HE-CAE-2026-000001-T016"
+              "ref": "HE-CAE-2026-0000000001-T016"
             }
           ],
           "figure_refs": [],
           "table_refs": [
-            "HE-CAE-2026-000001-T016"
+            "HE-CAE-2026-0000000001-T016"
           ],
           "children": []
         },
@@ -1213,12 +1213,12 @@
           "blocks": [
             {
               "type": "table",
-              "ref": "HE-CAE-2026-000001-T017"
+              "ref": "HE-CAE-2026-0000000001-T017"
             }
           ],
           "figure_refs": [],
           "table_refs": [
-            "HE-CAE-2026-000001-T017"
+            "HE-CAE-2026-0000000001-T017"
           ],
           "children": []
         },
@@ -1289,12 +1289,12 @@
           "blocks": [
             {
               "type": "table",
-              "ref": "HE-CAE-2026-000001-T018"
+              "ref": "HE-CAE-2026-0000000001-T018"
             }
           ],
           "figure_refs": [],
           "table_refs": [
-            "HE-CAE-2026-000001-T018"
+            "HE-CAE-2026-0000000001-T018"
           ],
           "children": []
         },
@@ -1329,12 +1329,12 @@
       "blocks": [
         {
           "type": "table",
-          "ref": "HE-CAE-2026-000001-T019"
+          "ref": "HE-CAE-2026-0000000001-T019"
         }
       ],
       "figure_refs": [],
       "table_refs": [
-        "HE-CAE-2026-000001-T019"
+        "HE-CAE-2026-0000000001-T019"
       ],
       "children": []
     },
@@ -1345,7 +1345,7 @@
       "blocks": [
         {
           "type": "table",
-          "ref": "HE-CAE-2026-000001-T020"
+          "ref": "HE-CAE-2026-0000000001-T020"
         },
         {
           "type": "paragraph",
@@ -1414,7 +1414,7 @@
       ],
       "figure_refs": [],
       "table_refs": [
-        "HE-CAE-2026-000001-T020"
+        "HE-CAE-2026-0000000001-T020"
       ],
       "children": []
     }
@@ -1422,7 +1422,7 @@
   "figures": [],
   "tables": [
     {
-      "id": "HE-CAE-2026-000001-T001",
+      "id": "HE-CAE-2026-0000000001-T001",
       "number": 1,
       "caption": "Table 1: (캡션 누락 — 검수 필요)",
       "section_ref": "1.1",
@@ -1465,7 +1465,7 @@
       ]
     },
     {
-      "id": "HE-CAE-2026-000001-T002",
+      "id": "HE-CAE-2026-0000000001-T002",
       "number": 2,
       "caption": "Table 2: (캡션 누락 — 검수 필요)",
       "section_ref": "3.3",
@@ -1593,7 +1593,7 @@
       ]
     },
     {
-      "id": "HE-CAE-2026-000001-T003",
+      "id": "HE-CAE-2026-0000000001-T003",
       "number": 3,
       "caption": "Table 3: (캡션 누락 — 검수 필요)",
       "section_ref": "4.3",
@@ -1629,7 +1629,7 @@
       ]
     },
     {
-      "id": "HE-CAE-2026-000001-T004",
+      "id": "HE-CAE-2026-0000000001-T004",
       "number": 4,
       "caption": "Table 4: (캡션 누락 — 검수 필요)",
       "section_ref": "5.1",
@@ -1661,7 +1661,7 @@
       ]
     },
     {
-      "id": "HE-CAE-2026-000001-T005",
+      "id": "HE-CAE-2026-0000000001-T005",
       "number": 5,
       "caption": "Table 5: (캡션 누락 — 검수 필요)",
       "section_ref": "5.3",
@@ -1681,7 +1681,7 @@
       ]
     },
     {
-      "id": "HE-CAE-2026-000001-T006",
+      "id": "HE-CAE-2026-0000000001-T006",
       "number": 6,
       "caption": "Table 6: (캡션 누락 — 검수 필요)",
       "section_ref": "5.4",
@@ -1704,7 +1704,7 @@
       ]
     },
     {
-      "id": "HE-CAE-2026-000001-T007",
+      "id": "HE-CAE-2026-0000000001-T007",
       "number": 7,
       "caption": "Table 7: (캡션 누락 — 검수 필요)",
       "section_ref": "5.5",
@@ -1727,7 +1727,7 @@
       ]
     },
     {
-      "id": "HE-CAE-2026-000001-T008",
+      "id": "HE-CAE-2026-0000000001-T008",
       "number": 8,
       "caption": "Table 8: (캡션 누락 — 검수 필요)",
       "section_ref": "7.1",
@@ -1860,7 +1860,7 @@
       ]
     },
     {
-      "id": "HE-CAE-2026-000001-T009",
+      "id": "HE-CAE-2026-0000000001-T009",
       "number": 9,
       "caption": "Table 9: (캡션 누락 — 검수 필요)",
       "section_ref": "7.3",
@@ -1888,7 +1888,7 @@
       ]
     },
     {
-      "id": "HE-CAE-2026-000001-T010",
+      "id": "HE-CAE-2026-0000000001-T010",
       "number": 10,
       "caption": "Table 10: (캡션 누락 — 검수 필요)",
       "section_ref": "7.5",
@@ -1916,7 +1916,7 @@
       ]
     },
     {
-      "id": "HE-CAE-2026-000001-T011",
+      "id": "HE-CAE-2026-0000000001-T011",
       "number": 11,
       "caption": "Table 11: (캡션 누락 — 검수 필요)",
       "section_ref": "7.6",
@@ -1954,7 +1954,7 @@
       ]
     },
     {
-      "id": "HE-CAE-2026-000001-T012",
+      "id": "HE-CAE-2026-0000000001-T012",
       "number": 12,
       "caption": "Table 12: (캡션 누락 — 검수 필요)",
       "section_ref": "7.7",
@@ -1997,7 +1997,7 @@
       ]
     },
     {
-      "id": "HE-CAE-2026-000001-T013",
+      "id": "HE-CAE-2026-0000000001-T013",
       "number": 13,
       "caption": "Table 13: (캡션 누락 — 검수 필요)",
       "section_ref": "7.8",
@@ -2045,7 +2045,7 @@
       ]
     },
     {
-      "id": "HE-CAE-2026-000001-T014",
+      "id": "HE-CAE-2026-0000000001-T014",
       "number": 14,
       "caption": "Table 14: (캡션 누락 — 검수 필요)",
       "section_ref": "7.9",
@@ -2103,7 +2103,7 @@
       ]
     },
     {
-      "id": "HE-CAE-2026-000001-T015",
+      "id": "HE-CAE-2026-0000000001-T015",
       "number": 15,
       "caption": "Table 15: (캡션 누락 — 검수 필요)",
       "section_ref": "8.1",
@@ -2143,7 +2143,7 @@
       ]
     },
     {
-      "id": "HE-CAE-2026-000001-T016",
+      "id": "HE-CAE-2026-0000000001-T016",
       "number": 16,
       "caption": "Table 16: (캡션 누락 — 검수 필요)",
       "section_ref": "8.2",
@@ -2187,7 +2187,7 @@
       ]
     },
     {
-      "id": "HE-CAE-2026-000001-T017",
+      "id": "HE-CAE-2026-0000000001-T017",
       "number": 17,
       "caption": "Table 17: (캡션 누락 — 검수 필요)",
       "section_ref": "9.2",
@@ -2215,7 +2215,7 @@
       ]
     },
     {
-      "id": "HE-CAE-2026-000001-T018",
+      "id": "HE-CAE-2026-0000000001-T018",
       "number": 18,
       "caption": "Table 18: (캡션 누락 — 검수 필요)",
       "section_ref": "10.2",
@@ -2243,7 +2243,7 @@
       ]
     },
     {
-      "id": "HE-CAE-2026-000001-T019",
+      "id": "HE-CAE-2026-0000000001-T019",
       "number": 19,
       "caption": "Table 19: (캡션 누락 — 검수 필요)",
       "section_ref": "11",
@@ -2279,7 +2279,7 @@
       ]
     },
     {
-      "id": "HE-CAE-2026-000001-T020",
+      "id": "HE-CAE-2026-0000000001-T020",
       "number": 20,
       "caption": "Table 20: (캡션 누락 — 검수 필요)",
       "section_ref": "12",

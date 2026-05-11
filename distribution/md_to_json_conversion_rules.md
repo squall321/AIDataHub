@@ -70,7 +70,7 @@ Markdown 은 CommonMark 의 명시적인 헤딩 계층(`#`, `##`, ...) 덕분에
 - 단일 JSON 파일 (스키마 v1.0, `data_type = "DOC"`, `meta.source_format = "md"`).
 - ID 형식:
   - `meta.doc_id` = `DOC-{div}-{group}-{year}-{seq:06d}`
-  - 그림: `{doc_id}-F{nnn}` (예: `DOC-HE-CAE-2026-000001-F001`)
+  - 그림: `{doc_id}-F{nnn}` (예: `DOC-HE-CAE-2026-0000000001-F001`)
   - 표: `{doc_id}-T{nnn}`
   - 첨부: `{doc_id}-A{nnn}`
 - 본문/그림/표 모두 [json_schema_rules.md](./json_schema_rules.md) 7-키 구조와 동일.
@@ -193,7 +193,7 @@ GFM 표는 본문 흐름의 위치에 `{ "type": "table", "ref": "<id>" }` 블�
 
 ```json
 {
-  "id": "DOC-HE-CAE-2026-000001-T001",
+  "id": "DOC-HE-CAE-2026-0000000001-T001",
   "number": 1,
   "caption": "Table 1",
   "section_ref": "1.2",
@@ -216,7 +216,7 @@ GFM 표는 본문 흐름의 위치에 `{ "type": "table", "ref": "<id>" }` 블�
 ```json
 "figures": [
   {
-    "id": "DOC-HE-CAE-2026-000001-F001",
+    "id": "DOC-HE-CAE-2026-0000000001-F001",
     "number": 1,
     "caption": "브라켓 응력 분포",
     "section_ref": "1.2",
@@ -225,14 +225,14 @@ GFM 표는 본문 흐름의 위치에 `{ "type": "table", "ref": "<id>" }` 블�
 ],
 "attachments": [
   {
-    "id": "DOC-HE-CAE-2026-000001-A001",
+    "id": "DOC-HE-CAE-2026-0000000001-A001",
     "number": 1,
     "kind": "figure",
     "caption": "브라켓 응력 분포",
     "section_ref": "1.2",
     "file_name": "bracket.png",
     "file_path": "bracket.png",
-    "extra": { "figure_ref": "DOC-HE-CAE-2026-000001-F001", "title": "옵션 제목" }
+    "extra": { "figure_ref": "DOC-HE-CAE-2026-0000000001-F001", "title": "옵션 제목" }
   }
 ]
 ```
@@ -462,8 +462,8 @@ python -m md_converter input.md \
 
 ```
 output/
-├── DOC-HE-CAE-2026-000007.json
-└── DOC-HE-CAE-2026-000007.warnings.log    (경고가 있을 때만)
+├── DOC-HE-CAE-2026-0000000007.json
+└── DOC-HE-CAE-2026-0000000007.warnings.log    (경고가 있을 때만)
 ```
 
 ### 11.4 옵션

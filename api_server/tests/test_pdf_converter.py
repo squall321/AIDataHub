@@ -204,7 +204,7 @@ def test_basic_text_extraction(opts, tmp_path):
         ],
     )
     result, payload = _convert(pdf, opts)
-    assert result.meta["doc_id"] == "DOC-HE-CAE-2026-000001"
+    assert result.meta["doc_id"] == "DOC-HE-CAE-2026-0000000001"
     assert result.meta["source_format"] == "pdf"
     # 본문 라인이 paragraph blocks 로 변환됨
     # (헤딩 없으므로 가상 '본문' 섹션 1개)
@@ -343,6 +343,6 @@ def test_section_num_pattern():
 def test_doc_id_format(opts, tmp_path):
     pdf = _make_simple_pdf(tmp_path / "id.pdf", body_lines=["body"])
     result, _ = _convert(pdf, opts)
-    assert result.meta["doc_id"] == "DOC-HE-CAE-2026-000001"
+    assert result.meta["doc_id"] == "DOC-HE-CAE-2026-0000000001"
     # sources 도 동일 prefix
-    assert result.sources[0].id == "DOC-HE-CAE-2026-000001-S001"
+    assert result.sources[0].id == "DOC-HE-CAE-2026-0000000001-S001"

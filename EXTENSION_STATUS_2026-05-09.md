@@ -15,11 +15,11 @@
 | 항목 | 값 |
 |------|-----|
 | `.vsix` 파일 | `ai-data-hub-uploader-0.4.0.vsix` (20,784 bytes, 2026-05-08 11:13) |
-| `name` / `displayName` | `ai-data-hub-uploader` / `AI Data Hub Uploader` |
+| `name` / `displayName` | `ai-data-hub-uploader` / `Mobile eXperience AI Data Hub Uploader` |
 | `version` | `0.1.0` (package.json L5) |
 | `publisher` | `squall321` (L6) |
 | `engines.vscode` | `^1.85.0` (L25) |
-| `description` | `Drag-and-drop documents (.docx/.pdf/.pptx/.md/.xlsx) into your AI Data Hub backend with one click.` |
+| `description` | `Drag-and-drop documents (.docx/.pdf/.pptx/.md/.xlsx) into your Mobile eXperience AI Data Hub backend with one click.` |
 | `activationEvents` | `onStartupFinished` — 빈 워크스페이스에서도 활성화됨 |
 | `main` | `./out/extension.js` — 컴파일 산출물 존재 (`out/extension.js` 2,338 B 등) |
 | `contributes.commands` | `aidh.openUploader`, `aidh.openSettings`, `aidh.resetConnection` 3개 |
@@ -42,7 +42,7 @@ code --install-extension ai-data-hub-uploader-0.4.0.vsix
 ### Header (모든 화면 공통, html.ts L30-35)
 
 ```
-[ AI Data Hub Uploader ]                                  [ ⚙ ]
+[ Mobile eXperience AI Data Hub Uploader ]                                  [ ⚙ ]
 ```
 
 ⚙ 클릭 → 언제든 Welcome (Settings) 로 복귀 (L750).
@@ -50,7 +50,7 @@ code --install-extension ai-data-hub-uploader-0.4.0.vsix
 ### (1) Welcome / Settings (L225-245)
 
 ```
-👋 Connect to your AI Data Hub server
+👋 Connect to your Mobile eXperience AI Data Hub server
    Server URL  [ http://10.10.20.5:8000               ]
    API Key     [ ••••••••••••                          ]   (password)
    [ Test Connection ]   [ Save & Continue ]

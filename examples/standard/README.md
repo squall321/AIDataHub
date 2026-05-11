@@ -89,12 +89,12 @@ $out = "examples\standard\converted"
 
 | 변환기            | 입력                          | 출력 JSON                                  | sections / figures / tables / rows | warnings        |
 |-------------------|-------------------------------|--------------------------------------------|------------------------------------|-----------------|
-| `converter`       | `sample_report.docx`          | `HE-CAE-2026-000100.json`                  | 3 / 0 / 1 / —                      | 0               |
-| `excel_converter` | `sample_data.xlsx`            | `DATA-HE-MFG-2026-000200.json`             | — / — / — / 5                      | 0               |
-| `ppt_converter`   | `sample_presentation.pptx`    | `DOC-HE-CAE-2026-000300.json`              | 4 / 0 / 1 / —                      | 0               |
-| `pdf_converter`   | `sample_doc.pdf`              | `DOC-HE-CAE-2026-000400.json`              | 3 / 0 / 1 / —                      | 5 (정보성)       |
-| `md_converter`    | `sample_doc.md`               | `DOC-HE-CAE-2026-000500.json`              | 6 / 1 / 1 / —                      | 0               |
-| `html_converter`  | `sample_doc.html`             | `DOC-HE-CAE-2026-000600.json`              | 6 / 1 / 1 / —                      | 0               |
+| `converter`       | `sample_report.docx`          | `HE-CAE-2026-0000000100.json`                  | 3 / 0 / 1 / —                      | 0               |
+| `excel_converter` | `sample_data.xlsx`            | `DATA-HE-MFG-2026-0000000200.json`             | — / — / — / 5                      | 0               |
+| `ppt_converter`   | `sample_presentation.pptx`    | `DOC-HE-CAE-2026-0000000300.json`              | 4 / 0 / 1 / —                      | 0               |
+| `pdf_converter`   | `sample_doc.pdf`              | `DOC-HE-CAE-2026-0000000400.json`              | 3 / 0 / 1 / —                      | 5 (정보성)       |
+| `md_converter`    | `sample_doc.md`               | `DOC-HE-CAE-2026-0000000500.json`              | 6 / 1 / 1 / —                      | 0               |
+| `html_converter`  | `sample_doc.html`             | `DOC-HE-CAE-2026-0000000600.json`              | 6 / 1 / 1 / —                      | 0               |
 
 핵심 메타 추출 확인:
 

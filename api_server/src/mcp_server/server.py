@@ -1,4 +1,4 @@
-"""AI Data Hub MCP stdio 서버.
+"""Mobile eXperience AI Data Hub MCP stdio 서버.
 
 REST API(``/api/data``, ``/api/agents`` 등)를 MCP 도구로 래핑한다.
 
@@ -188,7 +188,7 @@ async def find_related(record_id: str, mode: str = "auto") -> dict[str, Any]:
     """주어진 record 와 관련된 record 들을 찾는다.
 
     Args:
-        record_id: 기준 record (예: 'DOC-HE-CAE-2026-000001').
+        record_id: 기준 record (예: 'DOC-HE-CAE-2026-0000000001').
         mode: 'tags' | 'graph' | 'semantic' | 'auto' (기본).
             - 'tags': 같은 태그 ≥1 공유.
             - 'graph': record.related_record_ids + parent/children.
@@ -394,7 +394,7 @@ async def get_record(record_id: str) -> dict[str, Any]:
     """단일 레코드를 ID로 조회한다.
 
     Args:
-        record_id: 레코드 ID (예: 'DOC-HE-CAE-2026-000001').
+        record_id: 레코드 ID (예: 'DOC-HE-CAE-2026-0000000001').
 
     Returns:
         Record 페이로드 dict. 없으면 ``{"error": "http_error", "status_code": 404, ...}``.

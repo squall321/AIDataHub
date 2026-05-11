@@ -8,7 +8,7 @@
 
 설계 노트:
     - PostgreSQL 전용 타입 사용: ARRAY(TEXT), JSONB, TIMESTAMPTZ, BIGSERIAL.
-    - PK `records.id`는 사람이 읽는 의미있는 코드 (예: 'DOC-HE-CAE-2026-000001').
+    - PK `records.id`는 사람이 읽는 의미있는 코드 (예: 'DOC-HE-CAE-2026-0000000001').
     - `record_sections.id`는 BigInteger BIGSERIAL.
     - 향후 마이그레이션에서 `record_sections.embedding`(pgvector) 컬럼이 추가될 수 있다.
 """
@@ -389,7 +389,7 @@ class RecordAttachment(Base):
 
     파일 바이너리는 DB 가 아닌 ``settings.attachments_dir`` 아래 파일시스템에
     저장하며, ``file_path`` 는 그 디렉터리 기준 상대 경로다 (예:
-    ``"DOC-HE-CAE-2026-000001/A001.pdf"``).
+    ``"DOC-HE-CAE-2026-0000000001/A001.pdf"``).
     """
 
     __tablename__ = "record_attachments"

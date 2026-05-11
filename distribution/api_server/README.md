@@ -49,7 +49,7 @@ docker run -d --name ai-data-pg -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=p
 $env:PYTHONPATH = "src"; alembic upgrade head
 
 # 4. 첫 레코드 적재
-python -m converter "d:\tmp\iga_guide_test.docx" --division HE --team CAE --year 2026 --seq 1 --output-dir output ; python -m api.ingest .\output\HE-CAE-2026-000001.json
+python -m converter "d:\tmp\iga_guide_test.docx" --division HE --team CAE --year 2026 --seq 1 --output-dir output ; python -m api.ingest .\output\HE-CAE-2026-0000000001.json
 
 # 5. 서버 기동
 python -m api.main
@@ -109,10 +109,10 @@ api_server/
 
 | data_type      | 설명             | 예시 ID                   |
 |----------------|------------------|---------------------------|
-| DOC            | 문서/가이드      | `DOC-HE-CAE-2026-000001`  |
-| DATA           | 측정/시험 데이터 | `DATA-HE-CAE-2026-000018` |
-| SIM            | 시뮬레이션 결과  | `SIM-HE-CAE-2026-000045`  |
-| CAD            | CAD 모델         | `CAD-HE-CAE-2026-000012`  |
+| DOC            | 문서/가이드      | `DOC-HE-CAE-2026-0000000001`  |
+| DATA           | 측정/시험 데이터 | `DATA-HE-CAE-2026-0000000018` |
+| SIM            | 시뮬레이션 결과  | `SIM-HE-CAE-2026-0000000045`  |
+| CAD            | CAD 모델         | `CAD-HE-CAE-2026-0000000012`  |
 | LOG/FORM/OTHER | 보조             | (동일 패턴)               |
 
 ID 포맷, 스키마 디테일: [`docs/data_model.md`](docs/data_model.md).
@@ -162,7 +162,7 @@ GET /api/records/{id}/blocks?section_id=X.Y
 
 ```powershell
 python -m api.embed                  # 전체 미임베딩 섹션 백필
-python -m api.embed --record-id DOC-HE-CAE-2026-000001
+python -m api.embed --record-id DOC-HE-CAE-2026-0000000001
 ```
 
 `OPENAI_API_KEY` 가 환경변수에 있으면 `OpenAIEmbedder` 자동 사용,
@@ -279,7 +279,7 @@ python -m api.seed
 python -m api.seed --dry-run
 
 # 4) 데이터 적재
-python -m api.ingest AI_data/examples/HE-CAE-2026-000001.json
+python -m api.ingest AI_data/examples/HE-CAE-2026-0000000001.json
 
 # 5) API 서버
 python -m api.main

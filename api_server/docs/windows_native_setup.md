@@ -214,7 +214,7 @@ python -m converter "d:\tmp\iga_guide_test.docx" `
 ### 8.2 적재
 
 ```powershell
-python -m api.ingest .\output\DOC-HE-CAE-2026-000001.json
+python -m api.ingest .\output\DOC-HE-CAE-2026-0000000001.json
 ```
 
 ### 8.3 확인
@@ -260,7 +260,7 @@ curl.exe -X POST http://localhost:8000/api/convert/ingest `
 
 ```json
 {
-  "record_id": "DOC-HE-CAE-2026-000002",
+  "record_id": "DOC-HE-CAE-2026-0000000002",
   "status": "inserted",
   "sections_written": 12,
   "record": { ... }

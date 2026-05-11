@@ -72,8 +72,8 @@ Cline: 사용자 답변 → 핵심 3가지 + record id + "이 중 하나를 더 
 ### 2.3 대화 패턴 2 — 사용자가 ID 만 줌
 
 ```
-User: DOC-HE-CAE-2026-000001 요약해줘.
-Cline: get_record("DOC-HE-CAE-2026-000001")
+User: DOC-HE-CAE-2026-0000000001 요약해줘.
+Cline: get_record("DOC-HE-CAE-2026-0000000001")
 Cline: 본문 요약 + tags + "관련 자료도 볼까요?" → find_related() 후속.
 ```
 
