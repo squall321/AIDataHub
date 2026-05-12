@@ -18,7 +18,34 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 load_env
 
 SKIP_API=0
-[ "${1:-}" = "--skip-api" ] && SKIP_API=1
+FORCE=0
+for arg in "$@"; do
+  case "$arg" in
+    --skip-api) SKIP_API=1 ;;
+    --force)    FORCE=1 ;;
+  esac
+done
+
+# systemd 가 관리 중이면 직접 호출 차단 (이중 기동 방지).
+# systemd unit 의 ExecStart 가 이 스크립트를 부르므로 그 경로는 무관 (PPID 검사로 구분).
+if [[ $FORCE -eq 0 ]]; then
+  PARENT_CMD=$(ps -o comm= -p "$PPID" 2>/dev/null || echo "")
+  if [[ "$PARENT_CMD" != "systemd" ]]; then
+    # 사용자가 직접 실행한 경우 — systemd 등록 여부 검사
+    if systemctl --user is-active aidh.service >/dev/null 2>&1; then
+      echo "[WARN] systemd (--user) 가 aidh.service 를 이미 관리 중"
+      echo "       boot.sh 직접 호출 대신:"
+      echo "         systemctl --user restart aidh.service"
+      echo "       강제로 직접 실행하려면: bash boot.sh --force"
+      exit 1
+    elif systemctl is-active aidh.service >/dev/null 2>&1; then
+      echo "[WARN] systemd (system) 가 aidh.service 를 이미 관리 중"
+      echo "       sudo systemctl restart aidh.service"
+      echo "       강제로: bash boot.sh --force"
+      exit 1
+    fi
+  fi
+fi
 
 echo "================================================================"
 echo " AI Data Hub — boot (after reboot recovery)"

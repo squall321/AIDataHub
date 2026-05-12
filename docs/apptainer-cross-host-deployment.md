@@ -269,66 +269,116 @@ apptainer --version
 
 ---
 
-## 12. 재부팅 후 복구 — 3가지 옵션
+## 12. 재부팅 후 복구 + 자동 업데이트 — systemd 권장
 
 서버가 reboot 되면 apptainer instance + uvicorn 모두 사라집니다. **데이터는
 보존되므로** (data dir 에 그대로) 서비스만 다시 띄우면 끝.
 
-### 옵션 A — 수동 (가장 단순)
+### 권장 셋업 — systemd 한 번 등록 + update.sh 자동화
 
-재부팅 후 한 줄:
+**한 번만** (운영 시작 시):
 ```bash
-cd ~/Projects/AIDataHub
-bash deploy/apptainer/boot.sh
+# 1. systemd unit 등록 (사용자 모드, sudo 불필요)
+bash deploy/systemd/install-systemd.sh
+
+# 2. 부팅 시 자동 기동 활성화 (사용자 모드 한정)
+sudo loginctl enable-linger $(whoami)
 ```
 
-`boot.sh` 가 자동으로:
-1. stale `.pid` 파일 정리
-2. orphan apptainer state JSON 제거
-3. 포트 충돌 검사
-4. `start_postgres.sh` + `start_api.sh` 순차 실행
-5. `curl /api/system/health` 200 확인
+설치 후 효과:
+- 부팅 → 자동으로 postgres + API 기동
+- 서비스 죽으면 systemd 가 자동 재시작 시도
+- `journalctl --user -u aidh.service -f` 로 통합 로그
 
-### 옵션 B — systemd (자동, 권장)
+### 일상 운영 (update / restart)
+
+**코드 업데이트** (가장 자주 쓰는 명령):
+```bash
+bash update.sh
+```
+자동으로:
+1. systemd 가 aidh.service 를 멈춤 (감지 자동)
+2. postgres 만 임시 기동 (alembic 위해)
+3. `git pull` → `pip install` → `alembic upgrade head`
+4. systemd 가 aidh.service 다시 기동
+5. `/api/system/health` 200 확인까지
+
+**수동 재시작** (`.env` 만 바꿨을 때):
+```bash
+systemctl --user restart aidh.service
+```
+
+**수동 정지**:
+```bash
+systemctl --user stop aidh.service
+```
+
+### 대안 — systemd 못/안 쓸 때
+
+| 옵션 | 자동 기동 | 자동 재시작 | sudo |
+|------|---------|----------|------|
+| **A. systemd** (권장) | ✓ | ✓ | △ |
+| B. crontab @reboot | ✓ (부팅 시 1회) | ✗ | ✗ |
+| C. boot.sh 수동 | ✗ | ✗ | ✗ |
+
+대안 명령:
+```bash
+bash deploy/apptainer/install-crontab.sh   # 옵션 B
+bash deploy/apptainer/boot.sh              # 옵션 C (수동 재기동)
+```
+
+### `update.sh` 의 자동 분기 로직
+
+내부적으로 systemd 등록 여부 자동 감지:
+```bash
+SYSMODE="none"
+systemctl --user is-enabled aidh.service && SYSMODE="user"
+systemctl is-enabled aidh.service          && SYSMODE="system"
+```
+
+| 감지 | stop 방법 | start 방법 |
+|-----|---------|----------|
+| `user` | `systemctl --user stop aidh.service` | `systemctl --user start aidh.service` |
+| `system` | `sudo systemctl stop aidh.service` | `sudo systemctl start aidh.service` |
+| `none` | `bash deploy/apptainer/stop.sh` | `bash deploy/apptainer/boot.sh` |
+
+→ systemd 가 등록돼 있으면 `update.sh` 가 알아서 그 경로 사용. 사용자는 명령
+하나로 stop → update → start → health verify 가 일관되게 됨.
+
+### 안전 장치
+
+`update.sh` 는 다음을 자동 처리:
+- **잠금 (`/tmp/aidh-update.lock`)** — 동시 update 방지. 강제 해제: `--force-unlock`
+- **health verify (15초 timeout)** — 시작 후 응답 안 오면 명시 실패 + 로그 위치 안내
+- **rollback hint** — 실패 시 `git reset --hard <BEFORE>` 명령 출력
+- **lockfile cleanup** — trap 으로 비정상 종료에도 잠금 해제
+
+### `boot.sh` 와 systemd 의 관계
+
+`boot.sh` 가 systemd 등록 상태를 감지하면 직접 호출 차단 (이중 기동 방지):
+```bash
+$ bash deploy/apptainer/boot.sh
+[WARN] systemd (--user) 가 aidh.service 를 이미 관리 중
+       boot.sh 직접 호출 대신:
+         systemctl --user restart aidh.service
+       강제로 직접 실행하려면: bash boot.sh --force
+```
+→ 운영자가 실수로 systemd + boot.sh 두 번 띄우는 사고 방지.
+
+---
+
+### 한 줄 정리
+
+**처음 셋업 시 systemd 한 번 등록, 이후 update.sh 한 줄로 모든 자동화.**
 
 ```bash
-bash deploy/systemd/install-systemd.sh             # 사용자 모드 (sudo 불필요)
-# 또는
-sudo bash deploy/systemd/install-systemd.sh --system  # 시스템 모드
+# 처음 (한 번만)
+bash deploy/systemd/install-systemd.sh
+sudo loginctl enable-linger $(whoami)
+
+# 이후 매번
+bash update.sh
 ```
-
-설치 후:
-- 부팅 시 자동 기동 (사용자 모드는 `loginctl enable-linger <user>` 추가 필요)
-- `systemctl --user restart aidh.service` 로 수동 제어
-- `journalctl --user -u aidh.service -f` 로 로그
-
-제거:
-```bash
-bash deploy/systemd/install-systemd.sh --uninstall
-```
-
-### 옵션 C — crontab @reboot (가장 가벼움)
-
-systemd 가 부담스러우면:
-```bash
-bash deploy/apptainer/install-crontab.sh
-```
-crontab 에 다음 한 줄 추가됨:
-```
-@reboot sleep 20 && /bin/bash /path/to/AIDataHub/deploy/apptainer/boot.sh > .../logs/cron-boot.log 2>&1   # aidh
-```
-
-차이:
-| 옵션 | 자동 기동 | 헬스 모니터링 | 자동 재시작 | sudo 필요 |
-|------|----------|------------|----------|-----------|
-| A. boot.sh | ❌ 수동 | ✓ (수동 실행 시) | ❌ | ❌ |
-| B. systemd | ✓ | ✓ | ✓ (Restart=on-failure 추가 가능) | △ (시스템 모드만) |
-| C. crontab | ✓ (부팅 시 1회) | ❌ | ❌ | ❌ |
-
-권장:
-- 일반 운영 → **B (systemd 사용자 모드)**
-- 임시 / 개인 → C 또는 A
-- 사내 강제 / 보안 정책상 sudo 안 됨 → C
 
 ---
 
