@@ -422,31 +422,50 @@ phase 6 "API 서버 기동 (venv + alembic + uvicorn)"
 
 cd "$ROOT_DIR/api_server"
 
-# venv
-if [[ ! -d .venv ]]; then
-  info "venv 생성"
-  [[ $DRY -eq 0 ]] && python3 -m venv .venv
-fi
-[[ $DRY -eq 0 ]] && source .venv/bin/activate
+# Ubuntu 24.04: ``python`` 미존재, ``python3`` 만 있음. venv 안 .venv/bin/python
+# 직접 호출 (PATH/activate 의존 X — 더 견고).
+PYBIN_HOST="python3"
+if command -v python3.12 >/dev/null 2>&1; then PYBIN_HOST="python3.12"; fi
 
-# pip install
+# venv 생성 (없을 때만)
+if [[ ! -d .venv ]]; then
+  info "venv 생성 ($PYBIN_HOST)"
+  if [[ $DRY -eq 0 ]]; then
+    if ! "$PYBIN_HOST" -m venv .venv 2>&1; then
+      fail "venv 생성 실패"
+      hint "Ubuntu 24.04: sudo apt install -y python3.12-venv"
+      exit 1
+    fi
+  fi
+fi
+
+VENV_PY="$ROOT_DIR/api_server/.venv/bin/python"
+if [[ $DRY -eq 0 && ! -x "$VENV_PY" ]]; then
+  fail ".venv/bin/python 없음 — venv 손상. .venv 삭제 후 재시도:"
+  hint "rm -rf $ROOT_DIR/api_server/.venv && bash repair.sh"
+  exit 1
+fi
+
+# pip install — venv 의 python 직접 호출 (PATH 의존 X)
 info "pip install -r requirements.txt"
 if [[ $DRY -eq 0 ]]; then
-  python -m pip install --upgrade pip > "$LOG_DIR/repair-pip.log" 2>&1
-  if ! python -m pip install -r requirements.txt >> "$LOG_DIR/repair-pip.log" 2>&1; then
+  "$VENV_PY" -m pip install --upgrade pip > "$LOG_DIR/repair-pip.log" 2>&1
+  if ! "$VENV_PY" -m pip install -r requirements.txt >> "$LOG_DIR/repair-pip.log" 2>&1; then
     fail "pip install 실패"
     hint "로그: tail -30 $LOG_DIR/repair-pip.log"
     hint "프록시: cat $APPT_DIR/.env | grep PROXY"
+    hint "또는 수동 실행 (verbose):"
+    hint "  cd api_server && .venv/bin/python -m pip install -v -r requirements.txt"
     exit 1
   fi
 
   # embedder 패키지
   case "${EMBEDDING_PROVIDER:-hash}" in
     e5_*|sentence_transformers|st|sbert)
-      python -m pip install "sentence-transformers>=3.0" >> "$LOG_DIR/repair-pip.log" 2>&1 || warn "sentence-transformers 설치 실패"
+      "$VENV_PY" -m pip install "sentence-transformers>=3.0" >> "$LOG_DIR/repair-pip.log" 2>&1 || warn "sentence-transformers 설치 실패"
       ;;
     openai)
-      python -m pip install "openai>=1.0" >> "$LOG_DIR/repair-pip.log" 2>&1 || warn "openai 설치 실패"
+      "$VENV_PY" -m pip install "openai>=1.0" >> "$LOG_DIR/repair-pip.log" 2>&1 || warn "openai 설치 실패"
       ;;
   esac
 fi
@@ -461,9 +480,15 @@ esac
 export PYTHONPATH="$ROOT_DIR/api_server/src"
 export POSTGRES_USER POSTGRES_PASSWORD POSTGRES_PORT POSTGRES_DB
 
+VENV_ALEMBIC="$ROOT_DIR/api_server/.venv/bin/alembic"
 info "alembic upgrade head (EMBEDDING_DIM=$EMBEDDING_DIM)"
 if [[ $DRY -eq 0 ]]; then
-  if ! alembic upgrade head > "$LOG_DIR/repair-alembic.log" 2>&1; then
+  if [[ ! -x "$VENV_ALEMBIC" ]]; then
+    fail ".venv/bin/alembic 없음 — requirements.txt 에 alembic 누락 또는 pip install 부분 실패"
+    hint "수동: cd api_server && .venv/bin/pip install alembic"
+    exit 1
+  fi
+  if ! "$VENV_ALEMBIC" upgrade head > "$LOG_DIR/repair-alembic.log" 2>&1; then
     fail "alembic 실패"
     hint "로그: tail -30 $LOG_DIR/repair-alembic.log"
     # 흔한 원인: DB 존재하는데 alembic_version 만 빠짐
@@ -471,7 +496,7 @@ if [[ $DRY -eq 0 ]]; then
       warn "→ 테이블 충돌 — 데이터 초기화 필요"
       if [[ $KEEP_DATA -eq 0 ]] && ([[ $AUTO -eq 1 ]] || confirm); then
         bash "$APPT_DIR/reset-db.sh" 2>&1 | tail -10 || true
-        alembic upgrade head > "$LOG_DIR/repair-alembic.log" 2>&1 || { fail "재시도도 실패"; exit 1; }
+        "$VENV_ALEMBIC" upgrade head > "$LOG_DIR/repair-alembic.log" 2>&1 || { fail "재시도도 실패"; exit 1; }
       else
         exit 1
       fi
