@@ -1,0 +1,39 @@
+# AI Data Hub — systemd user unit template.
+# install-systemd.sh 가 다음 토큰을 치환:
+#   __USER__       : 실행 사용자명 (id -un)
+#   __PROJECT__    : AIDataHub 절대 경로 (/home/USER/Projects/AIDataHub)
+#
+# 활성화 (사용자 모드):
+#   loginctl enable-linger __USER__              # 부팅 후 로그인 없이도 동작
+#   systemctl --user enable --now aidh.service
+#
+# 시스템 모드 (sudo 필요):
+#   sudo install -m 644 aidh.service /etc/systemd/system/
+#   sudo systemctl enable --now aidh.service
+#
+# 사용자 모드 vs 시스템 모드:
+#   - 사용자 모드: rootless apptainer 와 잘 맞음 (권장)
+#   - 시스템 모드: 부팅 즉시 동작, 단 User= 명시 + linger 무관
+[Unit]
+Description=AI Data Hub (Postgres + API)
+Documentation=https://github.com/squall321/AIDataHub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=__PROJECT__
+# boot.sh 가 postgres + API 둘 다 기동 + 헬스체크
+ExecStart=/bin/bash __PROJECT__/deploy/apptainer/boot.sh
+ExecStop=/bin/bash __PROJECT__/deploy/apptainer/stop.sh
+TimeoutStartSec=300
+TimeoutStopSec=60
+# 시스템 모드일 때만 효과 (사용자 모드는 자동으로 본인)
+User=__USER__
+# 사내 SSL 인증서 등 환경변수가 필요하면 여기 추가:
+# Environment="HTTPS_PROXY=http://168.219.61.252:8080"
+# Environment="HTTP_PROXY=http://168.219.61.252:8080"
+
+[Install]
+WantedBy=default.target

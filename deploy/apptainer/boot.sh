@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# AI Data Hub — 재부팅 후 한 줄 복구 스크립트.
+#
+# 서버가 reboot 되면 apptainer instance + uvicorn 둘 다 사라진다.
+# 데이터는 보존돼 있으므로 이 스크립트만 실행하면 같은 상태로 복구.
+#
+# start_postgres.sh + start_api.sh 와 다른 점:
+#   - 재부팅 후 남아있는 stale .pid / orphan state 자동 정리
+#   - port 점유 검사 (혹시 다른 서비스가 점유했다면 명시 에러)
+#   - 검증 단계 포함 (curl health 200 확인)
+#
+# 사용:
+#   bash deploy/apptainer/boot.sh
+#   bash deploy/apptainer/boot.sh --skip-api   # postgres만 (디버깅용)
+set -euo pipefail
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
+load_env
+
+SKIP_API=0
+[ "${1:-}" = "--skip-api" ] && SKIP_API=1
+
+echo "================================================================"
+echo " AI Data Hub — boot (after reboot recovery)"
+echo " $(date '+%F %T %Z')"
+echo "================================================================"
+
+# ── 1. stale 정리 ────────────────────────────────────────────────
+echo "[1/4] stale pid / orphan state 정리"
+
+# 1a. API pid file — 프로세스 없으면 그냥 파일만 지움
+if [[ -f "$LOG_DIR/api.pid" ]]; then
+  PID=$(cat "$LOG_DIR/api.pid" 2>/dev/null || echo "")
+  if [[ -n "$PID" ]] && ! kill -0 "$PID" 2>/dev/null; then
+    rm -f "$LOG_DIR/api.pid"
+    echo "  · stale api.pid ($PID) 제거"
+  fi
+fi
+
+# 1b. apptainer instance state — 재부팅 후 .json 만 남아있을 수 있음
+APPT_STATE="$HOME/.apptainer/instances"
+if [[ -d "$APPT_STATE" ]]; then
+  # 인스턴스가 list 에는 없는데 state json 만 남은 경우 정리
+  if ! apptainer instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx "$INST_POSTGRES"; then
+    ORPHAN=$(find "$APPT_STATE" -name "${INST_POSTGRES}.json" 2>/dev/null | head -3)
+    if [[ -n "$ORPHAN" ]]; then
+      for f in $ORPHAN; do
+        rm -f "$f" 2>/dev/null && echo "  · orphan state 제거: $f"
+      done
+    fi
+  fi
+fi
+
+echo "  ✓ 정리 완료"
+
+# ── 2. 포트 검사 ──────────────────────────────────────────────────
+echo "[2/4] 포트 가용성 확인"
+for p in "$POSTGRES_PORT" "$API_PORT"; do
+  if ss -tnl 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${p}\$"; then
+    PROC=$(ss -tlnp 2>/dev/null | grep -E "[:.]${p}\$" | head -1)
+    echo "  ✗ port $p 이미 사용 중:"
+    echo "      $PROC"
+    echo
+    echo "    재부팅 전에 다른 서비스가 같은 포트를 잡았을 수 있습니다."
+    echo "    lsof -i :${p}    # 점유자 확인"
+    echo "    또는 .env 의 PORT 변경 후 다시 실행"
+    exit 1
+  fi
+done
+echo "  ✓ port $POSTGRES_PORT / $API_PORT 가용"
+
+# ── 3. postgres 기동 ──────────────────────────────────────────────
+echo "[3/4] postgres 기동"
+bash "$APPT_DIR/start_postgres.sh"
+
+# ── 4. API 기동 + 검증 ────────────────────────────────────────────
+if [[ $SKIP_API -eq 1 ]]; then
+  echo "[4/4] --skip-api 지정 — API 건너뜀"
+  echo
+  echo "✓ boot 완료 (postgres 만)"
+  exit 0
+fi
+
+echo "[4/4] API 기동"
+bash "$APPT_DIR/start_api.sh"
+
+# 헬스체크 대기
+echo "  · API health 대기 (10초)..."
+OK=0
+for i in $(seq 1 10); do
+  if curl -s --max-time 2 "http://127.0.0.1:${API_PORT}/api/system/health" >/dev/null 2>&1; then
+    echo "  ✓ api health 200 OK (${i}s)"
+    OK=1; break
+  fi
+  sleep 1
+done
+
+if [[ $OK -eq 0 ]]; then
+  echo "  ✗ API 응답 없음 (10초 timeout)"
+  echo "    로그: tail -30 $LOG_DIR/api.log"
+  echo "    또는 bash deploy/apptainer/diag.sh --tail-logs"
+  exit 1
+fi
+
+# ── 최종 ────────────────────────────────────────────────────────
+echo
+HOST_IP=$(grep '^HOST_IP=' "$APPT_DIR/.env" 2>/dev/null | cut -d= -f2 || echo "127.0.0.1")
+echo "================================================================"
+echo "✓ boot 완료 — 정상 동작 중"
+echo "================================================================"
+echo "  Dashboard:  http://${HOST_IP}:${API_PORT}/dashboard/"
+echo "  API:        http://${HOST_IP}:${API_PORT}/api/system/health"
+echo "  MCP:        http://${HOST_IP}:${API_PORT}/mcp/"
+echo
+echo "상태 확인:  bash deploy/apptainer/status.sh"

@@ -269,6 +269,69 @@ apptainer --version
 
 ---
 
+## 12. 재부팅 후 복구 — 3가지 옵션
+
+서버가 reboot 되면 apptainer instance + uvicorn 모두 사라집니다. **데이터는
+보존되므로** (data dir 에 그대로) 서비스만 다시 띄우면 끝.
+
+### 옵션 A — 수동 (가장 단순)
+
+재부팅 후 한 줄:
+```bash
+cd ~/Projects/AIDataHub
+bash deploy/apptainer/boot.sh
+```
+
+`boot.sh` 가 자동으로:
+1. stale `.pid` 파일 정리
+2. orphan apptainer state JSON 제거
+3. 포트 충돌 검사
+4. `start_postgres.sh` + `start_api.sh` 순차 실행
+5. `curl /api/system/health` 200 확인
+
+### 옵션 B — systemd (자동, 권장)
+
+```bash
+bash deploy/systemd/install-systemd.sh             # 사용자 모드 (sudo 불필요)
+# 또는
+sudo bash deploy/systemd/install-systemd.sh --system  # 시스템 모드
+```
+
+설치 후:
+- 부팅 시 자동 기동 (사용자 모드는 `loginctl enable-linger <user>` 추가 필요)
+- `systemctl --user restart aidh.service` 로 수동 제어
+- `journalctl --user -u aidh.service -f` 로 로그
+
+제거:
+```bash
+bash deploy/systemd/install-systemd.sh --uninstall
+```
+
+### 옵션 C — crontab @reboot (가장 가벼움)
+
+systemd 가 부담스러우면:
+```bash
+bash deploy/apptainer/install-crontab.sh
+```
+crontab 에 다음 한 줄 추가됨:
+```
+@reboot sleep 20 && /bin/bash /path/to/AIDataHub/deploy/apptainer/boot.sh > .../logs/cron-boot.log 2>&1   # aidh
+```
+
+차이:
+| 옵션 | 자동 기동 | 헬스 모니터링 | 자동 재시작 | sudo 필요 |
+|------|----------|------------|----------|-----------|
+| A. boot.sh | ❌ 수동 | ✓ (수동 실행 시) | ❌ | ❌ |
+| B. systemd | ✓ | ✓ | ✓ (Restart=on-failure 추가 가능) | △ (시스템 모드만) |
+| C. crontab | ✓ (부팅 시 1회) | ❌ | ❌ | ❌ |
+
+권장:
+- 일반 운영 → **B (systemd 사용자 모드)**
+- 임시 / 개인 → C 또는 A
+- 사내 강제 / 보안 정책상 sudo 안 됨 → C
+
+---
+
 ## 운영 체크리스트 — 새 서버 셋업 시
 
 순서대로 진행:
