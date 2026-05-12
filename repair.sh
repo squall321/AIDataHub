@@ -427,23 +427,35 @@ cd "$ROOT_DIR/api_server"
 PYBIN_HOST="python3"
 if command -v python3.12 >/dev/null 2>&1; then PYBIN_HOST="python3.12"; fi
 
-# venv 생성 (없을 때만)
-if [[ ! -d .venv ]]; then
-  info "venv 생성 ($PYBIN_HOST)"
-  if [[ $DRY -eq 0 ]]; then
-    if ! "$PYBIN_HOST" -m venv .venv 2>&1; then
+# venv 무결성 검증 — shebang 의 python 이 실제 실행 가능한지까지 체크.
+# "cannot execute required file: not found" 케이스 (다른 경로에서 만들어져 옮겨진 venv).
+VENV_PY="$ROOT_DIR/api_server/.venv/bin/python"
+venv_healthy() {
+  [[ -x "$VENV_PY" ]] || return 1
+  "$VENV_PY" --version >/dev/null 2>&1 || return 1
+  "$VENV_PY" -m pip --version >/dev/null 2>&1 || return 1
+  return 0
+}
+
+if [[ $DRY -eq 0 ]]; then
+  if [[ -d .venv ]] && ! venv_healthy; then
+    warn "기존 .venv 손상 감지 (shebang python 실행 실패) — 재생성"
+    rm -rf .venv
+  fi
+  if [[ ! -d .venv ]]; then
+    info "venv 생성 ($PYBIN_HOST)"
+    if ! "$PYBIN_HOST" -m venv .venv; then
       fail "venv 생성 실패"
       hint "Ubuntu 24.04: sudo apt install -y python3.12-venv"
       exit 1
     fi
   fi
-fi
-
-VENV_PY="$ROOT_DIR/api_server/.venv/bin/python"
-if [[ $DRY -eq 0 && ! -x "$VENV_PY" ]]; then
-  fail ".venv/bin/python 없음 — venv 손상. .venv 삭제 후 재시도:"
-  hint "rm -rf $ROOT_DIR/api_server/.venv && bash repair.sh"
-  exit 1
+  if ! venv_healthy; then
+    fail ".venv 생성됐는데 정상 동작 안 함 — 환경 문제"
+    hint "$PYBIN_HOST 가 진짜 python3 인지 확인: $($PYBIN_HOST --version)"
+    hint "python3-venv 패키지 설치됐는지: dpkg -l | grep python3.*venv"
+    exit 1
+  fi
 fi
 
 # pip install — venv 의 python 직접 호출 (PATH 의존 X)
