@@ -13,6 +13,23 @@ API_DIR="$ROOT_DIR/api_server"
 DATA_DIR="$APPT_DIR/data"
 LOG_DIR="$APPT_DIR/logs"
 
+# ── 호스트 IP 자동 감지 ──────────────────────────────────────────────────
+# HOST_IP placeholder 치환에 사용 (install.sh 또는 .env 수정 시).
+# 1순위: ifconfig.me (인터넷 가능 시 — public IP)
+# 2순위: hostname -I 첫 번째 (사내망 / LAN IP)
+# 3순위: 127.0.0.1
+detect_host_ip() {
+  local ip
+  ip=$(timeout 3 curl -s ifconfig.me 2>/dev/null || true)
+  if [[ -z "$ip" || ! "$ip" =~ ^[0-9.]+$ ]]; then
+    ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+  fi
+  if [[ -z "$ip" || ! "$ip" =~ ^[0-9.]+$ ]]; then
+    ip="127.0.0.1"
+  fi
+  echo "$ip"
+}
+
 # ── .env 로드 ────────────────────────────────────────────────────────────
 load_env() {
   local env_file="$APPT_DIR/.env"
@@ -29,13 +46,58 @@ load_env() {
   # shellcheck disable=SC1090
   . "$env_file"
   set +a
+
+  # v0.14 — INST_PREFIX 도입: 같은 서버에 여러 AIDH 인스턴스 공존 가능.
+  # .env 의 ``APP_NAME`` (예: aidh, app2) 가 instance 이름 prefix 결정.
+  # ``INST_POSTGRES`` 가 .env 에 명시돼 있으면 그것 우선 (하위 호환).
+  : "${APP_NAME:=aidh}"
+  INST_PREFIX="$APP_NAME"
+  if [[ -z "${INST_POSTGRES:-}" ]]; then
+    INST_POSTGRES="${INST_PREFIX}_postgres"
+  fi
+  export APP_NAME INST_PREFIX INST_POSTGRES
 }
 
+# ── 사내 표준 프록시 (하드코딩 폴백) ─────────────────────────────────────
+# .env 의 HTTPS_PROXY / BUILD_PROXY 가 모두 비어 있을 때 이 값이 적용된다.
+# 외부 환경(사내망 밖)에서 셋업할 때는 .env 에 ``BUILD_PROXY_HTTPS=off`` 로
+# 명시적 opt-out 가능.
+DEFAULT_FALLBACK_PROXY="http://168.219.61.252:8080"
+
 # ── 프록시 export (소문자/대문자 양쪽, no_proxy 에 localhost/127.0.0.1 자동 포함) ──
+# v0.13.0 — 우선순위 (위에서 아래로):
+#   1) HTTPS_PROXY/HTTP_PROXY    (사용자가 .env 에서 명시)
+#   2) BUILD_PROXY_HTTPS/HTTP    (사용자가 .env 에서 명시)
+#   3) DEFAULT_FALLBACK_PROXY    (위 사내 표준 — 둘 다 비어 있을 때)
+# 어떤 단계에서든 결과 프록시가 정해지면 pip / npm / huggingface / apptainer
+# 모두 동일 프록시 환경변수를 본다 (안쪽 도구에 자동 전파).
+# Opt-out: .env 에 ``BUILD_PROXY_HTTPS=off`` 설정 시 fallback 비활성.
 export_proxy() {
   local hp="${HTTPS_PROXY:-${https_proxy:-}}"
   local hpp="${HTTP_PROXY:-${http_proxy:-}}"
   local np="${NO_PROXY:-${no_proxy:-}}"
+
+  # 2) BUILD_PROXY 폴오버.
+  if [[ -z "$hp" && -n "${BUILD_PROXY_HTTPS:-}" && "${BUILD_PROXY_HTTPS:-}" != "off" ]]; then
+    hp="$BUILD_PROXY_HTTPS"
+  fi
+  if [[ -z "$hpp" ]]; then
+    local cand="${BUILD_PROXY_HTTP:-${BUILD_PROXY_HTTPS:-}}"
+    if [[ -n "$cand" && "$cand" != "off" ]]; then
+      hpp="$cand"
+    fi
+  fi
+
+  # 3) 하드코딩 사내 표준 폴백 — opt-out 은 BUILD_PROXY_HTTPS=off.
+  if [[ "${BUILD_PROXY_HTTPS:-}" != "off" ]]; then
+    if [[ -z "$hp" ]]; then
+      hp="$DEFAULT_FALLBACK_PROXY"
+      echo "[INFO] HTTPS_PROXY 미설정 — DEFAULT_FALLBACK_PROXY 적용 ($DEFAULT_FALLBACK_PROXY)"
+    fi
+    if [[ -z "$hpp" ]]; then
+      hpp="$DEFAULT_FALLBACK_PROXY"
+    fi
+  fi
 
   # localhost / 127.0.0.1 은 항상 프록시 우회
   local extra="localhost,127.0.0.1,::1"
