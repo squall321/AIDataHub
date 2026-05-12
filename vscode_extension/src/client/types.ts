@@ -230,6 +230,23 @@ export interface FullRecord {
 // Agents CRUD — /api/agents
 // Mirrors api_server's AgentOut / AgentIn / AgentPatch pydantic schemas.
 // ---------------------------------------------------------------------------
+// v0.13.0 — RAG recipe (Migration 0014).
+// agent 을 단순 라우팅 태그가 아니라 검색·응답 레시피로 격상한다.
+// 키 누락 시 서버는 빈 dict / null 로 받아 generic 폴백을 적용한다.
+export interface AgentRetrievalConfigT {
+  top_k?: number;
+  score_threshold?: number;       // 0.0~1.0
+  data_type_filter?: string[];    // subset of DOC|DATA|SIM|CAD|LOG|FORM|OTHER
+  tag_boost?: Record<string, number>;
+}
+
+export interface AgentResponseConfigT {
+  max_tokens?: number;
+  citation_required?: boolean;
+  refusal_message?: string;
+  refuse_below_score?: number;    // 0.0~1.0; below → refuse with refusal_message
+}
+
 export interface AgentOutT {
   agent_type: string;             // PK
   name: string;
@@ -240,6 +257,14 @@ export interface AgentOutT {
   required_doc_type: string | null;
   required_tags: string[];
   excluded_tags: string[];
+  // v0.13.0 — RAG recipe fields (Migration 0014)
+  retrieval_config: AgentRetrievalConfigT;
+  system_prompt: string | null;
+  response_config: AgentResponseConfigT;
+  sample_queries: string[];
+  // v0.13.0 — Sample-embedding routing index status (Migration 0016)
+  samples_indexed_count?: number;
+  samples_stale?: boolean;
   created_at: string | null;      // ISO datetime
 }
 
@@ -252,6 +277,10 @@ export interface AgentInT {
   required_doc_type?: string | null;
   required_tags?: string[];
   excluded_tags?: string[];
+  retrieval_config?: AgentRetrievalConfigT;
+  system_prompt?: string | null;
+  response_config?: AgentResponseConfigT;
+  sample_queries?: string[];
 }
 
 export interface AgentPatchT {
@@ -262,6 +291,56 @@ export interface AgentPatchT {
   required_doc_type?: string | null;
   required_tags?: string[];
   excluded_tags?: string[];
+  retrieval_config?: AgentRetrievalConfigT | null;
+  system_prompt?: string | null;
+  response_config?: AgentResponseConfigT | null;
+  sample_queries?: string[] | null;
+}
+
+// v0.13.0 — Agent history (Migration 0015). append-only audit log.
+export interface AgentHistoryOutT {
+  id: number;
+  agent_type: string;
+  operation: 'create' | 'update' | 'delete';
+  snapshot: Record<string, unknown>;
+  changed_by: string | null;
+  changed_at: string | null;
+}
+
+// v0.13.0 — Agent preview (Migration 0014). 저장 전 dry-run.
+export interface AgentPreviewInT {
+  query: string;
+  agent_type?: string | null;
+  retrieval_config?: AgentRetrievalConfigT;
+  system_prompt?: string | null;
+  response_config?: AgentResponseConfigT;
+}
+
+export interface AgentPreviewHitT {
+  record_id: string;
+  section_id: string;
+  section_title: string;
+  snippet: string;
+  score: number;
+}
+
+export interface AgentPreviewOutT {
+  query: string;
+  hits: AgentPreviewHitT[];
+  hits_above_threshold: number;
+  threshold: number | null;
+  refused: boolean;
+  refusal_message: string | null;
+  answer: string | null;
+  llm_used: boolean;
+  llm_note: string | null;
+}
+
+// v0.13.0 — Agent sample embeddings resync (Migration 0016).
+export interface AgentSamplesResyncOutT {
+  agent_type: string;
+  indexed_count: number;
+  sample_queries: string[];
 }
 
 // ---------------------------------------------------------------------------

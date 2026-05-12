@@ -15,12 +15,78 @@ from .database import engine
 from .routes import register_routers
 
 
+try:
+    from .mcp_runtime import app as _mcp_app
+    _MCP_AVAILABLE = True
+except Exception:  # pragma: no cover
+    _mcp_app = None
+    _MCP_AVAILABLE = False
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 시작 시: DB 연결 확인 (선택)
-    yield
-    # 종료 시: 엔진 dispose
+    # v0.13.0 — EMBEDDING_DIM 환경변수와 실제 vector 컬럼 차원 일치 검증.
+    # 불일치 시 sample_embedding sync 가 런타임에 실패하므로 부팅 단계에서 경고.
+    await _check_embedding_dim_consistency()
+
+    # MCP streamable_http_app 은 자체 lifespan(task group)이 있어야 동작한다.
+    # FastAPI 의 mount() 는 sub-app 의 lifespan 을 자동 전파하지 않으므로,
+    # 우리 lifespan 에서 명시적으로 enter / exit 한다.
+    if _MCP_AVAILABLE and _mcp_app is not None:
+        async with _mcp_app.router.lifespan_context(_mcp_app):
+            yield
+    else:
+        yield
     await engine.dispose()
+
+
+async def _check_embedding_dim_consistency() -> None:
+    """``EMBEDDING_DIM`` 과 record_sections / agent_sample_embeddings 의 실제
+    vector 컬럼 차원이 일치하는지 검증. 불일치 시 로그 경고 (부팅은 계속).
+
+    PG 가 아닌 환경(SQLite test) 에서는 vector 가 JSON 으로 폴백되므로 skip.
+    """
+    import logging
+    import os as _os
+
+    log = logging.getLogger("api.main")
+    expected = int(_os.environ.get("EMBEDDING_DIM", "384"))
+    try:
+        async with engine.connect() as conn:
+            # PG only — SQLite 는 column type 이 JSON.
+            dialect = conn.dialect.name if conn.dialect else ""
+            if dialect != "postgresql":
+                return
+            from sqlalchemy import text as _text
+
+            stmt = _text(
+                "SELECT table_name, atttypmod "
+                "FROM pg_attribute "
+                "JOIN pg_class ON pg_class.oid = pg_attribute.attrelid "
+                "JOIN information_schema.columns "
+                "  ON columns.table_name = pg_class.relname "
+                "  AND columns.column_name = pg_attribute.attname "
+                "WHERE pg_class.relname IN ('record_sections','agent_sample_embeddings') "
+                "  AND pg_attribute.attname = 'embedding'"
+            )
+            rows = (await conn.execute(stmt)).all()
+            mismatches: list[str] = []
+            for row in rows:
+                # pgvector 의 atttypmod 는 (dim) 그대로 저장됨.
+                actual = int(row.atttypmod) if row.atttypmod and row.atttypmod > 0 else None
+                if actual is not None and actual != expected:
+                    mismatches.append(
+                        f"{row.table_name}.embedding=vector({actual}) but EMBEDDING_DIM={expected}"
+                    )
+            if mismatches:
+                log.warning(
+                    "EMBEDDING_DIM mismatch — embedding writes will fail at runtime: %s",
+                    "; ".join(mismatches),
+                )
+            else:
+                log.info("EMBEDDING_DIM consistency check OK (dim=%s)", expected)
+    except Exception as exc:  # pragma: no cover — best-effort check
+        log.info("EMBEDDING_DIM consistency check skipped (%s)", exc)
 
 
 app = FastAPI(
@@ -56,6 +122,14 @@ if DASHBOARD_DIR.exists():
         StaticFiles(directory=str(DASHBOARD_DIR), html=True),
         name="dashboard",
     )
+
+# ---------------------------------------------------------------------------
+# /mcp — MCP (Model Context Protocol) Streamable HTTP server (mcp-http-server).
+# Cline / Claude Desktop / Claude Code 등 MCP 클라이언트가 우리 도구를 자동 발견.
+# lifespan 은 위의 통합 lifespan() 에서 처리한다.
+# ---------------------------------------------------------------------------
+if _MCP_AVAILABLE and _mcp_app is not None:
+    app.mount("/mcp", _mcp_app, name="mcp")
 
 
 @app.get("/", tags=["system"])

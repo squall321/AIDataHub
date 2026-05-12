@@ -45,6 +45,12 @@ from .base import Base
 # ``TEXT`` DDL 을 발급하고, bind/result processor 가 ``"[v1, v2, ...]"``
 # 형태로 직렬화한다.
 # ---------------------------------------------------------------------------
+import os as _os
+
+# Migration 0013 이후 EMBEDDING_DIM 환경변수로 외부화. 기본 384 (e5_small 호환).
+# e5_base 사용 시 EMBEDDING_DIM=768 + alembic 0013 의 vector(768) 컬럼을 동반.
+_EMBEDDING_DIM = int(_os.environ.get("EMBEDDING_DIM", "384"))
+
 try:
     from pgvector.sqlalchemy import Vector as _Vector  # type: ignore[import-not-found]
 
@@ -293,7 +299,7 @@ class RecordSection(Base):
     # pgvector 미설치 환경: JSON 컬럼 폴백 (list[float] 직렬화).
     if _VECTOR_AVAILABLE:
         embedding: Mapped[list[float] | None] = mapped_column(
-            _Vector(384), nullable=True
+            _Vector(_EMBEDDING_DIM), nullable=True
         )
     else:  # pragma: no cover — pgvector 패키지 없음
         embedding: Mapped[list[float] | None] = mapped_column(
@@ -340,6 +346,23 @@ class Agent(Base):
         ARRAY(Text), nullable=False, server_default="{}"
     )
     excluded_tags: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default="{}"
+    )
+    # ---- RAG recipe (Migration 0014) ------------------------------------
+    # agent 을 단순 라우팅 태그가 아니라 "검색·응답 레시피" 로 격상한다.
+    # LLM 은 agent 선택만 하고, 그 뒤 검색/응답 동작은 서버가 이 필드로 통제.
+    retrieval_config: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
+    )
+    system_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    response_config: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
+    )
+    sample_queries: Mapped[list[str]] = mapped_column(
         ARRAY(Text), nullable=False, server_default="{}"
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -390,6 +413,86 @@ class AgentRecord(Base):
         return (
             f"<AgentRecord agent={self.agent_type!r} record={self.record_id!r} "
             f"priority={self.priority}>"
+        )
+
+
+# ---------------------------------------------------------------------------
+# AgentHistory (Migration 0015) — append-only audit log of agent CRUD
+# ---------------------------------------------------------------------------
+class AgentHistory(Base):
+    """agents 테이블 변경 이력 (create / update / delete 스냅샷)."""
+
+    __tablename__ = "agents_history"
+    __table_args__ = (
+        Index(
+            "idx_agents_history_type",
+            "agent_type",
+            text("changed_at DESC"),
+        ),
+        Index(
+            "idx_agents_history_changed_at",
+            text("changed_at DESC"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        autoincrement=True,
+    )
+    agent_type: Mapped[str] = mapped_column(Text, nullable=False)
+    operation: Mapped[str] = mapped_column(String(10), nullable=False)
+    snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    changed_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    changed_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return (
+            f"<AgentHistory id={self.id} agent={self.agent_type!r} "
+            f"op={self.operation!r} at={self.changed_at}>"
+        )
+
+
+# ---------------------------------------------------------------------------
+# AgentSampleEmbedding (Migration 0016) — routing-signal vectors for
+# agents.sample_queries. Cosine-searched in recommend_svc.
+# ---------------------------------------------------------------------------
+class AgentSampleEmbedding(Base):
+    """agents.sample_queries 의 1 항목당 1 행 — 라우팅 보조 임베딩."""
+
+    __tablename__ = "agent_sample_embeddings"
+    __table_args__ = (
+        Index("idx_agent_sample_emb_agent", "agent_type"),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        autoincrement=True,
+    )
+    agent_type: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("agents.agent_type", ondelete="CASCADE"),
+        nullable=False,
+    )
+    sample_text: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list[float] | None] = mapped_column(
+        _Vector(_EMBEDDING_DIM), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return (
+            f"<AgentSampleEmbedding id={self.id} agent={self.agent_type!r} "
+            f"text={self.sample_text[:30]!r}>"
         )
 
 
@@ -571,12 +674,75 @@ class DocType(Base):
         return f"<DocType code={self.code!r} name={self.name!r}>"
 
 
+# ---------------------------------------------------------------------------
+# OrgTeam / OrgGroup (Migration 0012) — 조직 마스터 테이블.
+#
+# `records.team` / `records.group` 컬럼이 참조하는 자유입력 문자열의
+# 권위 카탈로그. records 와 직접 FK 는 걸지 않고 서비스 레이어 검증으로만
+# Strict 정책을 적용한다.
+# ---------------------------------------------------------------------------
+class OrgTeam(Base):
+    __tablename__ = "org_teams"
+
+    code: Mapped[str] = mapped_column(String(10), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("TRUE")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<OrgTeam code={self.code!r} name={self.name!r}>"
+
+
+class OrgGroup(Base):
+    __tablename__ = "org_groups"
+    __table_args__ = (
+        Index("idx_org_groups_team", "team_code"),
+    )
+
+    team_code: Mapped[str] = mapped_column(
+        String(10),
+        ForeignKey("org_teams.code", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    code: Mapped[str] = mapped_column(String(20), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("TRUE")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<OrgGroup team={self.team_code!r} code={self.code!r}>"
+
+
 __all__ = [
     "Agent",
     "AgentRecord",
     "ApiKey",
     "AuditLog",
     "DocType",
+    "OrgGroup",
+    "OrgTeam",
     "Record",
     "RecordAttachment",
     "RecordSection",

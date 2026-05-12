@@ -717,6 +717,222 @@ async function initDocsExplorer() {
 
 LOADERS["docs"] = initDocsExplorer;
 
+// ============================================================================
+// Section 5: 조직 관리 (team/group 마스터)
+// ============================================================================
+const ORG_STATE = { selectedTeam: null };
+
+async function loadOrg() {
+  await loadOrgTeams();
+}
+
+async function loadOrgTeams() {
+  const tbody = document.getElementById("org-teams-body");
+  clear(tbody);
+  setState(tbody, "loading", "로드 중...");
+  try {
+    const teams = await apiFetch("/api/org/teams?include_inactive=true");
+    clear(tbody);
+    if (teams.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="opacity:.6; padding:8px;">(team 없음)</td></tr>';
+      return;
+    }
+    for (const t of teams) {
+      const tr = el("tr", { style: t.is_active ? "" : "opacity:.5; font-style:italic;" });
+      tr.style.cursor = "pointer";
+      tr.appendChild(el("td", {}, t.code));
+      tr.appendChild(el("td", {}, t.name));
+      tr.appendChild(el("td", { style: "text-align:right;" }, String(t.group_count)));
+      tr.appendChild(el("td", { style: "text-align:right;" }, String(t.record_count)));
+      const actions = el("td", { style: "text-align:right;" });
+      const editBtn = el("button", { class: "btn ghost", "data-action": "edit" }, "수정");
+      const delBtn = el("button", { class: "btn ghost", "data-action": "delete", style: "margin-left:4px;" }, "삭제");
+      editBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openOrgModal("team-edit", t);
+      });
+      delBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        deleteOrgTeam(t.code, t.record_count, t.group_count);
+      });
+      actions.appendChild(editBtn);
+      actions.appendChild(delBtn);
+      tr.appendChild(actions);
+      tr.addEventListener("click", () => selectOrgTeam(t.code));
+      tbody.appendChild(tr);
+    }
+  } catch (err) {
+    clear(tbody);
+    showError(tbody, err);
+  }
+}
+
+async function selectOrgTeam(code) {
+  ORG_STATE.selectedTeam = code;
+  document.getElementById("org-groups-team-label").textContent = "(team=" + code + ")";
+  document.getElementById("org-group-new").disabled = false;
+  await loadOrgGroups(code);
+}
+
+async function loadOrgGroups(teamCode) {
+  const tbody = document.getElementById("org-groups-body");
+  clear(tbody);
+  setState(tbody, "loading", "로드 중...");
+  try {
+    const groups = await apiFetch("/api/org/groups?team=" + encodeURIComponent(teamCode) + "&include_inactive=true");
+    clear(tbody);
+    if (groups.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="opacity:.6; padding:8px;">(group 없음)</td></tr>';
+      return;
+    }
+    for (const g of groups) {
+      const tr = el("tr", { style: g.is_active ? "" : "opacity:.5; font-style:italic;" });
+      tr.appendChild(el("td", {}, g.code));
+      tr.appendChild(el("td", {}, g.name));
+      tr.appendChild(el("td", { style: "text-align:right;" }, String(g.record_count)));
+      const actions = el("td", { style: "text-align:right;" });
+      const editBtn = el("button", { class: "btn ghost", "data-action": "edit" }, "수정");
+      const delBtn = el("button", { class: "btn ghost", "data-action": "delete", style: "margin-left:4px;" }, "삭제");
+      editBtn.addEventListener("click", () => openOrgModal("group-edit", g));
+      delBtn.addEventListener("click", () => deleteOrgGroup(g.team_code, g.code, g.record_count));
+      actions.appendChild(editBtn);
+      actions.appendChild(delBtn);
+      tr.appendChild(actions);
+      tbody.appendChild(tr);
+    }
+  } catch (err) {
+    clear(tbody);
+    showError(tbody, err);
+  }
+}
+
+function openOrgModal(mode, data) {
+  const modal = document.getElementById("org-modal");
+  const title = document.getElementById("org-modal-title");
+  const modeEl = document.getElementById("org-modal-mode");
+  const codeEl = document.getElementById("org-modal-code");
+  const nameEl = document.getElementById("org-modal-name");
+  const descEl = document.getElementById("org-modal-description");
+  const activeEl = document.getElementById("org-modal-active");
+  const errEl = document.getElementById("org-modal-error");
+  const teamCodeEl = document.getElementById("org-modal-team-code");
+
+  errEl.style.display = "none";
+  errEl.textContent = "";
+  modeEl.value = mode;
+
+  const titles = {
+    "team-new": "신규 Team",
+    "team-edit": "Team 수정",
+    "group-new": "신규 Group (team=" + (ORG_STATE.selectedTeam || "?") + ")",
+    "group-edit": "Group 수정",
+  };
+  title.textContent = titles[mode] || "편집";
+
+  const isEdit = mode.endsWith("-edit");
+  codeEl.disabled = isEdit; // code 는 신규에서만 수정 가능
+  if (isEdit) {
+    codeEl.value = data.code || "";
+    nameEl.value = data.name || "";
+    descEl.value = data.description || "";
+    activeEl.checked = !!data.is_active;
+    teamCodeEl.value = data.team_code || "";
+  } else {
+    codeEl.value = "";
+    nameEl.value = "";
+    descEl.value = "";
+    activeEl.checked = true;
+    teamCodeEl.value = mode === "group-new" ? (ORG_STATE.selectedTeam || "") : "";
+  }
+  modal.style.display = "flex";
+}
+
+function closeOrgModal() {
+  document.getElementById("org-modal").style.display = "none";
+}
+
+async function submitOrgModal(e) {
+  e.preventDefault();
+  const mode = document.getElementById("org-modal-mode").value;
+  const errEl = document.getElementById("org-modal-error");
+  const code = document.getElementById("org-modal-code").value.trim();
+  const name = document.getElementById("org-modal-name").value.trim();
+  const description = document.getElementById("org-modal-description").value;
+  const isActive = document.getElementById("org-modal-active").checked;
+  const teamCode = document.getElementById("org-modal-team-code").value;
+
+  try {
+    if (mode === "team-new") {
+      await apiFetch("/api/org/teams", {
+        method: "POST",
+        body: JSON.stringify({ code, name, description, is_active: isActive }),
+      });
+    } else if (mode === "team-edit") {
+      await apiFetch("/api/org/teams/" + encodeURIComponent(code), {
+        method: "PATCH",
+        body: JSON.stringify({ name, description, is_active: isActive }),
+      });
+    } else if (mode === "group-new") {
+      await apiFetch("/api/org/groups", {
+        method: "POST",
+        body: JSON.stringify({ team_code: teamCode, code, name, description, is_active: isActive }),
+      });
+    } else if (mode === "group-edit") {
+      await apiFetch("/api/org/groups/" + encodeURIComponent(teamCode) + "/" + encodeURIComponent(code), {
+        method: "PATCH",
+        body: JSON.stringify({ name, description, is_active: isActive }),
+      });
+    }
+    closeOrgModal();
+    await loadOrgTeams();
+    if (ORG_STATE.selectedTeam) await loadOrgGroups(ORG_STATE.selectedTeam);
+  } catch (err) {
+    errEl.textContent = err.message || String(err);
+    errEl.style.display = "block";
+  }
+}
+
+async function deleteOrgTeam(code, recordCount, groupCount) {
+  if (recordCount > 0) {
+    alert("records " + recordCount + "개가 참조 중 — 삭제 불가");
+    return;
+  }
+  if (groupCount > 0) {
+    alert("groups " + groupCount + "개가 종속 중 — 먼저 group 을 삭제하라");
+    return;
+  }
+  if (!confirm("team '" + code + "' 삭제? (취소 불가)")) return;
+  try {
+    await apiFetch("/api/org/teams/" + encodeURIComponent(code), { method: "DELETE" });
+    if (ORG_STATE.selectedTeam === code) {
+      ORG_STATE.selectedTeam = null;
+      document.getElementById("org-groups-team-label").textContent = "(team 선택)";
+      document.getElementById("org-group-new").disabled = true;
+      clear(document.getElementById("org-groups-body"));
+    }
+    await loadOrgTeams();
+  } catch (err) {
+    alert("삭제 실패: " + (err.message || err));
+  }
+}
+
+async function deleteOrgGroup(teamCode, code, recordCount) {
+  if (recordCount > 0) {
+    alert("records " + recordCount + "개가 참조 중 — 삭제 불가");
+    return;
+  }
+  if (!confirm("group '" + teamCode + "/" + code + "' 삭제?")) return;
+  try {
+    await apiFetch("/api/org/groups/" + encodeURIComponent(teamCode) + "/" + encodeURIComponent(code), { method: "DELETE" });
+    await loadOrgGroups(teamCode);
+    await loadOrgTeams();
+  } catch (err) {
+    alert("삭제 실패: " + (err.message || err));
+  }
+}
+
+LOADERS["org"] = loadOrg;
+
 function flattenEndpoints(spec) {
   const out = [];
   const paths = spec.paths || {};
@@ -1149,6 +1365,18 @@ window.addEventListener("DOMContentLoaded", () => {
   document.getElementById("groups-tax-refresh").addEventListener("click", loadTaxonomy);
   document.getElementById("docs-load").addEventListener("click", loadAgentGuide);
   bindDocsQuickLinks();
+
+  // 조직 관리 탭 이벤트
+  const orgRefresh = document.getElementById("org-refresh");
+  if (orgRefresh) orgRefresh.addEventListener("click", loadOrg);
+  const orgTeamNew = document.getElementById("org-team-new");
+  if (orgTeamNew) orgTeamNew.addEventListener("click", () => openOrgModal("team-new", {}));
+  const orgGroupNew = document.getElementById("org-group-new");
+  if (orgGroupNew) orgGroupNew.addEventListener("click", () => openOrgModal("group-new", {}));
+  const orgModalCancel = document.getElementById("org-modal-cancel");
+  if (orgModalCancel) orgModalCancel.addEventListener("click", closeOrgModal);
+  const orgModalForm = document.getElementById("org-modal-form");
+  if (orgModalForm) orgModalForm.addEventListener("submit", submitOrgModal);
 
   // 첫 탭 자동 로드
   loadStatus();

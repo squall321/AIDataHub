@@ -809,14 +809,54 @@ def load_agent_guide(size: str) -> str:
 # ---------------------------------------------------------------------------
 # POST /api/ask — 자연어 → 필터
 # ---------------------------------------------------------------------------
-# 키워드 → agent_type / data_type / 기타 매핑
-_AGENT_KEYWORDS: dict[str, list[str]] = {
-    "iga-analyst": ["iga", "isogeometric", "nurbs"],
-    "cae-reporter": ["cae", "보고서", "report"],
-    "material-reviewer": ["material", "재료", "물성"],
-    "process-checker": ["process", "공정", "절차"],
-    "code-assistant": ["code", "코드", "스크립트"],
-}
+# Migration 0012/ask-keywords-from-db: agent_type ↔ keyword 매핑은
+# 더 이상 코드 상수가 아니다. ``agents.common_tags + agent_type`` 을 DB 에서
+# 빌드하고 5분 TTL in-memory 캐시한다. 운영자가 agent CRUD 만으로 자연어
+# 매칭 어휘를 즉시 갱신할 수 있다 (반영은 다음 캐시 만료까지 최대 5분 지연).
+
+_AGENT_KW_CACHE: dict[str, list[str]] = {}
+_AGENT_KW_CACHE_AT: float = 0.0
+_AGENT_KW_CACHE_TTL = 300.0  # 초
+
+
+async def _get_agent_keywords(session: AsyncSession) -> dict[str, list[str]]:
+    """``{agent_type: [keyword, ...]}`` 를 DB 에서 가져온다 (TTL 캐시).
+
+    각 agent 의 키워드 풀:
+        - ``agent_type`` 자체 (예: ``"lsdyna-automation"``)
+        - ``common_tags`` 의 각 태그 (예: ``["LS-DYNA", "KooRemapper", ...]``)
+
+    모두 lowercase 정규화. 캐시 invalidate 은 TTL 로만 처리 (강한 정합 불요).
+    """
+    import time
+
+    global _AGENT_KW_CACHE_AT, _AGENT_KW_CACHE
+    now = time.time()
+    if now - _AGENT_KW_CACHE_AT <= _AGENT_KW_CACHE_TTL and _AGENT_KW_CACHE:
+        return _AGENT_KW_CACHE
+
+    from ..db.models import Agent
+
+    rows = (await session.execute(select(Agent))).scalars().all()
+    built: dict[str, list[str]] = {}
+    for a in rows:
+        keys: list[str] = [a.agent_type.lower()]
+        for t in (a.common_tags or []):
+            t_norm = (t or "").strip().lower()
+            if t_norm and t_norm not in keys:
+                keys.append(t_norm)
+        if keys:
+            built[a.agent_type] = keys
+
+    _AGENT_KW_CACHE = built
+    _AGENT_KW_CACHE_AT = now
+    return built
+
+
+def _invalidate_agent_kw_cache() -> None:
+    """agent CRUD 직후 강제 무효화 (옵션)."""
+    global _AGENT_KW_CACHE_AT
+    _AGENT_KW_CACHE_AT = 0.0
 
 _DATA_TYPE_KEYWORDS: dict[str, list[str]] = {
     "DOC": ["문서", "보고서", "가이드", "doc", "document", "manual"],
@@ -864,31 +904,42 @@ def _detect_recent_window(query: str) -> str | None:
     return cutoff.date().isoformat()
 
 
-def _interpret_keywords(query: str) -> dict[str, Any]:
-    """LLM 없이 키워드 룩업으로 필터를 추정한다."""
+async def _interpret_keywords(
+    query: str, session: AsyncSession | None = None
+) -> dict[str, Any]:
+    """LLM 없이 키워드 룩업으로 필터를 추정한다.
+
+    ``session`` 이 주어지면 ``_get_agent_keywords`` 로 DB 기반 agent 매핑을
+    사용한다. 호환성 목적으로 ``session=None`` 인 경우 agent 매칭은 비활성.
+    """
     q = query.lower()
     filters: dict[str, Any] = {}
     explanation_parts: list[str] = []
 
-    # agent
-    detected_agent: str | None = None
-    for agent_type, keys in _AGENT_KEYWORDS.items():
-        if any(k in q for k in keys):
-            detected_agent = agent_type
-            break
-    if detected_agent:
-        filters["agent"] = detected_agent
-        explanation_parts.append(f"키워드로 agent={detected_agent} 추정")
+    # agent — DB 기반 (Migration 0012/ask-keywords-from-db)
+    if session is not None:
+        agent_keywords = await _get_agent_keywords(session)
+        detected_agent: str | None = None
+        for agent_type, keys in agent_keywords.items():
+            if any(k in q for k in keys):
+                detected_agent = agent_type
+                break
+        if detected_agent:
+            filters["agent"] = detected_agent
+            explanation_parts.append(f"키워드로 agent={detected_agent} 추정")
 
-    # data_type
-    detected_dt: str | None = None
-    for dt, keys in _DATA_TYPE_KEYWORDS.items():
-        if any(k in q for k in keys):
-            detected_dt = dt
-            break
-    if detected_dt:
-        filters["data_type"] = detected_dt
-        explanation_parts.append(f"키워드로 data_type={detected_dt}")
+    # data_type — agent 매칭이 이미 일어났다면 추가 data_type 강제는 피한다.
+    # (agent.data_types 가 이미 data_type 셋을 함의하므로, agent 외 추가 좁히기는
+    # over-filtering 으로 0건 결과를 자주 만들었다.)
+    if "agent" not in filters:
+        detected_dt: str | None = None
+        for dt, keys in _DATA_TYPE_KEYWORDS.items():
+            if any(k in q for k in keys):
+                detected_dt = dt
+                break
+        if detected_dt:
+            filters["data_type"] = detected_dt
+            explanation_parts.append(f"키워드로 data_type={detected_dt}")
 
     # capabilities
     caps: list[str] = []
@@ -944,7 +995,9 @@ def _interpret_keywords(query: str) -> dict[str, Any]:
     }
 
 
-async def _interpret_with_llm(query: str) -> dict[str, Any] | None:
+async def _interpret_with_llm(
+    query: str, *, session: AsyncSession | None = None
+) -> dict[str, Any] | None:
     """OPENAI_API_KEY 가 있으면 LLM 으로 해석. 실패 시 None.
 
     반환: ``{"filters": {...}, "explanation": "..."}`` 또는 None.
@@ -959,11 +1012,18 @@ async def _interpret_with_llm(query: str) -> dict[str, Any] | None:
         log.info("openai package not installed — LLM ask fallback to keyword")
         return None
 
+    # agent 목록은 DB 에서 동적으로 (Migration 0012/ask-keywords-from-db)
+    if session is not None:
+        agent_kw = await _get_agent_keywords(session)
+        agent_types = list(agent_kw.keys())
+    else:
+        agent_types = []
+
     system_prompt = (
         "You translate Korean/English natural-language search queries about an "
         "industrial data hub into a structured JSON filter object.\n"
         "Available filter fields:\n"
-        f"  - agent (one of: {', '.join(_AGENT_KEYWORDS.keys())})\n"
+        f"  - agent (one of: {', '.join(agent_types) if agent_types else '<none registered>'})\n"
         f"  - data_type (one of: {', '.join(DATA_TYPES)})\n"
         f"  - team, group, year (int 2020-2099)\n"
         f"  - status (one of: {', '.join(STATUSES)})\n"
@@ -978,7 +1038,10 @@ async def _interpret_with_llm(query: str) -> dict[str, Any] | None:
         "explanation (short Korean sentence). No prose."
     )
     try:
-        client = AsyncOpenAI(api_key=api_key)
+        # OpenAI 호환 백엔드 (Ollama / vLLM / Qwen Studio / Azure 등) 지원:
+        # ``OPENAI_BASE_URL`` 환경변수가 있으면 그쪽으로 라우팅. 없으면 정품 OpenAI.
+        base_url = os.environ.get("OPENAI_BASE_URL", "").strip() or None
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         resp = await client.chat.completions.create(
             model=os.environ.get("OPENAI_ASK_MODEL", "gpt-4o-mini"),
             messages=[
@@ -1057,19 +1120,22 @@ def _validate_filters(parsed: dict[str, Any]) -> dict[str, Any]:
     return {"filters": filters, "explanation": explanation}
 
 
-async def interpret_query(query: str) -> dict[str, Any]:
+async def interpret_query(
+    query: str, session: AsyncSession | None = None
+) -> dict[str, Any]:
     """``query`` 를 ``{filters, explanation, source}`` 로 해석한다.
 
     LLM 사용 시 source="llm", 폴백 시 source="keyword".
+    ``session`` 은 keyword fallback 의 agent 매칭에 사용된다.
     """
     if not query or not query.strip():
         return {"filters": {}, "explanation": "빈 쿼리", "source": "noop"}
 
-    llm_result = await _interpret_with_llm(query)
+    llm_result = await _interpret_with_llm(query, session=session)
     if llm_result and llm_result.get("filters"):
         return {**llm_result, "source": "llm"}
 
-    kw = _interpret_keywords(query)
+    kw = await _interpret_keywords(query, session=session)
     return {**kw, "source": "keyword"}
 
 
@@ -1083,7 +1149,7 @@ async def execute_ask(
     limit: int = 5,
 ) -> dict[str, Any]:
     """자연어 쿼리 → 해석 → record 검색."""
-    interpreted = await interpret_query(query)
+    interpreted = await interpret_query(query, session=session)
     filters = interpreted["filters"]
 
     stmt = select(Record)

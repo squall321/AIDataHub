@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     # --------------------------------------------------------------- metrics
     enable_metrics: bool = True
 
+    # ------------------------------------------ org master Strict ingest 검증
+    # records ingest 시 ``team`` 값이 ``org_teams`` 마스터에 등록돼 있어야 한다.
+    # 비활성화 (false) 하면 미등록 team 도 ingest 허용 (마이그레이션 기간용).
+    # ``group`` 은 lenient — 마스터 미존재 시 경고만 출력 (이 플래그와 무관).
+    strict_team_validation: bool = True
+
     # 그림(figure) 바이너리 저장소. ``/figures`` 정적 마운트의 루트.
     # 환경변수 ``FIGURES_DIR`` 로 오버라이드 가능.
     figures_dir: Path = Path("figures")

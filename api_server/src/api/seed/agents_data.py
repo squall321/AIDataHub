@@ -1,7 +1,11 @@
-"""표준 에이전트 정의.
+"""[DEPRECATED] 표준 에이전트 정의.
 
-사업부 문서 AI 데이터 허브에 등록되는 기본 에이전트 5종.
-각 dict 는 ``agents`` 테이블의 한 행 (``agent_type`` PK) 에 대응한다.
+Migration 0012/ask-keywords-from-db 이후 agents 는 DB 마스터 (``/api/agents``
+CRUD + 대시보드) 에서 운영자가 직접 관리한다. 자동 시드는 빈 리스트로
+유지하여 ``python -m api.seed`` 호출이 멱등 no-op 이 되게 한다.
+
+코드 상수로 박힌 표준 agent 집합은 운영 단계에서 의도치 않게 삭제된 행을
+재생성하는 부작용이 있었다 (team-group-mgmt 사이클의 정신과 충돌).
 """
 from __future__ import annotations
 
@@ -16,43 +20,8 @@ class AgentSeed(TypedDict):
     data_types: list[str]
 
 
-STANDARD_AGENTS: list[AgentSeed] = [
-    {
-        "agent_type": "iga-analyst",
-        "name": "IGA 해석 분석가",
-        "description": "IGA(등기하해석) 설정·검토. NURBS·LS-DYNA·KooRemapper 도메인.",
-        "common_tags": ["IGA", "NURBS", "LS-DYNA", "KooRemapper"],
-        "data_types": ["DOC", "SIM", "DATA"],
-    },
-    {
-        "agent_type": "cae-reporter",
-        "name": "CAE 보고서 작성자",
-        "description": "해석 결과 보고서 작성. 결과 기준·서식·그래프 포함.",
-        "common_tags": ["보고서", "해석", "결과", "기준"],
-        "data_types": ["DOC", "SIM", "DATA"],
-    },
-    {
-        "agent_type": "material-reviewer",
-        "name": "재료 물성 검토자",
-        "description": "재료 물성·시험 데이터·인증 기준 검토.",
-        "common_tags": ["재료", "물성", "시험", "기준"],
-        "data_types": ["DOC", "DATA"],
-    },
-    {
-        "agent_type": "process-checker",
-        "name": "공정 절차 검증자",
-        "description": "공정 절차·체크리스트·품질 기준 검증.",
-        "common_tags": ["공정", "절차", "품질", "체크리스트"],
-        "data_types": ["DOC", "FORM"],
-    },
-    {
-        "agent_type": "code-assistant",
-        "name": "코드 어시스턴트",
-        "description": "KooRemapper 등 사내 도구 코드 작업·API 참조.",
-        "common_tags": ["코드", "API", "KooRemapper", "변환기"],
-        "data_types": ["DOC"],
-    },
-]
+# 빈 리스트 — agent 는 운영자가 REST API / 대시보드로 관리.
+STANDARD_AGENTS: list[AgentSeed] = []
 
 
 __all__ = ["AgentSeed", "STANDARD_AGENTS"]

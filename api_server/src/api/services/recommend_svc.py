@@ -1,0 +1,422 @@
+"""Agent 추천 + LLM-ready context bundle / system prompt 생성 서비스.
+
+설계 노트:
+    - 추천: 자연어 쿼리 → ``/api/search`` 의미검색 결과 → record→agents 카운트 +
+      score 가중 합산. 단순 의미검색 집계 정책 (Plan: agent-discovery-console).
+    - context-bundle: agent 의 records + top sections 를 LLM 친화 markdown 또는
+      JSON 으로 묶음. ``max_records`` 로 토큰 절약.
+    - system-prompt: Cline / Qwen 등에 그대로 붙여넣을 텍스트. 도구 호출
+      가이드 + 본 agent 의 역할 + 호스트 URL 자리표시자 포함.
+"""
+from __future__ import annotations
+
+import os
+from collections import defaultdict
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..db.models import Agent, Record, RecordSection
+from ..services import sample_embedding_svc, search_svc
+
+# v0.13.0 — recommend_agents 점수 정책 (Migration 0016 후속).
+# - record-section 점수는 sum/candidate_sections 로 정규화 → [0,1] 범위.
+# - sample 점수는 raw similarity ∈ [0,1] × _SAMPLE_WEIGHT.
+# - 두 항을 합산 → SAMPLE_WEIGHT=5 면 "강한 sample 매칭 1건 ≈ 강한 section 매칭 5건".
+# - per-agent sample cap: 한 agent 의 sample 이 top-k 전체를 점유하지 못하게 제한.
+_SAMPLE_WEIGHT = float(os.environ.get("AGENT_SAMPLE_WEIGHT", "5.0"))
+_SAMPLE_TOP_K = int(os.environ.get("AGENT_SAMPLE_TOP_K", "20"))
+_SAMPLE_PER_AGENT_CAP = int(os.environ.get("AGENT_SAMPLE_PER_AGENT_CAP", "3"))
+
+
+# ---------------------------------------------------------------------------
+# 1) Agent 추천
+# ---------------------------------------------------------------------------
+async def recommend_agents(
+    session: AsyncSession,
+    *,
+    query: str,
+    top_k: int = 5,
+    candidate_sections: int = 50,
+) -> list[dict[str, Any]]:
+    """자연어 쿼리 → ranked agents.
+
+    의미검색 top-N sections 가져와서 각 section 의 record 에 등록된 agents
+    별로 score 합산. agent 의 record_count / matched_sections / why 도 함께.
+    """
+    if not query or not query.strip():
+        return []
+
+    # 1) 의미검색 top-N sections
+    search_results = await search_svc.semantic_search(
+        session, query, top_k=candidate_sections
+    )
+
+    # 2) record_id 모음 → records + agents 조회
+    record_ids: set[str] = set()
+    section_score_by_rid: dict[str, list[float]] = defaultdict(list)
+    for item in search_results or []:
+        rid = item.get("record_id") or item.get("id")
+        if not rid:
+            continue
+        record_ids.add(rid)
+        section_score_by_rid[rid].append(float(item.get("score") or 0.0))
+
+    rec_rows = []
+    if record_ids:
+        rec_rows = (
+            await session.execute(
+                select(Record).where(Record.id.in_(list(record_ids)))
+            )
+        ).scalars().all()
+
+    # 3) agent 집계 — record-section 기여분 (정규화: sum / candidate_sections).
+    # 단순 sum 은 후보 N 이 클수록 거대해져 sample 점수와 비교 불가.
+    # /candidate_sections 로 normalize 하면 "agent 의 평균 section 유사도" 가 되며
+    # 정상 범위 ∈ [0, 1] 로 sample 점수와 동일 스케일.
+    agent_record_score: dict[str, float] = defaultdict(float)
+    agent_records: dict[str, set[str]] = defaultdict(set)
+    agent_sections: dict[str, int] = defaultdict(int)
+    denom = max(1, int(candidate_sections))
+    for r in rec_rows:
+        rid_scores = section_score_by_rid.get(r.id, [])
+        rid_score_sum = sum(rid_scores)
+        for at in r.agents or []:
+            agent_record_score[at] += rid_score_sum / denom
+            agent_records[at].add(r.id)
+            agent_sections[at] += len(rid_scores)
+
+    # 3b) v0.13.0 — agent_sample_embeddings 기여분. per-agent cap 적용으로 한
+    # agent 가 sample 을 과적재해도 routing 점수를 독점하지 못하게 한다.
+    sample_hits = await sample_embedding_svc.search_samples(
+        session, query, top_k=_SAMPLE_TOP_K
+    )
+    agent_sample_score: dict[str, float] = defaultdict(float)
+    agent_sample_hits: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for h in sample_hits or []:
+        at = h.get("agent_type")
+        if not at:
+            continue
+        if len(agent_sample_hits[at]) >= _SAMPLE_PER_AGENT_CAP:
+            continue  # per-agent cap — 추가 sample 은 점수에 합산하지 않음
+        s = float(h.get("score") or 0.0)
+        agent_sample_score[at] += s
+        agent_sample_hits[at].append(
+            {"sample_text": h.get("sample_text") or "", "score": s}
+        )
+
+    # 3c) 두 항 합산 → 최종 agent_score
+    agent_score: dict[str, float] = defaultdict(float)
+    for at in set(list(agent_record_score.keys()) + list(agent_sample_score.keys())):
+        agent_score[at] = agent_record_score[at] + _SAMPLE_WEIGHT * agent_sample_score[at]
+
+    if not agent_score:
+        return []
+
+    # 4) agent 메타 일괄 조회
+    agent_metas = (
+        await session.execute(
+            select(Agent).where(Agent.agent_type.in_(list(agent_score.keys())))
+        )
+    ).scalars().all()
+    meta_by_type = {a.agent_type: a for a in agent_metas}
+
+    # 5) ranked list — why 에 sample 매칭이 있으면 함께 표기
+    ranked: list[dict[str, Any]] = []
+    for at, sc in sorted(agent_score.items(), key=lambda kv: kv[1], reverse=True):
+        meta = meta_by_type.get(at)
+        why_parts = []
+        if agent_sections[at] or agent_records[at]:
+            why_parts.append(
+                f"의미검색 top-{candidate_sections} 결과 중 "
+                f"{agent_sections[at]} sections / {len(agent_records[at])} records 가 "
+                f"이 agent 소속"
+            )
+        if agent_sample_hits[at]:
+            top_sample = agent_sample_hits[at][0]
+            why_parts.append(
+                f"sample 매칭 {len(agent_sample_hits[at])}건 (top: "
+                f"\"{top_sample['sample_text'][:40]}\" sim={top_sample['score']:.2f})"
+            )
+        ranked.append(
+            {
+                "agent_type": at,
+                "name": (meta.name if meta else at),
+                "description": (meta.description if meta else "") or "",
+                "common_tags": list((meta.common_tags if meta else []) or []),
+                "data_types": list((meta.data_types if meta else []) or []),
+                "score": round(sc, 4),
+                "matched_records": len(agent_records[at]),
+                "matched_sections": agent_sections[at],
+                "matched_samples": len(agent_sample_hits[at]),
+                "why": " · ".join(why_parts) if why_parts else "(no direct evidence)",
+            }
+        )
+
+    return ranked[:top_k]
+
+
+# ---------------------------------------------------------------------------
+# 2) Context Bundle
+# ---------------------------------------------------------------------------
+async def build_context_bundle(
+    session: AsyncSession,
+    *,
+    agent_type: str,
+    max_records: int = 10,
+    max_sections_per_record: int = 8,
+) -> dict[str, Any] | None:
+    """agent 의 records + 핵심 sections 를 LLM 친화 JSON 으로 묶는다.
+
+    Returns:
+        ``None`` if agent 미존재.
+    """
+    agent = await session.get(Agent, agent_type)
+    if agent is None:
+        return None
+
+    # agent 소속 records — agents ARRAY 에 포함된 것
+    # GIN index 활용을 위해 PostgreSQL 의 ANY 연산 사용 (dialect-agnostic 폴백 X).
+    from sqlalchemy import literal
+    stmt = (
+        select(Record)
+        .where(literal(agent_type) == Record.agents.any_())  # type: ignore[attr-defined]
+        .order_by(Record.created_at.desc())
+        .limit(max_records)
+    )
+    try:
+        rec_rows = (await session.execute(stmt)).scalars().all()
+    except Exception:
+        # 폴백 — 파이썬 후필터
+        rec_rows = []
+        all_rows = (
+            await session.execute(select(Record).order_by(Record.created_at.desc()))
+        ).scalars().all()
+        for r in all_rows:
+            if agent_type in (r.agents or []):
+                rec_rows.append(r)
+                if len(rec_rows) >= max_records:
+                    break
+
+    records_payload: list[dict[str, Any]] = []
+    for r in rec_rows:
+        # 핵심 sections — record_sections 에서 상위 N (level 정렬)
+        secs = (
+            await session.execute(
+                select(RecordSection)
+                .where(RecordSection.record_id == r.id)
+                .order_by(RecordSection.level.asc(), RecordSection.id.asc())
+                .limit(max_sections_per_record)
+            )
+        ).scalars().all()
+        records_payload.append(
+            {
+                "id": r.id,
+                "data_type": r.data_type,
+                "team": r.team,
+                "group": r.group,
+                "title": r.title,
+                "summary": r.summary or "",
+                "tags": list(r.tags or []),
+                "doc_type": r.doc_type,
+                "key_sections": [
+                    {
+                        "section_id": s.section_id,
+                        "level": s.level,
+                        "title": s.title,
+                        "excerpt": (s.content_text or "")[:500],
+                    }
+                    for s in secs
+                ],
+            }
+        )
+
+    return {
+        "agent": {
+            "agent_type": agent.agent_type,
+            "name": agent.name,
+            "description": agent.description or "",
+            "common_tags": list(agent.common_tags or []),
+            "data_types": list(agent.data_types or []),
+            "required_doc_type": agent.required_doc_type,
+            "required_tags": list(agent.required_tags or []),
+            # v0.13.0 — RAG recipe (Migration 0014). Admin-controlled.
+            "system_prompt": getattr(agent, "system_prompt", None) or None,
+            "retrieval_config": dict(getattr(agent, "retrieval_config", None) or {}),
+            "response_config": dict(getattr(agent, "response_config", None) or {}),
+            "sample_queries": list(getattr(agent, "sample_queries", None) or []),
+        },
+        "records": records_payload,
+        "totals": {
+            "records_returned": len(records_payload),
+            "max_records": max_records,
+            "max_sections_per_record": max_sections_per_record,
+        },
+        "endpoints": {
+            "record_detail": "/api/records/{id}",
+            "record_sections": "/api/records/{id}/sections",
+            "semantic_search": f"/api/search?mode=semantic&q={{q}}&agent={agent_type}",
+            "natural_language": "/api/ask",
+        },
+    }
+
+
+def render_context_bundle_markdown(bundle: dict[str, Any]) -> str:
+    """JSON bundle → LLM-ready markdown."""
+    a = bundle["agent"]
+    out: list[str] = []
+    out.append(f"# Agent: {a['name']} (`{a['agent_type']}`)")
+    out.append("")
+    out.append("## Description")
+    out.append(a.get("description") or "_no description_")
+    out.append("")
+    out.append("## Metadata")
+    out.append(f"- common_tags: {', '.join(a.get('common_tags', [])) or '(none)'}")
+    out.append(f"- data_types: {', '.join(a.get('data_types', [])) or '(none)'}")
+    if a.get("required_doc_type"):
+        out.append(f"- required_doc_type: {a['required_doc_type']}")
+    if a.get("required_tags"):
+        out.append(f"- required_tags: {', '.join(a['required_tags'])}")
+    # v0.13.0 — RAG recipe (admin-controlled). Only render non-empty sections.
+    rc = a.get("retrieval_config") or {}
+    rsp = a.get("response_config") or {}
+    samples = a.get("sample_queries") or []
+    sys_p = (a.get("system_prompt") or "").strip()
+    if rc.get("top_k") is not None or rc.get("score_threshold") is not None:
+        bits = []
+        if rc.get("top_k") is not None:
+            bits.append(f"top_k={rc['top_k']}")
+        if rc.get("score_threshold") is not None:
+            bits.append(f"score_threshold={rc['score_threshold']}")
+        out.append(f"- retrieval_config: {', '.join(bits)}")
+    if rsp:
+        bits = []
+        if rsp.get("max_tokens") is not None:
+            bits.append(f"max_tokens={rsp['max_tokens']}")
+        if rsp.get("citation_required"):
+            bits.append("citation_required=true")
+        if rsp.get("refusal_message"):
+            bits.append(f"refusal_message={rsp['refusal_message']!r}")
+        if bits:
+            out.append(f"- response_config: {', '.join(bits)}")
+    if samples:
+        out.append(f"- sample_queries ({len(samples)}): " + "; ".join(f"\"{s}\"" for s in samples[:5]))
+    out.append("")
+    if sys_p:
+        out.append("## System prompt (admin-defined)")
+        out.append("```")
+        out.append(sys_p)
+        out.append("```")
+        out.append("")
+
+    records = bundle.get("records", [])
+    out.append(f"## Records ({len(records)})")
+    out.append("")
+    for r in records:
+        out.append(f"### `{r['id']}` — {r['title']}")
+        out.append(f"- team/group: **{r['team']} / {r['group']}**")
+        out.append(f"- data_type: **{r['data_type']}**" + (f", doc_type: **{r['doc_type']}**" if r.get('doc_type') else ""))
+        if r.get("tags"):
+            out.append(f"- tags: {', '.join(r['tags'])}")
+        out.append(f"- summary: {r.get('summary') or '_no summary_'}")
+        out.append("")
+        if r.get("key_sections"):
+            out.append("**Key sections:**")
+            for s in r["key_sections"]:
+                t = s.get("title") or s.get("section_id")
+                excerpt = (s.get("excerpt") or "").replace("\n", " ").strip()
+                out.append(f"- `§{s.get('section_id')}` _{t}_ — {excerpt[:200]}...")
+            out.append("")
+
+    eps = bundle.get("endpoints", {})
+    out.append("## How to query for more")
+    out.append("```")
+    for k, v in eps.items():
+        out.append(f"{k:20s} → {v}")
+    out.append("```")
+
+    return "\n".join(out)
+
+
+# ---------------------------------------------------------------------------
+# 3) System Prompt (Cline / Qwen 붙여넣기용)
+# ---------------------------------------------------------------------------
+# admin-set system_prompt 본문에 이 마커가 있으면 도구 가이드를 append 하지 않는다.
+_NO_TOOL_GUIDE_MARKER = "<!-- no-tool-guide -->"
+
+
+def _tool_guide_block(agent_meta: Agent, base_url: str) -> str:
+    """admin 의 짧은 persona prompt 뒤에 자동 append 되는 도구·관례 가이드.
+
+    Haiku 급 LLM 이 API 호출을 환각하지 않도록 도구 surface 와 record-id 규약을
+    명시한다. ``out-of-domain`` fallback 문구도 포함.
+    """
+    common_tags = ", ".join(agent_meta.common_tags or []) or "(none)"
+    return f"""## Available tools (REST)
+- GET  {base_url}/api/agents/{agent_meta.agent_type}/context-bundle  — your knowledge payload (call this first)
+- GET  {base_url}/api/discover                  — system catalog (one-shot)
+- GET  {base_url}/api/agents                    — list all agents
+- GET  {base_url}/api/records/{{id}}              — full record
+- GET  {base_url}/api/records/{{id}}/sections     — RAG section chunks
+- GET  {base_url}/api/search?mode=semantic&q=&agent={agent_meta.agent_type}  — semantic search scoped to this agent
+- POST {base_url}/api/ask                       — natural language → filter → records
+
+## Conventions
+- Record ID format: `{{DATA_TYPE}}-{{TEAM}}-{{GROUP}}-{{YEAR}}-{{SEQ:010d}}` (e.g. `DOC-HE-CAE-2026-0000000001`).
+- Cite the source after every factual claim: `(source: <record_id> §<section_id>)`.
+- Korean and English are both supported in queries.
+- The hub is read-mostly: avoid POST/PATCH/DELETE unless the user explicitly authorizes data changes.
+- If a question is outside this agent's domain ({common_tags}), say so and suggest the user re-run agent recommendation via POST {base_url}/api/recommend/agents."""
+
+
+def build_system_prompt(
+    agent_meta: Agent, *, base_url: str = "http://<host>:8001"
+) -> str:
+    # v0.13.0 — admin 이 직접 system_prompt 를 세팅했으면 그것을 우선 사용하고,
+    # 도구 가이드 블록을 자동 append. ``<!-- no-tool-guide -->`` 마커가 본문에
+    # 있으면 append 를 생략 (admin 이 완전 통제하고 싶을 때 escape hatch).
+    # ``{base_url}`` 플레이스홀더는 admin prompt 본문에서도 치환된다.
+    admin_prompt = (getattr(agent_meta, "system_prompt", None) or "").strip()
+    if admin_prompt:
+        # v0.13.0 — 지원하는 placeholder 들 (둘 다 미사용해도 무영향).
+        rendered = (
+            admin_prompt
+            .replace("{base_url}", base_url)
+            .replace("{agent_type}", agent_meta.agent_type)
+            .replace("{agent_name}", agent_meta.name or agent_meta.agent_type)
+        )
+        if _NO_TOOL_GUIDE_MARKER in rendered:
+            return rendered.replace(_NO_TOOL_GUIDE_MARKER, "").strip()
+        guide = _tool_guide_block(agent_meta, base_url)
+        return f"{rendered}\n\n---\n\n{guide}\n"
+
+    common_tags = ", ".join(agent_meta.common_tags or []) or "(none)"
+    data_types = ", ".join(agent_meta.data_types or []) or "(none)"
+    desc = agent_meta.description or "(no description)"
+    guide = _tool_guide_block(agent_meta, base_url)
+
+    return f"""You are an assistant for "{agent_meta.name}" (`{agent_meta.agent_type}`) inside the Mobile eXperience AI Data Hub.
+
+## Your role
+- Help the user with: {desc}
+- Authoritative data domain: tags=[{common_tags}], data_types=[{data_types}]
+- All factual answers MUST cite the source record id from this hub.
+
+## First step on every conversation
+1. GET {base_url}/api/agents/{agent_meta.agent_type}/context-bundle
+   (Accept: application/json or text/markdown)
+   This loads your knowledge — agent metadata + records + key sections.
+2. If the user asks something specific, use:
+   - GET {base_url}/api/search?mode=semantic&q=<term>&agent={agent_meta.agent_type}
+   - GET {base_url}/api/records/{{id}}/sections   (full RAG chunks)
+   - POST {base_url}/api/ask   (natural-language structured filter)
+
+{guide}
+
+## Response style
+- Lead with the answer in ≤3 sentences.
+- Cite source: `(source: DOC-HE-CAE-2026-0000000001 §4)` after each factual claim.
+- Quote section excerpts only when directly relevant.
+- If RAG returned 0 results, say so explicitly and suggest /api/recommend/agents.
+"""

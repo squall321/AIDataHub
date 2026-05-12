@@ -36,7 +36,12 @@ from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 
-EMBEDDING_DIM = 384
+EMBEDDING_DIM = int(os.environ.get("EMBEDDING_DIM", "384"))
+"""임베딩 벡터 차원. 환경변수 ``EMBEDDING_DIM`` 으로 외부화 (Migration 0013).
+
+기본값 384 는 e5_small / openai (truncated) / hash 모두와 정합. e5_base 사용
+시 ``EMBEDDING_DIM=768`` + alembic 0013 의 ``vector(768)`` 컬럼을 동반해야 한다.
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -277,6 +282,10 @@ def get_embedder() -> Embedder:
         return OpenAIEmbedder()
     if provider == "e5_small":
         return SentenceTransformerEmbedder("intfloat/multilingual-e5-small")
+    if provider == "e5_base":
+        return SentenceTransformerEmbedder("intfloat/multilingual-e5-base")
+    if provider == "e5_large":
+        return SentenceTransformerEmbedder("intfloat/multilingual-e5-large")
     if provider in ("sentence_transformers", "st", "sbert"):
         return SentenceTransformerEmbedder()
     if provider not in ("hash", ""):

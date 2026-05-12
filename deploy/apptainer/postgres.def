@@ -1,0 +1,11 @@
+Bootstrap: localimage
+From: ./postgres-base.sif
+
+%labels
+    Component  aidh-postgres
+    Wraps      pgvector/pgvector:pg16
+
+%startscript
+    # docker-entrypoint.sh respects POSTGRES_USER, POSTGRES_PASSWORD,
+    # POSTGRES_DB, PGPORT, PGDATA from the environment (set via instance start --env).
+    exec docker-entrypoint.sh postgres

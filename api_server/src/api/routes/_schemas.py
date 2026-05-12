@@ -97,6 +97,16 @@ class AgentOut(_Base):
     required_doc_type: str | None = None
     required_tags: list[str] = Field(default_factory=list)
     excluded_tags: list[str] = Field(default_factory=list)
+    # ---- RAG recipe (Migration 0014) ----
+    retrieval_config: dict[str, Any] = Field(default_factory=dict)
+    system_prompt: str | None = None
+    response_config: dict[str, Any] = Field(default_factory=dict)
+    sample_queries: list[str] = Field(default_factory=list)
+    # ---- Sample-embedding routing index (Migration 0016) ----
+    # samples_indexed_count: 실제 agent_sample_embeddings 행 수.
+    # samples_stale: sample_queries 길이 ≠ indexed 면 True — UI 가 경고 배지.
+    samples_indexed_count: int = 0
+    samples_stale: bool = False
     created_at: datetime | None = None
 
 
@@ -110,6 +120,11 @@ class AgentIn(_Base):
     required_doc_type: str | None = None
     required_tags: list[str] = Field(default_factory=list)
     excluded_tags: list[str] = Field(default_factory=list)
+    # ---- RAG recipe (Migration 0014) ----
+    retrieval_config: dict[str, Any] = Field(default_factory=dict)
+    system_prompt: str | None = None
+    response_config: dict[str, Any] = Field(default_factory=dict)
+    sample_queries: list[str] = Field(default_factory=list)
 
 
 class AgentPatch(_Base):
@@ -120,6 +135,82 @@ class AgentPatch(_Base):
     required_doc_type: str | None = None
     required_tags: list[str] | None = None
     excluded_tags: list[str] | None = None
+    # ---- RAG recipe (Migration 0014) ----
+    retrieval_config: dict[str, Any] | None = None
+    system_prompt: str | None = None
+    response_config: dict[str, Any] | None = None
+    sample_queries: list[str] | None = None
+
+
+# ---------------------------------------------------------------------------
+# Agent history (Migration 0015) — append-only audit log
+# ---------------------------------------------------------------------------
+class AgentHistoryOut(_Base):
+    id: int
+    agent_type: str
+    operation: Literal["create", "update", "delete"]
+    snapshot: dict[str, Any] = Field(default_factory=dict)
+    changed_by: str | None = None
+    changed_at: datetime | None = None
+
+
+# ---------------------------------------------------------------------------
+# Agent preview (RAG recipe dry-run) — POST /api/agents/preview
+# ---------------------------------------------------------------------------
+class AgentPreviewIn(_Base):
+    """저장 전 RAG 레시피 미리보기 입력.
+
+    agent_type 은 선택 — 주어지면 그 agent 의 record 만 검색 범위로 좁힌다.
+    주어지지 않으면 retrieval_config.data_type_filter 만 적용.
+    """
+
+    query: str
+    agent_type: str | None = None
+    retrieval_config: dict[str, Any] = Field(default_factory=dict)
+    system_prompt: str | None = None
+    response_config: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentPreviewHit(_Base):
+    record_id: str
+    section_id: str
+    section_title: str
+    snippet: str = ""
+    score: float
+
+
+class AgentPreviewOut(_Base):
+    query: str
+    hits: list[AgentPreviewHit] = Field(default_factory=list)
+    hits_above_threshold: int = 0
+    threshold: float | None = None
+    refused: bool = False
+    refusal_message: str | None = None
+    answer: str | None = None
+    llm_used: bool = False
+    llm_note: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Agent sample embeddings resync (Migration 0016)
+# ---------------------------------------------------------------------------
+class AgentSamplesResyncOut(_Base):
+    agent_type: str
+    indexed_count: int
+    sample_queries: list[str] = Field(default_factory=list)
+
+
+class AgentSamplesResyncAllOut(_Base):
+    agents_total: int
+    successes: list[dict[str, Any]] = Field(default_factory=list)
+    errors: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class AgentHistoryPruneOut(_Base):
+    deleted: int
+    agent_types_touched: int
+    keep_last: int | None = None
+    older_than_days: int | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +237,58 @@ class DocTypePatch(_Base):
     expected_sections: list[str] | None = None
 
 
+# ---------------------------------------------------------------------------
+# OrgTeam / OrgGroup (Migration 0012) — 조직 마스터
+# ---------------------------------------------------------------------------
+class OrgTeamOut(_Base):
+    code: str
+    name: str
+    description: str = ""
+    is_active: bool = True
+    group_count: int = 0
+    record_count: int = 0
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class OrgTeamIn(_Base):
+    code: str = Field(..., pattern=r"^[A-Z][A-Z0-9]{1,9}$")
+    name: str = Field(..., min_length=1, max_length=80)
+    description: str = ""
+    is_active: bool = True
+
+
+class OrgTeamPatch(_Base):
+    name: str | None = Field(None, min_length=1, max_length=80)
+    description: str | None = None
+    is_active: bool | None = None
+
+
+class OrgGroupOut(_Base):
+    team_code: str
+    code: str
+    name: str
+    description: str = ""
+    is_active: bool = True
+    record_count: int = 0
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class OrgGroupIn(_Base):
+    team_code: str = Field(..., pattern=r"^[A-Z][A-Z0-9]{1,9}$")
+    code: str = Field(..., pattern=r"^[A-Z][A-Z0-9]{1,19}$")
+    name: str = Field(..., min_length=1, max_length=80)
+    description: str = ""
+    is_active: bool = True
+
+
+class OrgGroupPatch(_Base):
+    name: str | None = Field(None, min_length=1, max_length=80)
+    description: str | None = None
+    is_active: bool | None = None
+
+
 # Agent 2 의 정식 스키마와 호환을 유지한다.
 #
 # 주의: ``api.schemas.common.RecordIn`` 은 인제스트(ingest) 입력용으로
@@ -167,13 +310,26 @@ except ImportError:
 
 
 __all__ = [
+    "AgentHistoryOut",
+    "AgentHistoryPruneOut",
     "AgentIn",
     "AgentOut",
     "AgentPatch",
+    "AgentPreviewHit",
+    "AgentPreviewIn",
+    "AgentPreviewOut",
+    "AgentSamplesResyncAllOut",
+    "AgentSamplesResyncOut",
     "DataType",
     "DocTypeIn",
     "DocTypeOut",
     "DocTypePatch",
+    "OrgGroupIn",
+    "OrgGroupOut",
+    "OrgGroupPatch",
+    "OrgTeamIn",
+    "OrgTeamOut",
+    "OrgTeamPatch",
     "RecordIn",
     "RecordListResponse",
     "RecordOut",

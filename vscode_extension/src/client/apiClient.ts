@@ -1,7 +1,11 @@
 import type {
+  AgentHistoryOutT,
   AgentInT,
   AgentOutT,
   AgentPatchT,
+  AgentPreviewInT,
+  AgentPreviewOutT,
+  AgentSamplesResyncOutT,
   BundleUploadResponse,
   DiscoverResponse,
   DocTypeInT,
@@ -57,11 +61,14 @@ export class ApiClient {
   constructor(
     private readonly baseUrl: string,
     private readonly apiKey?: string,
+    private readonly userId?: string,
   ) {}
 
   private headers(extra?: Record<string, string>): Record<string, string> {
     const h: Record<string, string> = { Accept: 'application/json', ...extra };
     if (this.apiKey) h['X-API-Key'] = this.apiKey;
+    // v0.13.0 — agents_history.changed_by 채움. 인증 미연동 단계의 임시 식별.
+    if (this.userId) h['X-User-Id'] = this.userId;
     return h;
   }
 
@@ -302,6 +309,64 @@ export class ApiClient {
     return { bytes, filename };
   }
 
+  /**
+   * POST /api/recommend/agents — natural language → ranked agents
+   * (agent-discovery-console).
+   */
+  async recommendAgents(q: string, topK = 5): Promise<{
+    query: string;
+    candidate_sections: number;
+    agents: Array<{
+      agent_type: string;
+      name: string;
+      description: string;
+      common_tags: string[];
+      data_types: string[];
+      score: number;
+      matched_records: number;
+      matched_sections: number;
+      why: string;
+    }>;
+  }> {
+    const res = await fetch(joinUrl(this.baseUrl, '/api/recommend/agents'), {
+      method: 'POST',
+      headers: this.headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ q, top_k: topK }),
+    });
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as ReturnType<typeof Object>;
+  }
+
+  /**
+   * GET /api/agents/{agent_type}/context-bundle
+   * Accept header switches between markdown (default) and JSON.
+   */
+  async getContextBundle(
+    agentType: string,
+    format: 'markdown' | 'json' = 'markdown',
+  ): Promise<string> {
+    const accept = format === 'json' ? 'application/json' : 'text/markdown';
+    const headers: Record<string, string> = { Accept: accept };
+    if (this.apiKey) headers['X-API-Key'] = this.apiKey;
+    const res = await fetch(
+      joinUrl(this.baseUrl, `/api/agents/${encodeURIComponent(agentType)}/context-bundle`),
+      { method: 'GET', headers },
+    );
+    if (!res.ok) throw await parseError(res);
+    return await res.text();
+  }
+
+  /** GET /api/agents/{agent_type}/system-prompt — text/plain. */
+  async getSystemPrompt(agentType: string, baseUrlOverride?: string): Promise<string> {
+    const headers: Record<string, string> = {};
+    if (this.apiKey) headers['X-API-Key'] = this.apiKey;
+    const url = new URL(joinUrl(this.baseUrl, `/api/agents/${encodeURIComponent(agentType)}/system-prompt`));
+    if (baseUrlOverride) url.searchParams.set('base_url', baseUrlOverride);
+    const res = await fetch(url.toString(), { method: 'GET', headers });
+    if (!res.ok) throw await parseError(res);
+    return await res.text();
+  }
+
   /** POST /api/agents — create (201, or 409 on conflict). */
   async createAgent(body: AgentInT): Promise<AgentOutT> {
     const res = await fetch(joinUrl(this.baseUrl, '/api/agents'), {
@@ -334,6 +399,38 @@ export class ApiClient {
       { method: 'DELETE', headers: this.headers() },
     );
     if (!res.ok && res.status !== 204) throw await parseError(res);
+  }
+
+  /** GET /api/agents/{agent_type}/history — append-only audit log (Migration 0015). */
+  async listAgentHistory(agentType: string, limit = 50): Promise<AgentHistoryOutT[]> {
+    const u = new URL(
+      joinUrl(this.baseUrl, `/api/agents/${encodeURIComponent(agentType)}/history`),
+    );
+    u.searchParams.set('limit', String(limit));
+    const res = await fetch(u.toString(), { method: 'GET', headers: this.headers() });
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as AgentHistoryOutT[];
+  }
+
+  /** POST /api/agents/preview — dry-run RAG recipe + (optional) LLM answer. */
+  async previewAgentRecipe(body: AgentPreviewInT): Promise<AgentPreviewOutT> {
+    const res = await fetch(joinUrl(this.baseUrl, '/api/agents/preview'), {
+      method: 'POST',
+      headers: this.headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as AgentPreviewOutT;
+  }
+
+  /** POST /api/agents/{agent_type}/resync-samples — re-embed sample_queries. */
+  async resyncAgentSamples(agentType: string): Promise<AgentSamplesResyncOutT> {
+    const res = await fetch(
+      joinUrl(this.baseUrl, `/api/agents/${encodeURIComponent(agentType)}/resync-samples`),
+      { method: 'POST', headers: this.headers() },
+    );
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as AgentSamplesResyncOutT;
   }
 
   /** GET /api/discover — system-wide catalog. */

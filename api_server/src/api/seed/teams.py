@@ -1,12 +1,12 @@
-"""팀(team) ↔ 그룹(group) 정적 매핑.
+"""[DEPRECATED] 팀(team) ↔ 그룹(group) 정적 매핑.
 
-VSCode 확장 폼의 셀렉트박스 옵션 소스. 운영 단계에서 ``records.team/group``
-distinct 결과와 머지하는 향상이 가능하지만, 1차에서는 정적 매핑으로 충분하다.
+Migration 0012 이후 ``org_teams`` / ``org_groups`` 마스터 테이블이 권위 소스다.
+``/api/meta/options`` 는 DB 조회로 전환됐고, 신규 팀/그룹 추가는 대시보드의
+"조직 관리" 탭 또는 ``/api/org/teams`` ``/api/org/groups`` 라우터를 사용한다.
 
-설계 노트:
-    - team 코드는 2~4자 대문자 ASCII (id_format 검증 규약).
-    - group 코드는 2~5자 대문자 ASCII.
-    - 신규 팀/그룹 추가는 본 파일을 직접 편집하면 된다.
+이 모듈의 상수는 0012 마이그레이션의 초기 시드값 참조용으로만 남겨둔다.
+런타임 코드는 더 이상 본 모듈을 import 하지 않는다 (호환성 유지를 위해
+파일은 보존).
 """
 from __future__ import annotations
 

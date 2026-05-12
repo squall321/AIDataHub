@@ -231,6 +231,11 @@ async def write_record(
                     sorted(bad_tags),
                 )
 
+    # Strict team/group 검증 (Migration 0012). bundle / convert / 직접 ingest
+    # 모두 이 함수를 통과하므로 단일 진입점에서 검증한다.
+    from api.services.org_svc import validate_team_group
+    await validate_team_group(session, parts["team"], parts["group"])
+
     existing = await session.get(Record, record_in.id)
     pre_snapshot: dict[str, Any] | None = None
 

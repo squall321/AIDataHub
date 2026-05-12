@@ -40,6 +40,7 @@ export function renderHtml(): string {
       <button class="tab" data-tab="bundle">Bundle</button>
       <button class="tab" data-tab="search">Search</button>
       <button class="tab" data-tab="agents">Agents</button>
+      <button class="tab" data-tab="console">Console</button>
     </nav>
     <div class="actions">
       <button id="btn-settings" class="ghost" title="Settings">⚙</button>
@@ -450,10 +451,33 @@ function clientScript(): string {
         required_doc_type: '',
         required_tags: [],
         excluded_tags: [],
+        // v0.13.0 — RAG recipe (Migration 0014)
+        // Strings here, not numbers — UI keeps blank inputs as ''.
+        // submitAgentForm() coerces to numbers / null before sending.
+        retrieval_top_k: '',           // → retrieval_config.top_k
+        retrieval_score_threshold: '', // → retrieval_config.score_threshold
+        system_prompt: '',
+        response_max_tokens: '',       // → response_config.max_tokens
+        response_citation_required: false,
+        response_refusal_message: '',  // → response_config.refusal_message
+        sample_queries: [],
       },
       formError: null,          // form-level error message (string|null)
       saving: false,
       recordsByAgent: {},       // agent_type -> { loading, items, error }
+      // v0.13.0 — Test preview (save-time dry-run of RAG recipe).
+      preview: {
+        query: '',
+        loading: false,
+        result: null,           // AgentPreviewOutT | null
+        error: null,            // string | null
+      },
+      // v0.13.0 — History viewer (per agent_type).
+      historyOpen: null,        // agent_type currently expanded, or null
+      historyByAgent: {},       // agent_type -> { loading, items, error }
+      historyDiffSelection: {}, // agent_type -> { left: id|null, right: id|null }
+      // v0.13.0 — Resync sample embeddings — transient banner per agent.
+      resyncByAgent: {},        // agent_type -> { loading, result, error }
       // v0.7.0 — doc_type taxonomy cache (DocTypeOutT[] | null)
       docTypes: null,
       docTypesLoading: false,
@@ -466,6 +490,23 @@ function clientScript(): string {
         error: null,
         saving: false,
       },
+    },
+    // Console tab (v0.9.0 — agent-discovery-console)
+    console: {
+      q: '',
+      loading: false,
+      error: null,
+      results: null,        // recommend response or null
+      selectedAgent: null,  // agent_type string
+      systemPrompt: null,   // string | null
+      contextMarkdown: null, // string | null
+      contextJson: null,    // string | null
+      busy: null,           // 'recommend' | 'prompt' | 'md' | 'json' | null
+      // v0.11.0 — MCP client selector
+      mcpClient: 'cline',   // cline | claude_desktop | claude_code | cursor | copilot | gemini
+      // v0.12.0 — MCP auto-install state
+      mcpInstalling: false,
+      mcpInstallResult: null,  // { ok, action, configPath, shellCommand, error, hint } | null
     },
   };
 
@@ -530,6 +571,7 @@ function clientScript(): string {
     else if (state.tab === 'bundle') renderBundleTab();
     else if (state.tab === 'search') renderSearchTab();
     else if (state.tab === 'agents') renderAgentsTab();
+    else if (state.tab === 'console') renderConsoleTab();
   }
 
   function paintTabs(){
@@ -543,7 +585,7 @@ function clientScript(): string {
   function renderWelcome(){
     const wrap = el('div');
     wrap.innerHTML = \`
-      <h1>👋 Connect to your Mobile eXperience AI Data Hub server</h1>
+      <h1>Connect to your Mobile eXperience AI Data Hub server</h1>
       <p class="subtle">Enter your backend URL and API key. The key is stored in VS Code SecretStorage.</p>
       <label>Server URL</label>
       <input id="i-url" type="text" placeholder="http://110.15.177.125:8000" value="\${escapeHtml(state.config.baseUrl)}" />
@@ -731,7 +773,7 @@ function clientScript(): string {
     state.upload.error = null;
     state.upload.response = null;
     state.upload.autoFilled = null;
-    flashDropToast('dropzone', '✓ 받았습니다: ' + file.name + ' — 폼으로 이동…', 'ok');
+    flashDropToast('dropzone', '받았습니다: ' + file.name + ' — 폼으로 이동…', 'ok');
     setTimeout(() => goUpload('form'), 250);
   }
 
@@ -1297,7 +1339,7 @@ function clientScript(): string {
     state.bundle.error = null;
     state.bundle.response = null;
     state.upload.kind = 'bundle';
-    flashDropToast('bdz', '✓ 받았습니다: ' + file.name + ' — 업로드 시작…', 'ok');
+    flashDropToast('bdz', '받았습니다: ' + file.name + ' — 업로드 시작…', 'ok');
     setTimeout(() => {
       goBundle('sending');
       send({ type: 'requestUploadCredentials' });
@@ -1878,6 +1920,8 @@ function clientScript(): string {
         if (action === 'edit') openAgentForm(atype);
         else if (action === 'delete') confirmDeleteAgent(atype);
         else if (action === 'download-template') downloadAgentTemplate(atype, node);
+        else if (action === 'history') toggleAgentHistory(atype);
+        else if (action === 'resync-samples') resyncAgentSamples(atype);
         else if (action === 'view-records') {
           state.tab = 'search';
           state.search.filters = Object.assign({}, state.search.filters || {}, { agent: atype });
@@ -1885,6 +1929,20 @@ function clientScript(): string {
           render();
           runSearch();
         }
+      });
+    });
+    // v0.13.0 — history diff radio selection.
+    wrap.querySelectorAll('input[type="radio"][data-hist-side]').forEach(function(rb){
+      rb.addEventListener('change', function(){
+        var side = rb.getAttribute('data-hist-side');
+        var atype = rb.getAttribute('data-hist-agent');
+        var id = parseInt(rb.getAttribute('data-hist-id') || '', 10);
+        if (!atype || isNaN(id) || (side !== 'left' && side !== 'right')) return;
+        if (!state.agents.historyDiffSelection) state.agents.historyDiffSelection = {};
+        var cur = state.agents.historyDiffSelection[atype] || { left: null, right: null };
+        cur[side] = id;
+        state.agents.historyDiffSelection[atype] = cur;
+        render();
       });
     });
   }
@@ -1922,6 +1980,83 @@ function clientScript(): string {
         + '<div class="k">excluded_tags</div><div>' + xtagsHtml + '</div>';
     }
 
+    // v0.13.0 — RAG recipe read view (Migration 0014).
+    var rc = (ag.retrieval_config && typeof ag.retrieval_config === 'object') ? ag.retrieval_config : {};
+    var rsp = (ag.response_config && typeof ag.response_config === 'object') ? ag.response_config : {};
+    var samples = Array.isArray(ag.sample_queries) ? ag.sample_queries : [];
+    var sysP = ag.system_prompt || '';
+    var ragEmpty = (
+      rc.top_k == null && rc.score_threshold == null
+      && rsp.max_tokens == null && !rsp.citation_required && !rsp.refusal_message
+      && !sysP && samples.length === 0
+    );
+    var ragHtml;
+    if (ragEmpty) {
+      ragHtml = '<div class="k">RAG recipe</div><div><span class="muted">(server defaults)</span></div>';
+    } else {
+      var rcParts = [];
+      if (rc.top_k != null) rcParts.push('top_k=' + escapeHtml(String(rc.top_k)));
+      if (rc.score_threshold != null) rcParts.push('score≥' + escapeHtml(String(rc.score_threshold)));
+      var rcText = rcParts.length ? rcParts.join(', ') : '<span class="muted">(default)</span>';
+      var rspParts = [];
+      if (rsp.max_tokens != null) rspParts.push('max_tokens=' + escapeHtml(String(rsp.max_tokens)));
+      if (rsp.citation_required) rspParts.push('citation_required');
+      if (rsp.refusal_message) rspParts.push('refusal="' + escapeHtml(String(rsp.refusal_message)) + '"');
+      var rspText = rspParts.length ? rspParts.join(', ') : '<span class="muted">(default)</span>';
+      var sysHtml = sysP
+        ? '<pre style="white-space:pre-wrap;margin:0;font-size:11px;background:rgba(128,128,128,0.08);padding:6px;border-radius:3px;max-height:120px;overflow:auto">' + escapeHtml(sysP) + '</pre>'
+        : '<span class="muted">(generic fallback)</span>';
+      var samplesHtml = samples.length
+        ? samples.map(function(s){ return '<span class="chip">' + escapeHtml(s) + '</span>'; }).join(' ')
+        : '<span class="muted">—</span>';
+      ragHtml =
+          '<div class="k">retrieval_config</div><div>' + rcText + '</div>'
+        + '<div class="k">response_config</div><div>' + rspText + '</div>'
+        + '<div class="k">system_prompt</div><div>' + sysHtml + '</div>'
+        + '<div class="k">sample_queries</div><div>' + samplesHtml + '</div>';
+    }
+
+    // v0.13.0 — history block (visible when toolbar "history" toggled).
+    var historyHtml = '';
+    var historyOpen = state.agents.historyOpen === ag.agent_type;
+    if (historyOpen) {
+      var h = (state.agents.historyByAgent && state.agents.historyByAgent[ag.agent_type]) || { loading: true };
+      historyHtml = renderAgentHistoryBlock(ag.agent_type, h);
+    }
+
+    // v0.13.0 — resync banner (transient, after sample-embedding sync).
+    var resyncBannerHtml = '';
+    var rs = (state.agents.resyncByAgent && state.agents.resyncByAgent[ag.agent_type]) || null;
+    if (rs) {
+      if (rs.loading) {
+        resyncBannerHtml = '<div class="agents-banner" style="background:rgba(80,140,220,0.18);margin-top:8px">Resyncing sample embeddings…</div>';
+      } else if (rs.error) {
+        resyncBannerHtml = '<div class="agents-banner err" style="margin-top:8px">Resync failed: ' + escapeHtml(String(rs.error)) + '</div>';
+      } else if (rs.result) {
+        resyncBannerHtml = '<div class="agents-banner ok" style="margin-top:8px">'
+          + '✓ Indexed ' + (rs.result.indexed_count || 0) + ' sample queries for routing.'
+          + '</div>';
+      }
+    }
+
+    // Resync button only meaningful when there are sample_queries to index.
+    // Stale badge: server reports samples_stale=true when sample_queries.length
+    // !== samples_indexed_count (e.g. sync failed silently). UI nudges admin to retry.
+    var resyncBtnHtml = '';
+    if (Array.isArray(ag.sample_queries) && ag.sample_queries.length > 0) {
+      var rsLoading = rs && rs.loading;
+      var stale = !!ag.samples_stale;
+      var idx = (typeof ag.samples_indexed_count === 'number') ? ag.samples_indexed_count : ag.sample_queries.length;
+      var staleBadge = stale
+        ? ' <span class="chip" style="background:rgba(220,140,40,0.22);margin-left:4px" title="indexed=' + idx + ' vs ' + ag.sample_queries.length + ' samples — click Resync">stale</span>'
+        : '';
+      resyncBtnHtml = '<button data-action="resync-samples" data-agent="' + escapeHtml(ag.agent_type) + '" class="secondary"'
+        + (rsLoading ? ' disabled' : '')
+        + ' title="Re-embed sample_queries so recommend_agents picks them up (indexed=' + idx + '/' + ag.sample_queries.length + ')">'
+        + (rsLoading ? 'Resyncing…' : 'Resync samples (' + idx + '/' + ag.sample_queries.length + ')')
+        + '</button>' + staleBadge;
+    }
+
     return '<div class="agent-detail">'
       + '<div class="kv">'
       + '  <div class="k">agent_type</div><div><code>' + escapeHtml(ag.agent_type) + '</code></div>'
@@ -1930,14 +2065,108 @@ function clientScript(): string {
       + '  <div class="k">Common tags</div><div>' + tagHtml + '</div>'
       + '  <div class="k">Data types</div><div>' + dtHtml + '</div>'
       + '  ' + schemaHtml
+      + '  ' + ragHtml
       + '  <div class="k">Created at</div><div>' + created + '</div>'
       + '</div>'
       + '<div class="toolbar">'
       + '  <button data-action="edit" data-agent="' + escapeHtml(ag.agent_type) + '">Edit</button>'
       + '  <button data-action="delete" data-agent="' + escapeHtml(ag.agent_type) + '" class="secondary">Delete</button>'
+      + '  <button data-action="history" data-agent="' + escapeHtml(ag.agent_type) + '" class="secondary" title="View change history">'
+        + (historyOpen ? 'Hide history' : 'View history')
+        + '</button>'
+      + '  ' + resyncBtnHtml
       + '  <button data-action="download-template" data-agent="' + escapeHtml(ag.agent_type) + '" class="secondary" title="Download a Word (.docx) template prefilled for this agent">📄 Download Word template</button>'
       + '  <a href="#" data-action="view-records" data-agent="' + escapeHtml(ag.agent_type) + '" style="align-self:center;margin-left:6px">View records →</a>'
       + '</div>'
+      + resyncBannerHtml
+      + historyHtml
+      + '</div>';
+  }
+
+  // v0.13.0 — Render a history list block under the agent detail toolbar.
+  // Supports two-way diff: each row has Left/Right radio. When both picked,
+  // a "Compare" button reveals field-by-field diff against current snapshots.
+  function renderAgentHistoryBlock(agentType, h){
+    if (!h || h.loading) return '<p class="muted" style="margin:8px 0">Loading history…</p>';
+    if (h.error) return '<div class="status err" style="margin-top:8px">' + escapeHtml(String(h.error)) + '</div>';
+    var items = Array.isArray(h.items) ? h.items : [];
+    if (!items.length) return '<p class="muted" style="margin:8px 0">(no history)</p>';
+    var sel = (state.agents.historyDiffSelection && state.agents.historyDiffSelection[agentType]) || { left: null, right: null };
+    var rows = items.map(function(row){
+      var snap = (row && row.snapshot && typeof row.snapshot === 'object') ? row.snapshot : {};
+      var snapPretty = '';
+      try { snapPretty = JSON.stringify(snap, null, 2); }
+      catch (e) { snapPretty = String(snap); }
+      var opCls = row.operation === 'delete'
+        ? 'background:rgba(220,60,60,0.18)'
+        : (row.operation === 'create' ? 'background:rgba(50,180,90,0.18)' : 'background:rgba(80,140,220,0.18)');
+      var leftChk = (sel.left === row.id) ? ' checked' : '';
+      var rightChk = (sel.right === row.id) ? ' checked' : '';
+      return '<tr>'
+        + '<td style="white-space:nowrap"><label style="font-size:10px;margin-right:6px"><input type="radio" name="hist-left-' + escapeHtml(agentType) + '" data-hist-side="left" data-hist-agent="' + escapeHtml(agentType) + '" data-hist-id="' + row.id + '"' + leftChk + '/> L</label>'
+        + '<label style="font-size:10px"><input type="radio" name="hist-right-' + escapeHtml(agentType) + '" data-hist-side="right" data-hist-agent="' + escapeHtml(agentType) + '" data-hist-id="' + row.id + '"' + rightChk + '/> R</label></td>'
+        + '<td class="mono" style="font-size:11px">' + escapeHtml(String(row.changed_at || '')) + '</td>'
+        + '<td><span class="chip" style="' + opCls + '">' + escapeHtml(String(row.operation || '')) + '</span></td>'
+        + '<td class="mono" style="font-size:11px">' + escapeHtml(String(row.changed_by || '—')) + '</td>'
+        + '<td><details><summary style="cursor:pointer;font-size:11px">snapshot</summary>'
+        + '<pre style="white-space:pre-wrap;font-size:10px;max-height:240px;overflow:auto;background:rgba(128,128,128,0.06);padding:6px;border-radius:3px">' + escapeHtml(snapPretty) + '</pre>'
+        + '</details></td>'
+        + '</tr>';
+    }).join('');
+    var diffBlock = '';
+    if (sel.left != null && sel.right != null && sel.left !== sel.right) {
+      var leftRow = items.find(function(x){ return x.id === sel.left; });
+      var rightRow = items.find(function(x){ return x.id === sel.right; });
+      if (leftRow && rightRow) {
+        diffBlock = renderAgentHistoryDiff(leftRow, rightRow);
+      }
+    } else if (sel.left != null || sel.right != null) {
+      diffBlock = '<p class="muted" style="margin:8px 0;font-size:11px">두 행(L, R)을 선택하면 diff 가 표시됩니다.</p>';
+    }
+    return '<div style="margin-top:10px">'
+      + '<div class="subtle" style="margin-bottom:4px">Change history for <code>' + escapeHtml(agentType) + '</code> — newest first, append-only. L/R 선택 시 비교.</div>'
+      + '<table class="agents-table"><thead><tr>'
+      + '<th style="width:60px">diff</th><th>changed_at</th><th>op</th><th>by</th><th>snapshot</th>'
+      + '</tr></thead><tbody>' + rows + '</tbody></table>'
+      + diffBlock
+      + '</div>';
+  }
+
+  // v0.13.0 — Field-by-field diff between two history snapshots.
+  function renderAgentHistoryDiff(leftRow, rightRow){
+    var L = (leftRow.snapshot && typeof leftRow.snapshot === 'object') ? leftRow.snapshot : {};
+    var R = (rightRow.snapshot && typeof rightRow.snapshot === 'object') ? rightRow.snapshot : {};
+    var keys = {};
+    Object.keys(L).forEach(function(k){ keys[k] = true; });
+    Object.keys(R).forEach(function(k){ keys[k] = true; });
+    var keysList = Object.keys(keys).sort();
+    var diffs = [];
+    function _str(v){ try { return JSON.stringify(v); } catch (e) { return String(v); } }
+    keysList.forEach(function(k){
+      var lv = L[k], rv = R[k];
+      var lvS = _str(lv), rvS = _str(rv);
+      if (lvS === rvS) return;
+      diffs.push({ key: k, left: lvS, right: rvS });
+    });
+    if (!diffs.length) {
+      return '<div class="agents-banner" style="background:rgba(128,128,128,0.18);margin-top:8px">선택한 두 버전이 동일합니다.</div>';
+    }
+    var lLabel = (leftRow.operation || '?') + ' @ ' + (leftRow.changed_at || '');
+    var rLabel = (rightRow.operation || '?') + ' @ ' + (rightRow.changed_at || '');
+    var body = diffs.map(function(d){
+      return '<tr>'
+        + '<td class="mono" style="font-size:11px;vertical-align:top">' + escapeHtml(d.key) + '</td>'
+        + '<td style="vertical-align:top"><pre style="white-space:pre-wrap;font-size:10px;margin:0;color:#e08080">' + escapeHtml(d.left) + '</pre></td>'
+        + '<td style="vertical-align:top"><pre style="white-space:pre-wrap;font-size:10px;margin:0;color:#80c080">' + escapeHtml(d.right) + '</pre></td>'
+        + '</tr>';
+    }).join('');
+    return '<div style="margin-top:10px;border:1px solid var(--vscode-panel-border);border-radius:4px;padding:8px">'
+      + '<div class="subtle" style="margin-bottom:6px;font-size:11px">Diff (' + diffs.length + ' fields)</div>'
+      + '<table style="width:100%;border-collapse:collapse"><thead><tr>'
+      + '<th style="text-align:left;width:160px">field</th>'
+      + '<th style="text-align:left">L · ' + escapeHtml(lLabel) + '</th>'
+      + '<th style="text-align:left">R · ' + escapeHtml(rLabel) + '</th>'
+      + '</tr></thead><tbody>' + body + '</tbody></table>'
       + '</div>';
   }
 
@@ -2046,6 +2275,35 @@ function clientScript(): string {
       + '    <div id="af-chips-xtags" class="chips"></div>'
       + '  </div>'
       + '</details>'
+      // ---- RAG retrieval (Migration 0014) ---------------------------
+      + '<details style="margin-top:10px"' + ((fv.retrieval_top_k || fv.retrieval_score_threshold) ? ' open' : '') + '>'
+      + '  <summary style="cursor:pointer;font-weight:600">RAG retrieval (optional)</summary>'
+      + '  <p class="subtle" style="margin:6px 0">검색 시 적용할 동작. 비워두면 서버 기본값 사용.</p>'
+      + '  <div class="agent-form" style="margin-top:6px">'
+      + '    <label>top_k <span class="muted" style="font-size:11px">— 검색 결과 수 (1~20, default 5)</span></label>'
+      + '    <input id="af-top-k" type="number" min="1" max="20" step="1" placeholder="5" value="' + escapeHtml(fv.retrieval_top_k) + '" />'
+      + '    <label>score_threshold <span class="muted" style="font-size:11px">— 최소 신뢰도 (0.0~1.0, default 0.6). 미만 결과는 LLM 에 전달되지 않음.</span></label>'
+      + '    <input id="af-score-threshold" type="number" min="0" max="1" step="0.05" placeholder="0.6" value="' + escapeHtml(fv.retrieval_score_threshold) + '" />'
+      + '  </div>'
+      + '</details>'
+      // ---- Response style (Migration 0014) --------------------------
+      + '<details style="margin-top:10px"' + ((fv.system_prompt || fv.response_max_tokens || fv.response_citation_required || fv.response_refusal_message || (fv.sample_queries || []).length) ? ' open' : '') + '>'
+      + '  <summary style="cursor:pointer;font-weight:600">Response style (optional)</summary>'
+      + '  <p class="subtle" style="margin:6px 0">LLM 응답 스타일·거절 정책·라우팅 힌트.</p>'
+      + '  <div class="agent-form" style="margin-top:6px">'
+      + '    <label>system_prompt <span class="muted" style="font-size:11px">— LLM 에 그대로 주입. 비워두면 generic 폴백. 도구 가이드(API 목록)는 자동으로 뒤에 append 됨 — 끄려면 본문에 <code>&lt;!-- no-tool-guide --&gt;</code> 포함. 치환: <code>{base_url}</code>, <code>{agent_type}</code>, <code>{agent_name}</code>.</span></label>'
+      + '    <textarea id="af-system-prompt" rows="6" placeholder="당신은 ___ 전문 보조입니다. 2~3문장 이내로 답하고, 출처는 record_id §섹션 형식으로 인용하세요. 자료에 없으면 \'해당 자료를 찾지 못했습니다\'라고만 답합니다.">' + escapeHtml(fv.system_prompt) + '</textarea>'
+      + '    <label>max_tokens <span class="muted" style="font-size:11px">— LLM 응답 토큰 상한 (50~2000, default 200)</span></label>'
+      + '    <input id="af-max-tokens" type="number" min="50" max="2000" step="10" placeholder="200" value="' + escapeHtml(fv.response_max_tokens) + '" />'
+      + '    <label><input id="af-citation-required" type="checkbox"' + (fv.response_citation_required ? ' checked' : '') + ' /> citation_required <span class="muted" style="font-size:11px">— 응답에 record_id 인용이 없으면 거절</span></label>'
+      + '    <label>refusal_message <span class="muted" style="font-size:11px">— score_threshold 미만일 때 응답 문구</span></label>'
+      + '    <input id="af-refusal-message" type="text" placeholder="해당 자료를 찾지 못했습니다." value="' + escapeHtml(fv.response_refusal_message) + '" />'
+      + '    <label>sample_queries <span class="muted" style="font-size:11px">— 라우팅 정확도용 예시 질문 (Enter 또는 콤마로 추가)</span></label>'
+      + '    <div id="af-chips-samples" class="chips"></div>'
+      + '  </div>'
+      + '</details>'
+      // ---- Test preview (Migration 0014) ----------------------------
+      + renderAgentPreviewBlock()
       + errHtml
       + savingHtml
       + '<div class="toolbar">'
@@ -2058,6 +2316,7 @@ function clientScript(): string {
     var chips = makeChipsSeeded('af-chips-tags', 'add tag…', fv.common_tags || []);
     var rtagChips = makeChipsSeeded('af-chips-rtags', 'add required tag…', fv.required_tags || []);
     var xtagChips = makeChipsSeeded('af-chips-xtags', 'add excluded tag…', fv.excluded_tags || []);
+    var sampleChips = makeChipsSeeded('af-chips-samples', 'add sample query…', fv.sample_queries || []);
 
     // data_types checkboxes — keep state.formValues.data_types in sync.
     document.querySelectorAll('#af-dts input[type="checkbox"]').forEach(function(cb){
@@ -2198,8 +2457,137 @@ function clientScript(): string {
         v.required_doc_type = sel.value || '';
       }
       // data_types already kept in sync via checkbox change handler.
+      // v0.13.0 — RAG recipe fields.
+      v.retrieval_top_k = val('af-top-k').trim();
+      v.retrieval_score_threshold = val('af-score-threshold').trim();
+      v.system_prompt = val('af-system-prompt');
+      v.response_max_tokens = val('af-max-tokens').trim();
+      var cbCite = document.getElementById('af-citation-required');
+      v.response_citation_required = !!(cbCite && cbCite.checked);
+      v.response_refusal_message = val('af-refusal-message');
+      v.sample_queries = sampleChips.get();
       submitAgentForm();
     });
+    // v0.13.0 — Test preview button.
+    on('af-preview-run', 'click', function(){
+      // Snapshot current form into formValues (without saving) so the preview
+      // uses whatever the operator is currently editing.
+      var v = state.agents.formValues;
+      v.retrieval_top_k = val('af-top-k').trim();
+      v.retrieval_score_threshold = val('af-score-threshold').trim();
+      v.system_prompt = val('af-system-prompt');
+      v.response_max_tokens = val('af-max-tokens').trim();
+      var cbC = document.getElementById('af-citation-required');
+      v.response_citation_required = !!(cbC && cbC.checked);
+      v.response_refusal_message = val('af-refusal-message');
+      v.sample_queries = sampleChips.get();
+      var q = val('af-preview-query').trim();
+      state.agents.preview.query = q;
+      if (!q) {
+        state.agents.preview.error = 'Test query is required.';
+        state.agents.preview.result = null;
+        render();
+        return;
+      }
+      runAgentPreview();
+    });
+  }
+
+  // v0.13.0 — Preview block renderer. Reads state.agents.preview.
+  function renderAgentPreviewBlock(){
+    var pv = state.agents.preview || { query: '', loading: false, result: null, error: null };
+    var resultHtml = '';
+    if (pv.loading) {
+      resultHtml = '<p class="muted" style="margin:8px 0">Running preview…</p>';
+    } else if (pv.error) {
+      resultHtml = '<div class="status err" style="margin-top:8px">' + escapeHtml(pv.error) + '</div>';
+    } else if (pv.result) {
+      var r = pv.result;
+      var bits = [];
+      bits.push('hits=' + (Array.isArray(r.hits) ? r.hits.length : 0));
+      bits.push((r.hits_above_threshold || 0) + ' above threshold');
+      if (r.threshold != null) bits.push('threshold=' + r.threshold);
+      bits.push('LLM=' + (r.llm_used ? 'on' : 'off'));
+      var summaryNote = r.llm_note ? '<div class="subtle" style="font-size:11px;margin-top:2px">' + escapeHtml(String(r.llm_note)) + '</div>' : '';
+      var summary = '<div class="subtle" style="margin-top:8px">' + escapeHtml(bits.join(' · ')) + '</div>' + summaryNote;
+      var body;
+      if (r.refused) {
+        body = '<div class="status err" style="margin-top:6px"><strong>Refused.</strong> '
+          + escapeHtml(String(r.refusal_message || '')) + '</div>';
+      } else if (r.answer) {
+        body = '<div style="margin-top:6px;background:rgba(50,180,90,0.10);padding:10px;border-radius:4px;white-space:pre-wrap;font-size:12px">'
+          + escapeHtml(String(r.answer)) + '</div>';
+      } else {
+        body = '<p class="muted" style="margin:6px 0">(LLM 답변 없음 — 아래 검색 결과를 확인)</p>';
+      }
+      var hitsList = '';
+      if (Array.isArray(r.hits) && r.hits.length) {
+        var items = r.hits.map(function(h){
+          var snip = (h.snippet || '').substring(0, 240);
+          return '<li style="margin-bottom:6px"><code>' + escapeHtml(String(h.record_id)) + ' §' + escapeHtml(String(h.section_id)) + '</code> '
+            + '<span class="muted">(score=' + Number(h.score || 0).toFixed(3) + ')</span> '
+            + escapeHtml(String(h.section_title || ''))
+            + '<br/><span class="muted" style="font-size:10px">' + escapeHtml(snip) + '</span></li>';
+        }).join('');
+        hitsList = '<details style="margin-top:8px"><summary style="cursor:pointer">Retrieved chunks (' + r.hits.length + ')</summary>'
+          + '<ul style="font-size:11px;padding-left:18px;margin-top:6px">' + items + '</ul></details>';
+      }
+      resultHtml = summary + body + hitsList;
+    }
+    var qSafe = escapeHtml((state.agents.preview && state.agents.preview.query) || '');
+    var btnLabel = pv.loading ? 'Running…' : 'Run preview';
+    return '<details style="margin-top:10px"' + ((pv.query || pv.result || pv.error) ? ' open' : '') + '>'
+      + '  <summary style="cursor:pointer;font-weight:600">Test preview (저장 전 dry-run)</summary>'
+      + '  <p class="subtle" style="margin:6px 0">현재 폼 값으로 검색 + (OPENAI_API_KEY 가 설정된 경우) LLM 답변까지 미리 확인.</p>'
+      + '  <div class="agent-form">'
+      + '    <label>Test query</label>'
+      + '    <textarea id="af-preview-query" rows="2" placeholder="예: KooRemapper map 옵션은?">' + qSafe + '</textarea>'
+      + '    <div class="toolbar" style="margin-top:6px">'
+      + '      <button id="af-preview-run"' + (pv.loading ? ' disabled' : '') + '>' + btnLabel + '</button>'
+      + '    </div>'
+      + '    <div id="af-preview-result" style="margin-top:4px">' + resultHtml + '</div>'
+      + '  </div>'
+      + '</details>';
+  }
+
+  // v0.13.0 — Trigger preview using current formValues.
+  function runAgentPreview(){
+    var v = state.agents.formValues;
+    function _num(s){ if (s === '' || s == null) return null; var n = Number(s); return isFinite(n) ? n : null; }
+    var retrieval = {};
+    var topK = _num(v.retrieval_top_k);
+    if (topK != null) retrieval.top_k = topK;
+    var thr = _num(v.retrieval_score_threshold);
+    if (thr != null) retrieval.score_threshold = thr;
+    var response = {};
+    var maxT = _num(v.response_max_tokens);
+    if (maxT != null) response.max_tokens = maxT;
+    if (v.response_citation_required) response.citation_required = true;
+    if (v.response_refusal_message) response.refusal_message = v.response_refusal_message;
+    var sysPrompt = (v.system_prompt && v.system_prompt.trim()) ? v.system_prompt : null;
+    // If editing existing agent, scope the search to its records.
+    var agentType = state.agents.editing || null;
+    var payload = {
+      query: state.agents.preview.query,
+      agent_type: agentType,
+      retrieval_config: retrieval,
+      system_prompt: sysPrompt,
+      response_config: response,
+    };
+    state.agents.preview.loading = true;
+    state.agents.preview.error = null;
+    render();
+    rpc('previewAgentRecipeRequest', { payload: payload })
+      .then(function(resp){
+        state.agents.preview.loading = false;
+        state.agents.preview.result = resp || null;
+        render();
+      })
+      .catch(function(err){
+        state.agents.preview.loading = false;
+        state.agents.preview.error = String((err && err.message) || err);
+        render();
+      });
   }
 
   function reloadDocTypesList(){
@@ -2266,6 +2654,8 @@ function clientScript(): string {
       // Edit existing — seed from list.
       var found = (state.agents.list || []).find(function(x){ return x.agent_type === agentType; });
       if (!found) return;
+      var rc = (found.retrieval_config && typeof found.retrieval_config === 'object') ? found.retrieval_config : {};
+      var rsp = (found.response_config && typeof found.response_config === 'object') ? found.response_config : {};
       state.agents.editing = agentType;
       state.agents.formValues = {
         agent_type: found.agent_type,
@@ -2276,12 +2666,23 @@ function clientScript(): string {
         required_doc_type: found.required_doc_type || '',
         required_tags: (found.required_tags || []).slice(),
         excluded_tags: (found.excluded_tags || []).slice(),
+        retrieval_top_k: (rc.top_k != null) ? String(rc.top_k) : '',
+        retrieval_score_threshold: (rc.score_threshold != null) ? String(rc.score_threshold) : '',
+        system_prompt: found.system_prompt || '',
+        response_max_tokens: (rsp.max_tokens != null) ? String(rsp.max_tokens) : '',
+        response_citation_required: !!rsp.citation_required,
+        response_refusal_message: rsp.refusal_message || '',
+        sample_queries: (found.sample_queries || []).slice(),
       };
     } else {
       state.agents.editing = null;
       state.agents.formValues = {
         agent_type: '', name: '', description: '', common_tags: [], data_types: [],
         required_doc_type: '', required_tags: [], excluded_tags: [],
+        retrieval_top_k: '', retrieval_score_threshold: '',
+        system_prompt: '',
+        response_max_tokens: '', response_citation_required: false, response_refusal_message: '',
+        sample_queries: [],
       };
     }
     state.agents.formError = null;
@@ -2292,6 +2693,8 @@ function clientScript(): string {
       error: null,
       saving: false,
     };
+    // v0.13.0 — reset preview state per form open.
+    state.agents.preview = { query: '', loading: false, result: null, error: null };
     state.agents.screen = 'form';
     render();
   }
@@ -2313,6 +2716,71 @@ function clientScript(): string {
       });
   }
 
+  // v0.13.0 — Re-embed agent.sample_queries on the server so recommend_agents
+  // picks up routing hints. Banner auto-clears.
+  function resyncAgentSamples(agentType){
+    if (!agentType) return;
+    if (!state.agents.resyncByAgent) state.agents.resyncByAgent = {};
+    state.agents.resyncByAgent[agentType] = { loading: true, result: null, error: null };
+    render();
+    rpc('resyncAgentSamplesRequest', { agentType: agentType })
+      .then(function(payload){
+        state.agents.resyncByAgent[agentType] = { loading: false, result: payload || null, error: null };
+        render();
+        setTimeout(function(){
+          if (state.agents.resyncByAgent && state.agents.resyncByAgent[agentType]) {
+            delete state.agents.resyncByAgent[agentType];
+            render();
+          }
+        }, 4000);
+      })
+      .catch(function(err){
+        state.agents.resyncByAgent[agentType] = {
+          loading: false,
+          result: null,
+          error: String((err && err.message) || err),
+        };
+        render();
+      });
+  }
+
+  // v0.13.0 — Toggle the inline history panel for an agent. Loads on first open.
+  function toggleAgentHistory(agentType){
+    if (!agentType) return;
+    if (state.agents.historyOpen === agentType) {
+      state.agents.historyOpen = null;
+      render();
+      return;
+    }
+    state.agents.historyOpen = agentType;
+    if (!state.agents.historyByAgent) state.agents.historyByAgent = {};
+    var cache = state.agents.historyByAgent[agentType];
+    if (cache && Array.isArray(cache.items) && !cache.error) {
+      // Cached — render immediately, no refetch.
+      render();
+      return;
+    }
+    state.agents.historyByAgent[agentType] = { loading: true, items: null, error: null };
+    render();
+    rpc('listAgentHistoryRequest', { agentType: agentType, limit: 50 })
+      .then(function(payload){
+        state.agents.historyByAgent[agentType] = {
+          loading: false,
+          items: Array.isArray(payload) ? payload : [],
+          error: null,
+        };
+        render();
+      })
+      .catch(function(err){
+        state.agents.historyByAgent[agentType] = {
+          loading: false,
+          items: null,
+          error: String((err && err.message) || err),
+        };
+        render();
+      });
+  }
+
   function submitAgentForm(){
     var v = state.agents.formValues;
     if (!v.agent_type) { state.agents.formError = 'agent_type is required.'; render(); return; }
@@ -2325,6 +2793,24 @@ function clientScript(): string {
     // "no filter" from "explicit empty string". required_tags / excluded_tags
     // always send the array (possibly empty).
     var rdt = (v.required_doc_type && v.required_doc_type.trim()) ? v.required_doc_type.trim() : null;
+
+    // ---- v0.13.0 — RAG recipe ------------------------------------------
+    // 빈 입력은 키 자체를 생략 → 서버가 default 적용. 숫자 입력은 coerce.
+    function _num(s){ if (s === '' || s == null) return null; var n = Number(s); return isFinite(n) ? n : null; }
+    var retrieval = {};
+    var topK = _num(v.retrieval_top_k);
+    if (topK != null) retrieval.top_k = topK;
+    var thr = _num(v.retrieval_score_threshold);
+    if (thr != null) retrieval.score_threshold = thr;
+
+    var response = {};
+    var maxT = _num(v.response_max_tokens);
+    if (maxT != null) response.max_tokens = maxT;
+    if (v.response_citation_required) response.citation_required = true;
+    if (v.response_refusal_message) response.refusal_message = v.response_refusal_message;
+
+    var sysPrompt = (v.system_prompt && v.system_prompt.trim()) ? v.system_prompt : null;
+
     var payload = {
       name: v.name,
       description: v.description || '',
@@ -2333,6 +2819,10 @@ function clientScript(): string {
       required_doc_type: rdt,
       required_tags: v.required_tags || [],
       excluded_tags: v.excluded_tags || [],
+      retrieval_config: retrieval,
+      system_prompt: sysPrompt,
+      response_config: response,
+      sample_queries: v.sample_queries || [],
     };
     var promise;
     if (isEdit) {
@@ -2420,6 +2910,373 @@ function clientScript(): string {
   }
 
   // ====================================================================
+  // Console tab (v0.9.0 — agent-discovery-console)
+  // ====================================================================
+  function renderConsoleTab(){
+    const c = state.console;
+    const html = [];
+    html.push('<div class="panel-pad">');
+    html.push('  <h2 style="margin:0 0 8px;">자연어로 할 일 시작하기</h2>');
+    html.push('  <p class="muted" style="margin:0 0 14px;">');
+    html.push('    질문이나 작업 의도를 입력하면 → 가장 적합한 agent 추천 → 그 agent에 대한 ');
+    html.push('    <em>system prompt</em>·<em>context bundle</em>을 Cline/Qwen 같은 LLM에 그대로 붙여넣을 수 있게 안내합니다.');
+    html.push('  </p>');
+    html.push('  <div style="display:flex; gap:8px; margin-bottom:14px;">');
+    html.push('    <input id="console-q" type="text" class="input" style="flex:1;" placeholder="예: LS-DYNA 메시 매핑 자동화 도구 사용법 알려줘" value="' + escapeHtml(c.q) + '">');
+    html.push('    <button id="console-go" class="btn primary"' + (c.loading?' disabled':'') + '>' + (c.loading?'추천 중…':'추천 받기') + '</button>');
+    html.push('  </div>');
+
+    if (c.error) html.push('<div class="banner err">' + escapeHtml(c.error) + '</div>');
+
+    if (c.results) {
+      const agents = c.results.agents || [];
+      if (agents.length === 0) {
+        html.push('<div class="banner muted">매칭되는 agent가 없습니다. 다른 표현으로 시도하거나 record를 더 적재하세요.</div>');
+      } else {
+        html.push('<h3 style="margin:18px 0 8px;">추천 agents</h3>');
+        agents.forEach(a => {
+          const sel = c.selectedAgent === a.agent_type;
+          html.push('<div class="card" style="margin-bottom:10px; padding:10px 12px; border:1px solid ' + (sel?'#4a8aff':'#3a3a3a') + '; border-radius:6px;">');
+          html.push('  <div style="display:flex; justify-content:space-between; align-items:flex-start;">');
+          html.push('    <div style="flex:1;">');
+          html.push('      <div><strong>' + escapeHtml(a.name) + '</strong> <code style="opacity:.7;">(' + escapeHtml(a.agent_type) + ')</code></div>');
+          html.push('      <div class="muted" style="font-size:.92em; margin:4px 0;">' + escapeHtml(a.description) + '</div>');
+          html.push('      <div class="muted" style="font-size:.85em;">score: <strong>' + (a.score||0).toFixed(2) + '</strong> · ');
+          var rs = (a.matched_records || 0) + ' records / ' + (a.matched_sections || 0) + ' sections';
+          if (a.matched_samples) rs += ' / ' + a.matched_samples + ' samples';
+          html.push('        ' + rs + ' · ');
+          html.push('        tags: ' + (a.common_tags||[]).slice(0,5).map(escapeHtml).join(', ') + '</div>');
+          html.push('      <div class="muted" style="font-size:.82em; opacity:.7; margin-top:4px;">' + escapeHtml(a.why) + '</div>');
+          html.push('    </div>');
+          html.push('    <button class="btn console-pick" data-agent="' + escapeHtml(a.agent_type) + '">' + (sel?'선택됨':'이 agent 선택') + '</button>');
+          html.push('  </div>');
+          html.push('</div>');
+        });
+      }
+    }
+
+    if (c.selectedAgent) {
+      html.push('<hr style="border:none; border-top:1px solid #333; margin:20px 0;">');
+      html.push('<h3 style="margin:0 0 8px;">선택된 agent: <code>' + escapeHtml(c.selectedAgent) + '</code></h3>');
+      html.push('<p class="muted" style="margin:0 0 12px;">아래 3가지를 Cline/Qwen에 복사·붙여넣으면 챗봇 셋업 완료:</p>');
+
+      // System prompt
+      html.push('<div class="card" style="padding:10px 12px; margin-bottom:10px;">');
+      html.push('  <div style="display:flex; justify-content:space-between; align-items:center;">');
+      html.push('    <strong>1. System prompt</strong>  <span class="muted">— Cline custom instructions에 붙여넣기</span>');
+      html.push('    <div>');
+      html.push('      <button id="console-load-prompt" class="btn"' + (c.busy==='prompt'?' disabled':'') + '>' + (c.busy==='prompt'?'로드 중…':'불러오기') + '</button>');
+      html.push('      <button id="console-copy-prompt" class="btn"' + (c.systemPrompt?'':' disabled') + '>복사</button>');
+      html.push('    </div>');
+      html.push('  </div>');
+      if (c.busy === 'prompt') {
+        html.push('  <pre style="margin-top:8px; padding:10px; opacity:.7;">로드 중…</pre>');
+      } else if (c.systemPrompt) {
+        html.push('  <pre style="margin-top:8px; max-height:280px; overflow:auto; background:#1e1e1e; padding:10px; border-radius:4px; font-size:.85em;">' + escapeHtml(c.systemPrompt) + '</pre>');
+      }
+      html.push('</div>');
+
+      // Context bundle markdown
+      html.push('<div class="card" style="padding:10px 12px; margin-bottom:10px;">');
+      html.push('  <div style="display:flex; justify-content:space-between; align-items:center;">');
+      html.push('    <strong>2. Context bundle (Markdown)</strong> <span class="muted">— RAG payload, LLM 첫 메시지 컨텍스트로</span>');
+      html.push('    <div>');
+      html.push('      <button id="console-load-md" class="btn"' + (c.busy==='md'?' disabled':'') + '>' + (c.busy==='md'?'로드 중…':'불러오기') + '</button>');
+      html.push('      <button id="console-copy-md" class="btn"' + (c.contextMarkdown?'':' disabled') + '>복사</button>');
+      html.push('    </div>');
+      html.push('  </div>');
+      if (c.busy === 'md') {
+        html.push('  <pre style="margin-top:8px; padding:10px; opacity:.7;">로드 중…</pre>');
+      } else if (c.contextMarkdown) {
+        html.push('  <pre style="margin-top:8px; max-height:280px; overflow:auto; background:#1e1e1e; padding:10px; border-radius:4px; font-size:.85em;">' + escapeHtml(c.contextMarkdown) + '</pre>');
+      }
+      html.push('</div>');
+
+      // Context bundle json
+      html.push('<div class="card" style="padding:10px 12px; margin-bottom:10px;">');
+      html.push('  <div style="display:flex; justify-content:space-between; align-items:center;">');
+      html.push('    <strong>3. Context bundle (JSON)</strong> <span class="muted">— tool/function 호출 백엔드용</span>');
+      html.push('    <div>');
+      html.push('      <button id="console-load-json" class="btn"' + (c.busy==='json'?' disabled':'') + '>' + (c.busy==='json'?'로드 중…':'불러오기') + '</button>');
+      html.push('      <button id="console-copy-json" class="btn"' + (c.contextJson?'':' disabled') + '>복사</button>');
+      html.push('    </div>');
+      html.push('  </div>');
+      if (c.busy === 'json') {
+        html.push('  <pre style="margin-top:8px; padding:10px; opacity:.7;">로드 중…</pre>');
+      } else if (c.contextJson) {
+        html.push('  <pre style="margin-top:8px; max-height:280px; overflow:auto; background:#1e1e1e; padding:10px; border-radius:4px; font-size:.85em;">' + escapeHtml(c.contextJson) + '</pre>');
+      }
+      html.push('</div>');
+
+      // MCP 자동 등록 — 클라이언트별 토글 (v0.11.0)
+      var mcpClient = state.console.mcpClient || 'cline';
+      var spec = _mcpSpecFor(mcpClient, state.config.baseUrl);
+      html.push('<div class="card" style="padding:10px 12px; margin-bottom:10px; border:1px solid #6a4cff;">');
+      html.push('  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">');
+      html.push('    <strong>MCP 자동 등록 (권장)</strong>');
+      html.push('    <div style="display:flex; gap:8px; align-items:center;">');
+      html.push('      <label class="muted" style="font-size:.88em;">클라이언트:</label>');
+      html.push('      <select id="console-mcp-client" class="input" style="padding:4px 8px;">');
+      [
+        ['cline', 'Cline (VSCode)'],
+        ['claude_desktop', 'Claude Desktop'],
+        ['claude_code', 'Claude Code (CLI)'],
+        ['cursor', 'Cursor'],
+        ['copilot', 'VSCode Copilot Chat'],
+        ['gemini', 'Gemini CLI'],
+      ].forEach(function(p){
+        html.push('<option value="' + p[0] + '"' + (p[0]===mcpClient?' selected':'') + '>' + p[1] + '</option>');
+      });
+      html.push('      </select>');
+      html.push('      <button id="console-install-mcp" class="btn"' + (c.mcpInstalling?' disabled':'') + ' title="MCP 서버 등록 + System prompt 자동 주입 (Claude Desktop/Gemini 는 prompt 수동)">' + (c.mcpInstalling?'설치 중…':'자동 설치 (MCP + Prompt)') + '</button>');
+      html.push('      <button id="console-copy-mcp" class="btn">복사</button>');
+      html.push('    </div>');
+      html.push('  </div>');
+      html.push('  <p class="muted" style="margin:6px 0 4px; font-size:.85em;"><strong>설정 위치:</strong> ' + escapeHtml(spec.location) + '</p>');
+      html.push('  <pre style="margin-top:4px; max-height:200px; overflow:auto; background:#1e1e1e; padding:10px; border-radius:4px; font-size:.85em;">' + escapeHtml(spec.body) + '</pre>');
+      html.push('  <p class="muted" style="margin:6px 0 0; font-size:.85em;">' + escapeHtml(spec.note) + '</p>');
+      if (c.mcpInstallResult) {
+        var r = c.mcpInstallResult;
+        var kind = r.ok ? 'ok' : 'err';
+        var bg = r.ok ? '#2a4d3a' : '#5c2d2d';
+        var line1 = r.ok
+          ? 'MCP 서버 등록 (' + (r.action || '?') + ')' + (r.configPath ? ': ' + r.configPath : '') + (r.shellCommand ? ' [$ ' + r.shellCommand + ']' : '')
+          : '설치 실패: ' + (r.error || 'unknown');
+        var line2 = '';
+        if (r.ok) {
+          if (r.promptAction === 'created' || r.promptAction === 'updated') {
+            line2 = 'System prompt ' + r.promptAction + ' → ' + (r.promptPath || '');
+          } else if (r.promptAction === 'manual') {
+            line2 = 'System prompt: 수동 복사 필요 — ' + (r.promptPath || '저장 경로 없음');
+          } else if (r.promptAction === 'skipped') {
+            line2 = 'System prompt: 로드된 prompt 없음 → "System prompt 불러오기" 후 다시 자동설치하면 함께 주입';
+          }
+        }
+        html.push('  <div class="banner ' + kind + '" style="margin-top:8px; background:' + bg + '; padding:8px 10px; border-radius:4px; font-size:.85em;">'
+          + escapeHtml(line1)
+          + (r.hint ? ' <span class="muted">— ' + escapeHtml(r.hint) + '</span>' : '')
+          + (line2 ? '<br/>' + escapeHtml(line2) : '')
+          + '</div>');
+      }
+      html.push('</div>');
+
+      html.push('<div class="banner" style="background:#2d3a5c; padding:10px 12px; border-radius:6px; margin-top:14px;">');
+      html.push('  <strong>대안 (수동 모드)</strong>: MCP 미지원 LLM 이면 위 1 / 2 / 3 을 차례로 복사해서 Cline 의 Custom Instructions + 첫 메시지에 붙여넣는다.');
+      html.push('</div>');
+    }
+
+    html.push('</div>');
+    root.innerHTML = html.join('');
+
+    // Event handlers
+    on('console-q', 'keydown', function(e){ if (e.key === 'Enter') doRecommend(); });
+    on('console-go', 'click', doRecommend);
+    document.querySelectorAll('.console-pick').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        state.console.selectedAgent = btn.getAttribute('data-agent');
+        // clear previous prompt/bundle from prior selection
+        state.console.systemPrompt = null;
+        state.console.contextMarkdown = null;
+        state.console.contextJson = null;
+        render();
+      });
+    });
+    on('console-load-prompt', 'click', function(){ loadConsoleText('prompt'); });
+    on('console-load-md', 'click', function(){ loadConsoleText('md'); });
+    on('console-load-json', 'click', function(){ loadConsoleText('json'); });
+    on('console-copy-prompt', 'click', function(){ copyConsoleText(state.console.systemPrompt, 'System prompt'); });
+    on('console-copy-md', 'click', function(){ copyConsoleText(state.console.contextMarkdown, 'Context (markdown)'); });
+    on('console-copy-json', 'click', function(){ copyConsoleText(state.console.contextJson, 'Context (json)'); });
+    on('console-copy-mcp', 'click', function(){
+      var spec = _mcpSpecFor(state.console.mcpClient || 'cline', state.config.baseUrl);
+      copyConsoleText(spec.body, 'MCP registration (' + (state.console.mcpClient || 'cline') + ')');
+    });
+    on('console-install-mcp', 'click', function(){ installMcp(); });
+    on('console-mcp-client', 'change', function(e){
+      state.console.mcpClient = e.target.value;
+      state.console.mcpInstallResult = null;
+      render();
+    });
+  }
+
+  // ── MCP 자동 설치 (v0.12.0 → v0.13.0 — system_prompt 도 같이 자동 주입) ──
+  function installMcp(){
+    var client = state.console.mcpClient || 'cline';
+    try { console.log('[aidh] installMcp click', client, 'baseUrl=', state.config.baseUrl); } catch(_){}
+    state.console.mcpInstalling = true;
+    state.console.mcpInstallResult = null;
+    render();
+    // v0.13.0 — prompt 가 아직 로드 안 됐고 agent 선택돼 있으면 먼저 자동 로드.
+    var needPrompt = !state.console.systemPrompt && !!state.console.selectedAgent;
+    var go = function(){ _sendInstallRequest(client); };
+    if (needPrompt) {
+      loadConsoleText('prompt', go);
+    } else {
+      go();
+    }
+  }
+
+  function _sendInstallRequest(client){
+    var rid = _reqIdSeq++;
+    _pendingReq.set(rid, function(msg){
+      try { console.log('[aidh] installMcp response', msg); } catch(_){}
+      state.console.mcpInstalling = false;
+      state.console.mcpInstallResult = {
+        ok: !!msg.ok,
+        action: msg.action,
+        configPath: msg.configPath,
+        shellCommand: msg.shellCommand,
+        error: msg.error,
+        hint: msg.hint,
+        promptAction: msg.promptAction,
+        promptPath: msg.promptPath,
+        promptError: msg.promptError,
+      };
+      render();
+    });
+    // 진단용 timeout fallback — prompt 주입 포함이라 LLM 호출 없어도 fs 작업 약간 더 → 20s.
+    setTimeout(function(){
+      if (_pendingReq.has(rid)) {
+        _pendingReq.delete(rid);
+        state.console.mcpInstalling = false;
+        state.console.mcpInstallResult = {
+          ok: false,
+          error: 'host 응답 timeout (20s) — VSCode를 Reload Window 후 패널을 다시 여세요',
+        };
+        render();
+      }
+    }, 20000);
+    send({
+      type: 'installMcpConfigRequest',
+      reqId: rid,
+      client: client,
+      baseUrl: state.config.baseUrl,
+      systemPrompt: state.console.systemPrompt || null,
+      agentType: state.console.selectedAgent || null,
+    });
+    try { console.log('[aidh] installMcp sent rid=', rid); } catch(_){}
+  }
+
+  // ── MCP 클라이언트별 등록 코드 생성 ──────────────────────────────
+  function _mcpUrl(baseUrl){
+    return (baseUrl || 'http://<host>:8001').replace(/\\/+$/, '') + '/mcp/';
+  }
+
+  function _mcpSpecFor(client, baseUrl){
+    var url = _mcpUrl(baseUrl);
+    if (client === 'claude_code') {
+      return {
+        location: '터미널에서 한 줄 명령으로 등록',
+        body: 'claude mcp add aidatahub --transport http ' + url,
+        note: '명령 실행 후 Claude Code 재시작 (또는 새 세션 시작). 7개 도구 자동 인식.',
+      };
+    }
+    if (client === 'copilot') {
+      var cfg = { 'chat.mcp.servers': { aidatahub: { url: url } } };
+      return {
+        location: '.vscode/settings.json (워크스페이스) 또는 사용자 settings.json',
+        body: JSON.stringify(cfg, null, 2),
+        note: 'VSCode 재시작 후 Copilot Chat 의 도구 패널에서 자동 발견됨. (Copilot v0.20+ 필요)',
+      };
+    }
+    if (client === 'gemini') {
+      var cfgG = { mcpServers: { aidatahub: { url: url } } };
+      return {
+        location: '~/.gemini/mcp.json 또는 셸: gemini config mcp add aidatahub ' + url,
+        body: JSON.stringify(cfgG, null, 2),
+        note: 'Gemini CLI 0.x+ 에서 MCP HTTP transport 지원. CLI 명령이 더 간단하다.',
+      };
+    }
+    // Cline / Claude Desktop / Cursor — 모두 동일 mcpServers 구조
+    var cfgC = { mcpServers: { aidatahub: { url: url } } };
+    var loc, note;
+    if (client === 'claude_desktop') {
+      loc = 'mac: ~/Library/Application Support/Claude/claude_desktop_config.json  |  win: %APPDATA%\\\\Claude\\\\claude_desktop_config.json';
+      note = 'Claude Desktop 재시작 후 도구 자동 발견. (1.x+ 에서 HTTP transport 지원)';
+    } else if (client === 'cursor') {
+      loc = 'Cursor → Settings → MCP → Add Server';
+      note = 'JSON 직접 편집 대신 UI 에서 name=aidatahub, url=' + url + ' 입력해도 동일.';
+    } else {
+      loc = '.vscode/cline_mcp_settings.json 또는 Cline UI → MCP Servers';
+      note = 'Cline 재시작 후 7개 도구가 자동 인식된다. 도구별 권한은 Cline UI 에서 조정 가능.';
+    }
+    return { location: loc, body: JSON.stringify(cfgC, null, 2), note: note };
+  }
+
+  function doRecommend(){
+    const qEl = document.getElementById('console-q');
+    const q = (qEl && qEl.value || '').trim();
+    if (!q) return;
+    state.console.q = q;
+    state.console.loading = true;
+    state.console.error = null;
+    state.console.results = null;
+    state.console.selectedAgent = null;
+    state.console.systemPrompt = null;
+    state.console.contextMarkdown = null;
+    state.console.contextJson = null;
+    render();
+    const rid = _reqIdSeq++;
+    _pendingReq.set(rid, function(msg){
+      state.console.loading = false;
+      if (msg.ok) {
+        state.console.results = msg.payload;
+      } else {
+        state.console.error = msg.error || 'Recommendation failed.';
+      }
+      render();
+    });
+    send({ type: 'recommendAgentsRequest', reqId: rid, q: q, topK: 5 });
+  }
+
+  function loadConsoleText(kind, onDone){
+    if (!state.console.selectedAgent) {
+      try { console.warn('[aidh] loadConsoleText: no agent selected'); } catch(_){}
+      if (typeof onDone === 'function') onDone();
+      return;
+    }
+    try { console.log('[aidh] loadConsoleText start', kind, state.console.selectedAgent); } catch(_){}
+    state.console.busy = kind;
+    state.console.error = null;
+    render();
+    const rid = _reqIdSeq++;
+    if (kind === 'prompt') {
+      _pendingReq.set(rid, function(msg){
+        try { console.log('[aidh] system-prompt response', msg.ok, (msg.text||'').length); } catch(_){}
+        state.console.busy = null;
+        if (msg.ok) state.console.systemPrompt = msg.text || '(empty)';
+        else state.console.error = msg.error || 'system-prompt load failed.';
+        render();
+        if (typeof onDone === 'function') onDone();
+      });
+      send({ type: 'getSystemPromptRequest', reqId: rid, agentType: state.console.selectedAgent, baseUrlOverride: state.config.baseUrl });
+      try { console.log('[aidh] system-prompt sent rid=', rid); } catch(_){}
+    } else {
+      _pendingReq.set(rid, function(msg){
+        try { console.log('[aidh] context-bundle response', kind, msg.ok, (msg.text||'').length); } catch(_){}
+        state.console.busy = null;
+        if (msg.ok) {
+          if (kind === 'md') state.console.contextMarkdown = msg.text || '(empty)';
+          else state.console.contextJson = msg.text || '(empty)';
+        } else {
+          state.console.error = msg.error || 'context-bundle load failed.';
+        }
+        render();
+        if (typeof onDone === 'function') onDone();
+      });
+      send({ type: 'getContextBundleRequest', reqId: rid, agentType: state.console.selectedAgent, format: (kind === 'md' ? 'markdown' : 'json') });
+      try { console.log('[aidh] context-bundle sent rid=', rid, 'kind=', kind); } catch(_){}
+    }
+  }
+
+  function copyConsoleText(text, label){
+    if (!text) return;
+    const rid = _reqIdSeq++;
+    _pendingReq.set(rid, function(){ /* status bar shows confirmation */ });
+    send({ type: 'copyToClipboardRequest', reqId: rid, text: text, label: label });
+  }
+
+  // ====================================================================
   // Inbound / boot
   // ====================================================================
   // Tab switching
@@ -2503,6 +3360,16 @@ function clientScript(): string {
       _pendingReq.delete(m.reqId);
       if (m.ok) p.resolve(m.payload != null ? m.payload : m);
       else p.reject(new Error(m.error || 'request failed'));
+    } else if (m.type === 'recommendAgentsResponse'
+               || m.type === 'getContextBundleResponse'
+               || m.type === 'getSystemPromptResponse'
+               || m.type === 'copyToClipboardResponse'
+               || m.type === 'installMcpConfigResponse') {
+      // Console tab uses callback-style dispatch (not promise).
+      const cb = _pendingReq.get(m.reqId);
+      if (!cb) return;
+      _pendingReq.delete(m.reqId);
+      try { cb(m); } catch (_) { /* swallow */ }
     } else if (m.type === 'optionsInvalidated') {
       // Host invalidated meta/options cache (e.g. after an agent CRUD op).
       // Drop our cached copy so the Upload form fetches fresh on next render.

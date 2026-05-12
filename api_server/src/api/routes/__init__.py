@@ -35,6 +35,8 @@ from . import (
     jobs,
     meta,
     metrics,
+    org,
+    recommend,
     records,
     search,
     system,
@@ -87,6 +89,10 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(convert.router)
     app.include_router(jobs.router)
     app.include_router(meta.router)
+    # /api/org/teams, /api/org/groups — 조직 마스터 CRUD (Migration 0012)
+    app.include_router(org.router)
+    # /api/recommend/agents — 자연어 → 추천 agents (agent-discovery-console)
+    app.include_router(recommend.router)
     app.include_router(system.router)
     # /api/taxonomy/* — 작은 모델용 어휘 발견 / 동의어 매핑
     app.include_router(taxonomy.router)

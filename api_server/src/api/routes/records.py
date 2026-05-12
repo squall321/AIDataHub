@@ -229,6 +229,10 @@ async def create_record(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> RecordOut:
+    # Strict team/group 검증 (Migration 0012 / org_svc)
+    from api.services.org_svc import validate_team_group
+    await validate_team_group(session, payload.team, payload.group)
+
     data = payload.model_dump()
     rec = Record(**data)
     session.add(rec)
