@@ -18,7 +18,19 @@ if instance_running "$INST_POSTGRES"; then
 else
   require_port_free "$POSTGRES_PORT" "POSTGRES"
   echo "→ start $INST_POSTGRES"
+
+  # Host network opt-in (Issue #3 — apptainer 가 자체 netns 에 들어가면
+  # host 의 127.0.0.1:${POSTGRES_PORT} 로 native API 가 못 닿을 수 있음).
+  # AIDH_APPT_HOST_NET=1 일 때만 ``--net --network=host`` 추가.
+  # host CNI conflist 가 없는 빌드에서는 이 옵션이 에러를 내므로 기본 off.
+  HOST_NET_OPTS=()
+  if [[ "${AIDH_APPT_HOST_NET:-0}" = "1" ]]; then
+    HOST_NET_OPTS=(--net --network=host)
+    echo "  (AIDH_APPT_HOST_NET=1 — --net --network=host 적용)"
+  fi
+
   apptainer instance start \
+    "${HOST_NET_OPTS[@]}" \
     --bind "$DATA_DIR/postgres:/var/lib/postgresql/data" \
     --bind "$DATA_DIR/postgres-run:/var/run/postgresql" \
     --env "POSTGRES_USER=${POSTGRES_USER}" \
