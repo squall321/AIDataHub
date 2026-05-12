@@ -2292,7 +2292,7 @@ function clientScript(): string {
       + '  <p class="subtle" style="margin:6px 0">LLM 응답 스타일·거절 정책·라우팅 힌트.</p>'
       + '  <div class="agent-form" style="margin-top:6px">'
       + '    <label>system_prompt <span class="muted" style="font-size:11px">— LLM 에 그대로 주입. 비워두면 generic 폴백. 도구 가이드(API 목록)는 자동으로 뒤에 append 됨 — 끄려면 본문에 <code>&lt;!-- no-tool-guide --&gt;</code> 포함. 치환: <code>{base_url}</code>, <code>{agent_type}</code>, <code>{agent_name}</code>.</span></label>'
-      + '    <textarea id="af-system-prompt" rows="6" placeholder="당신은 ___ 전문 보조입니다. 2~3문장 이내로 답하고, 출처는 record_id §섹션 형식으로 인용하세요. 자료에 없으면 \'해당 자료를 찾지 못했습니다\'라고만 답합니다.">' + escapeHtml(fv.system_prompt) + '</textarea>'
+      + '    <textarea id="af-system-prompt" rows="6" placeholder="당신은 ___ 전문 보조입니다. 2~3문장 이내로 답하고, 출처는 record_id §섹션 형식으로 인용하세요. 자료에 없으면 「해당 자료를 찾지 못했습니다」라고만 답합니다.">' + escapeHtml(fv.system_prompt) + '</textarea>'
       + '    <label>max_tokens <span class="muted" style="font-size:11px">— LLM 응답 토큰 상한 (50~2000, default 200)</span></label>'
       + '    <input id="af-max-tokens" type="number" min="50" max="2000" step="10" placeholder="200" value="' + escapeHtml(fv.response_max_tokens) + '" />'
       + '    <label><input id="af-citation-required" type="checkbox"' + (fv.response_citation_required ? ' checked' : '') + ' /> citation_required <span class="muted" style="font-size:11px">— 응답에 record_id 인용이 없으면 거절</span></label>'
