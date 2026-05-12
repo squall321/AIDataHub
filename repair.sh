@@ -492,15 +492,19 @@ esac
 export PYTHONPATH="$ROOT_DIR/api_server/src"
 export POSTGRES_USER POSTGRES_PASSWORD POSTGRES_PORT POSTGRES_DB
 
-VENV_ALEMBIC="$ROOT_DIR/api_server/.venv/bin/alembic"
 info "alembic upgrade head (EMBEDDING_DIM=$EMBEDDING_DIM)"
+# ``python -m alembic`` 으로 호출 — wrapper script 의 shebang 손상에 강건
+# (".venv/bin/alembic: cannot execute required file not found" 케이스 대응).
 if [[ $DRY -eq 0 ]]; then
-  if [[ ! -x "$VENV_ALEMBIC" ]]; then
-    fail ".venv/bin/alembic 없음 — requirements.txt 에 alembic 누락 또는 pip install 부분 실패"
-    hint "수동: cd api_server && .venv/bin/pip install alembic"
-    exit 1
+  if ! "$VENV_PY" -m alembic --version >/dev/null 2>&1; then
+    warn "alembic 모듈 import 실패 — 재설치"
+    "$VENV_PY" -m pip install --force-reinstall --no-deps alembic > "$LOG_DIR/repair-alembic-install.log" 2>&1 || {
+      fail "alembic 재설치 실패"
+      hint "로그: tail -20 $LOG_DIR/repair-alembic-install.log"
+      exit 1
+    }
   fi
-  if ! "$VENV_ALEMBIC" upgrade head > "$LOG_DIR/repair-alembic.log" 2>&1; then
+  if ! "$VENV_PY" -m alembic upgrade head > "$LOG_DIR/repair-alembic.log" 2>&1; then
     fail "alembic 실패"
     hint "로그: tail -30 $LOG_DIR/repair-alembic.log"
     # 흔한 원인: DB 존재하는데 alembic_version 만 빠짐
@@ -508,7 +512,7 @@ if [[ $DRY -eq 0 ]]; then
       warn "→ 테이블 충돌 — 데이터 초기화 필요"
       if [[ $KEEP_DATA -eq 0 ]] && ([[ $AUTO -eq 1 ]] || confirm); then
         bash "$APPT_DIR/reset-db.sh" 2>&1 | tail -10 || true
-        "$VENV_ALEMBIC" upgrade head > "$LOG_DIR/repair-alembic.log" 2>&1 || { fail "재시도도 실패"; exit 1; }
+        "$VENV_PY" -m alembic upgrade head > "$LOG_DIR/repair-alembic.log" 2>&1 || { fail "재시도도 실패"; exit 1; }
       else
         exit 1
       fi
