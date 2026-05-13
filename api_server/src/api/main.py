@@ -90,8 +90,8 @@ async def _check_embedding_dim_consistency() -> None:
 
 
 app = FastAPI(
-    title="사업부 문서 AI 데이터 API",
-    description="Word → JSON → PostgreSQL 적재 데이터를 Cline SR 등 에이전트에 제공",
+    title="Mobile eXperience AI Data Hub",
+    description="문서/시뮬레이션/데이터 → JSON → PostgreSQL+pgvector 적재 데이터를 AI 에이전트에 제공",
     version=__version__,
     lifespan=lifespan,
 )
@@ -135,7 +135,7 @@ if _MCP_AVAILABLE and _mcp_app is not None:
 @app.get("/", tags=["system"])
 async def root() -> dict[str, str]:
     return {
-        "service": "ai-data-api",
+        "service": "mobile-experience-ai-data-hub",
         "version": __version__,
         "status": "running",
     }

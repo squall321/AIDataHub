@@ -931,6 +931,164 @@ async function deleteOrgGroup(teamCode, code, recordCount) {
   }
 }
 
+// ============================================================================
+// Section 5: 분석
+// ============================================================================
+async function loadAnalytics() {
+  await loadAnalyticsOverview();
+  await loadAnalyticsUsage();
+}
+
+async function loadAnalyticsOverview() {
+  const target = document.getElementById("analytics-overview");
+  setState(target, "", "로드 중...");
+  try {
+    const dist = await apiFetch("/api/analytics/distribution");
+    clear(target);
+
+    const makeCard = (label, obj) => {
+      const card = el("div", { class: "card" });
+      card.appendChild(el("div", { class: "label" }, label));
+      const ul = el("ul");
+      const entries = Object.entries(obj || {});
+      if (entries.length === 0) {
+        ul.appendChild(el("li", {}, [el("span", {}, "(없음)"), el("span", {}, "0")]));
+      } else {
+        entries.sort((a, b) => b[1] - a[1]).slice(0, 10).forEach(([k, v]) =>
+          ul.appendChild(el("li", {}, [el("span", {}, k || "(null)"), el("span", {}, String(v))]))
+        );
+      }
+      card.appendChild(ul);
+      return card;
+    };
+    target.appendChild(makeCard("data_type 분포", dist.by_type));
+    target.appendChild(makeCard("team 분포", dist.by_division));
+    target.appendChild(makeCard("group 분포", dist.by_team));
+    target.appendChild(makeCard("연도 분포", dist.by_year));
+  } catch (err) {
+    showError(target, err);
+  }
+}
+
+async function loadAnalyticsTimeline() {
+  const target = document.getElementById("analytics-timeline");
+  const yearInput = document.getElementById("analytics-year");
+  const year = parseInt(yearInput.value, 10) || new Date().getFullYear();
+  setState(target, "", "로드 중...");
+  try {
+    const data = await apiFetch("/api/analytics/timeline?year=" + year);
+    clear(target);
+    const monthly = data.monthly || [];
+    if (monthly.every((m) => m.count === 0)) {
+      setState(target, "", `${year}년 데이터 없음`);
+      return;
+    }
+    const max = Math.max(...monthly.map((m) => m.count), 1);
+    const MONTH_KO = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
+    const wrap = el("div", { style: "display:flex; gap:4px; align-items:flex-end; height:80px;" });
+    monthly.forEach((m) => {
+      const pct = Math.round((m.count / max) * 100);
+      const bar = el("div", {
+        title: `${MONTH_KO[m.month - 1]}: ${m.count}건`,
+        style: `flex:1; height:${pct}%; min-height:2px; background:var(--accent, #1f6feb); border-radius:2px 2px 0 0; cursor:default;`,
+      });
+      wrap.appendChild(bar);
+    });
+    target.appendChild(wrap);
+    const labels = el("div", { style: "display:flex; gap:4px; margin-top:4px; font-size:10px; color:var(--text-muted, #888);" });
+    MONTH_KO.forEach((lbl) => {
+      labels.appendChild(el("div", { style: "flex:1; text-align:center;" }, lbl));
+    });
+    target.appendChild(labels);
+    target.appendChild(el("div", { class: "state", style: "margin-top:6px; font-size:11px;" }, `${year}년 총 ${monthly.reduce((s, m) => s + m.count, 0)}건`));
+  } catch (err) {
+    showError(target, err);
+  }
+}
+
+async function loadAnalyticsCommonTags() {
+  const target = document.getElementById("analytics-tags");
+  const agent = document.getElementById("analytics-tags-agent").value.trim();
+  if (!agent) { setState(target, "error", "agent_type 입력 필수"); return; }
+  setState(target, "", "로드 중...");
+  try {
+    const items = await apiFetch("/api/analytics/common-tags?agent=" + encodeURIComponent(agent) + "&limit=20");
+    clear(target);
+    if (items.length === 0) { setState(target, "", "(태그 없음)"); return; }
+    const cloud = el("div", { class: "tag-cloud" });
+    items.forEach((t) =>
+      cloud.appendChild(el("span", { class: "tag-bubble" }, [
+        t.tag, el("span", { class: "count" }, "(" + t.count + ")"),
+      ]))
+    );
+    target.appendChild(cloud);
+  } catch (err) {
+    showError(target, err);
+  }
+}
+
+async function loadAnalyticsCrossAgent() {
+  const target = document.getElementById("analytics-cross");
+  const raw = document.getElementById("analytics-cross-agents").value.trim();
+  const agents = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  if (agents.length < 2) { setState(target, "error", "agent 2개 이상 콤마 구분 필요"); return; }
+  setState(target, "", "로드 중...");
+  try {
+    const params = new URLSearchParams();
+    agents.forEach((a) => params.append("agents", a));
+    const data = await apiFetch("/api/analytics/cross-agent?" + params.toString());
+    clear(target);
+    target.appendChild(el("div", { class: "state" }, `공유 레코드: ${data.count}건 / agents=${data.agents?.join(", ")}`));
+    if ((data.shared_records || []).length > 0) {
+      const ul = el("ul");
+      data.shared_records.slice(0, 10).forEach((r) => {
+        const li = el("li", { class: "clickable" }, [
+          el("span", { class: "mono", style: "font-size:11px;" }, r.id),
+          " ", el("span", {}, r.title || ""),
+        ]);
+        li.addEventListener("click", () => jumpToRecord(r.id));
+        ul.appendChild(li);
+      });
+      target.appendChild(ul);
+    }
+  } catch (err) {
+    showError(target, err);
+  }
+}
+
+async function loadAnalyticsUsage() {
+  const target = document.getElementById("analytics-usage");
+  setState(target, "", "로드 중...");
+  try {
+    const data = await apiFetch("/api/analytics/usage?limit=20");
+    clear(target);
+    const items = data.items || [];
+    if (items.length === 0) { setState(target, "", "(접근 기록 없음)"); return; }
+    const table = el("table", { class: "data-table" });
+    table.appendChild(el("thead", {}, el("tr", {}, [
+      el("th", {}, "record_id"), el("th", {}, "title"),
+      el("th", {}, "data_type"), el("th", {}, "read_count"), el("th", {}, "last_accessed"),
+    ])));
+    const tbody = el("tbody");
+    items.forEach((r) => {
+      const tr = el("tr", { class: "clickable" });
+      tr.appendChild(el("td", { class: "mono" }, r.id));
+      tr.appendChild(el("td", {}, r.title || ""));
+      tr.appendChild(el("td", {}, r.data_type || ""));
+      tr.appendChild(el("td", {}, String(r.read_count || 0)));
+      tr.appendChild(el("td", { class: "mono" }, fmtDate(r.last_accessed_at)));
+      tr.addEventListener("click", () => jumpToRecord(r.id));
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    target.appendChild(table);
+  } catch (err) {
+    showError(target, err);
+  }
+}
+
+LOADERS["analytics"] = loadAnalytics;
+
 LOADERS["org"] = loadOrg;
 
 function flattenEndpoints(spec) {
@@ -1365,6 +1523,16 @@ window.addEventListener("DOMContentLoaded", () => {
   document.getElementById("groups-tax-refresh").addEventListener("click", loadTaxonomy);
   document.getElementById("docs-load").addEventListener("click", loadAgentGuide);
   bindDocsQuickLinks();
+
+  // 분석 탭 이벤트
+  const analyticsRefresh = document.getElementById("analytics-refresh");
+  if (analyticsRefresh) analyticsRefresh.addEventListener("click", loadAnalytics);
+  const analyticsTimelineRun = document.getElementById("analytics-timeline-run");
+  if (analyticsTimelineRun) analyticsTimelineRun.addEventListener("click", loadAnalyticsTimeline);
+  const analyticsTagsRun = document.getElementById("analytics-tags-run");
+  if (analyticsTagsRun) analyticsTagsRun.addEventListener("click", loadAnalyticsCommonTags);
+  const analyticsCrossRun = document.getElementById("analytics-cross-run");
+  if (analyticsCrossRun) analyticsCrossRun.addEventListener("click", loadAnalyticsCrossAgent);
 
   // 조직 관리 탭 이벤트
   const orgRefresh = document.getElementById("org-refresh");

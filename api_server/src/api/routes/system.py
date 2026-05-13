@@ -33,11 +33,13 @@ async def system_health() -> dict:
     """
     # build 식별자: 환경변수 ``BUILD_SHA`` 우선, 없으면 "dev".
     build = os.environ.get("BUILD_SHA") or "dev"
+    embedder = os.environ.get("EMBEDDING_PROVIDER", "hash")
     return {
         "status": "ok",
         "version": __version__,
         "auth_required": bool(settings.auth_required),
         "build": build,
+        "embedder": embedder,
     }
 
 

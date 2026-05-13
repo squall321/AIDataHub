@@ -394,7 +394,7 @@ function clientScript(): string {
   const state = {
     tab: 'upload',              // upload | bundle | search | agents
     showWelcome: true,          // forced when not connected
-    config: { baseUrl: 'http://110.15.177.125:8000', hasApiKey: false, connected: false },
+    config: { baseUrl: '', hasApiKey: false, connected: false },
     options: null,              // MetaOptions
     optionsError: null,
     // Upload tab
@@ -588,7 +588,7 @@ function clientScript(): string {
       <h1>Connect to your Mobile eXperience AI Data Hub server</h1>
       <p class="subtle">Enter your backend URL and API key. The key is stored in VS Code SecretStorage.</p>
       <label>Server URL</label>
-      <input id="i-url" type="text" placeholder="http://110.15.177.125:8000" value="\${escapeHtml(state.config.baseUrl)}" />
+      <input id="i-url" type="text" placeholder="http://your-server:8001" value="\${escapeHtml(state.config.baseUrl)}" />
       <label>API Key (leave empty if backend has AUTH_REQUIRED=false)</label>
       <input id="i-key" type="password" placeholder="••••••••••••" />
       <div class="toolbar">

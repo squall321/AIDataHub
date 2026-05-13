@@ -34,6 +34,7 @@ export interface SystemHealth {
   version: string;
   auth_required: boolean;
   build: string;
+  embedder?: string;
 }
 
 export interface VerifyKeyResponse {

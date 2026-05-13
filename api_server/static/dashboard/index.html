@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <title>ai-data-api · Dashboard</title>
+  <title>Mobile eXperience AI Data Hub · Dashboard</title>
   <meta name="viewport" content="width=1280">
   <link rel="stylesheet" href="dashboard.css">
   <link rel="icon" href="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%231f4f8b'/%3E%3Ctext x='32' y='42' font-family='Arial' font-size='28' font-weight='700' fill='white' text-anchor='middle'%3EA%3C/text%3E%3C/svg%3E">
@@ -13,7 +13,7 @@
   <div class="brand">
     <div class="brand-mark">A</div>
     <div class="brand-text">
-      <div class="brand-title">ai-data-api</div>
+      <div class="brand-title">Mobile eXperience AI Data Hub</div>
       <div class="brand-sub">Document → JSON → RAG-ready store</div>
     </div>
   </div>
@@ -31,8 +31,9 @@
   <button data-tab="catalog"><span class="tab-num">02</span>카탈로그</button>
   <button data-tab="search"><span class="tab-num">03</span>검색</button>
   <button data-tab="groups"><span class="tab-num">04</span>그룹·분류</button>
-  <button data-tab="org"><span class="tab-num">05</span>조직 관리</button>
-  <button data-tab="docs"><span class="tab-num">06</span>API 가이드</button>
+  <button data-tab="analytics"><span class="tab-num">05</span>분석</button>
+  <button data-tab="org"><span class="tab-num">06</span>조직 관리</button>
+  <button data-tab="docs"><span class="tab-num">07</span>API 가이드</button>
 </nav>
 
 <main>
@@ -97,7 +98,7 @@
     <div class="panel-head">
       <div>
         <h2>검색</h2>
-        <p class="panel-sub">semantic (e5_small 0.92↑) · fts (PostgreSQL tsvector) · tag (정확 매칭)</p>
+        <p class="panel-sub">semantic (vector cosine) · fts (PostgreSQL tsvector) · tag (정확 매칭)</p>
       </div>
     </div>
 
@@ -178,7 +179,66 @@
   </section>
 
   <!-- ============================================================ -->
-  <!-- Section 5: 조직 관리 (team/group 마스터) -->
+  <!-- Section 5: 분석 -->
+  <!-- ============================================================ -->
+  <section class="panel" data-panel="analytics">
+    <div class="panel-head">
+      <div>
+        <h2>분석</h2>
+        <p class="panel-sub">/api/analytics — 분포 · 타임라인 · 상위 태그 · 교차 분석</p>
+      </div>
+      <button id="analytics-refresh" class="btn ghost icon-btn" title="새로고침">↻ 새로고침</button>
+    </div>
+
+    <div class="cards" id="analytics-overview"></div>
+
+    <h3 class="section-h3" style="margin-top:24px;">타임라인</h3>
+    <div class="filter-bar">
+      <label class="field">
+        <span class="field-label">연도</span>
+        <input id="analytics-year" type="number" value="" min="2000" max="2100" style="width:100px;" placeholder="(현재 연도)">
+      </label>
+      <div class="actions">
+        <button id="analytics-timeline-run" class="btn">조회</button>
+      </div>
+    </div>
+    <div id="analytics-timeline" style="margin-top:8px;"></div>
+
+    <div class="two-col" style="margin-top:24px;">
+      <div>
+        <h3 class="section-h3">상위 태그 (에이전트 범위)</h3>
+        <div class="filter-bar" style="margin-bottom:8px;">
+          <label class="field grow">
+            <span class="field-label">agent_type</span>
+            <input id="analytics-tags-agent" type="text" placeholder="(에이전트 입력 후 조회)">
+          </label>
+          <div class="actions">
+            <button id="analytics-tags-run" class="btn">조회</button>
+          </div>
+        </div>
+        <div id="analytics-tags"></div>
+      </div>
+      <div>
+        <h3 class="section-h3">교차 분석 (공유 레코드)</h3>
+        <div class="filter-bar" style="margin-bottom:8px;">
+          <label class="field grow">
+            <span class="field-label">agent_type (콤마 구분)</span>
+            <input id="analytics-cross-agents" type="text" placeholder="iga-analyst,battery-analyst">
+          </label>
+          <div class="actions">
+            <button id="analytics-cross-run" class="btn">조회</button>
+          </div>
+        </div>
+        <div id="analytics-cross"></div>
+      </div>
+    </div>
+
+    <h3 class="section-h3" style="margin-top:24px;">접근 빈도 상위</h3>
+    <div id="analytics-usage"></div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- Section 6: 조직 관리 (team/group 마스터) -->
   <!-- ============================================================ -->
   <section class="panel" data-panel="org">
     <div class="panel-head">
@@ -327,7 +387,7 @@
 </main>
 
 <footer class="footer">
-  <span>ai-data-api · vanilla HTML/CSS/JS · openapi-driven</span>
+  <span>Mobile eXperience AI Data Hub · vanilla HTML/CSS/JS · openapi-driven</span>
   <span class="spacer"></span>
   <span id="footer-build">build · -</span>
 </footer>
