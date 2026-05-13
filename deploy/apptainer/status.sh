@@ -13,8 +13,17 @@ fi
 
 mark() { [[ "$1" = "ok" ]] && printf "${G}✓${N}" || printf "${R}✗${N}"; }
 
-# Instance
-if instance_running "$INST_POSTGRES"; then INST_OK=ok; else INST_OK=fail; fi
+# Instance — EXTERNAL 모드면 외부 인스턴스 검사
+if [[ "${EXTERNAL_POSTGRES:-0}" = "1" ]]; then
+  EXT_INST="${EXTERNAL_PG_INSTANCE:-mxwp_postgres}"
+  if apptainer instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx "$EXT_INST"; then
+    INST_OK=ok
+    INST_POSTGRES="$EXT_INST (external)"
+  else
+    INST_OK=fail
+    INST_POSTGRES="$EXT_INST (external, MISSING)"
+  fi
+elif instance_running "$INST_POSTGRES"; then INST_OK=ok; else INST_OK=fail; fi
 
 # Port
 if ss -tnl 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${POSTGRES_PORT}\$"; then PG_PORT=ok; else PG_PORT=fail; fi

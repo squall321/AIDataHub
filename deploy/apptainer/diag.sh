@@ -45,7 +45,14 @@ echo "================================================================"
 
 # ── A. Instance ----------------------------------------------------------
 echo "[A] Apptainer instance"
-if instance_running "$INST_POSTGRES"; then
+if [[ "${EXTERNAL_POSTGRES:-0}" = "1" ]]; then
+  EXT_INST="${EXTERNAL_PG_INSTANCE:-mxwp_postgres}"
+  if apptainer instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx "$EXT_INST"; then
+    pass "$EXT_INST is running (EXTERNAL_POSTGRES=1)"
+  else
+    fail "$EXT_INST NOT running — 외부 프로젝트(예: MXWhitePaper)에서 PG 먼저 기동"
+  fi
+elif instance_running "$INST_POSTGRES"; then
   pass "$INST_POSTGRES is running"
 else
   fail "$INST_POSTGRES NOT running — bash start_postgres.sh"

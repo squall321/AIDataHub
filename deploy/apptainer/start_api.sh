@@ -9,7 +9,7 @@ export_proxy
 require_python_venv
 ensure_dirs
 
-DB_URL="postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT}/${POSTGRES_DB}"
+DB_URL="postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-127.0.0.1}:${POSTGRES_PORT}/${POSTGRES_DB}"
 ATTACH_DIR="$DATA_DIR/attachments"
 FIG_DIR="$DATA_DIR/figures"
 

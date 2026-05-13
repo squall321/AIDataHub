@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# AI Data Hub — PostgreSQL+pgvector Apptainer instance 기동
+# AI Data Hub — PostgreSQL+pgvector 기동.
+# 두 가지 모드:
+#   1. SELF-MANAGED (default, EXTERNAL_POSTGRES=0): 자체 apptainer instance 띄움
+#   2. EXTERNAL (EXTERNAL_POSTGRES=1): 다른 프로젝트의 PG (예: MXWP 의 mxwp_postgres:5532)
+#      를 공유 사용. 인스턴스 안 띄우고 reachability + DB 존재만 검증.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
@@ -8,6 +12,55 @@ export_proxy
 require_apptainer
 ensure_dirs
 
+# ── EXTERNAL_POSTGRES 모드 ────────────────────────────────────────
+if [[ "${EXTERNAL_POSTGRES:-0}" = "1" ]]; then
+  EXT_INST="${EXTERNAL_PG_INSTANCE:-mxwp_postgres}"
+  echo "================================================================"
+  echo " AI Data Hub — postgres (EXTERNAL mode)"
+  echo "================================================================"
+  echo "  외부 PG instance : $EXT_INST"
+  echo "  host:port        : ${POSTGRES_HOST:-127.0.0.1}:${POSTGRES_PORT}"
+  echo "  user / db        : $POSTGRES_USER / $POSTGRES_DB"
+
+  if ! apptainer instance list 2>/dev/null | awk 'NR>1{print $1}' | grep -qx "$EXT_INST"; then
+    echo "[ERROR] $EXT_INST 미동작 — 해당 프로젝트에서 PG 먼저 기동 필요"
+    echo "        예: cd ~/Projects/MXWhitePaper && ./infra/scripts/start.sh"
+    exit 1
+  fi
+  echo "  ✓ $EXT_INST 동작 중"
+
+  # aidh user 로 직접 접속 시도 — 못 닿으면 setup-shared-pg.sh 안내
+  if ! apptainer exec "instance://$EXT_INST" \
+         env PGPASSWORD="$POSTGRES_PASSWORD" \
+         psql -h 127.0.0.1 -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+              -tA -X -c "SELECT 1" 2>/dev/null | grep -q "^1$"; then
+    echo "[ERROR] $POSTGRES_USER@$POSTGRES_DB 접속 실패"
+    echo
+    echo "        외부 PG 안에 aidh user/db 아직 안 만들었을 가능성. 한 번만:"
+    echo "          bash deploy/apptainer/setup-shared-pg.sh"
+    echo
+    echo "        또는 .env 의 POSTGRES_PASSWORD 가 외부 PG 의 비번과 안 맞을 수도."
+    exit 1
+  fi
+  echo "  ✓ $POSTGRES_USER@$POSTGRES_DB 접속 OK"
+
+  # pgvector 확장 확인
+  VEC=$(apptainer exec "instance://$EXT_INST" \
+         env PGPASSWORD="$POSTGRES_PASSWORD" \
+         psql -h 127.0.0.1 -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+              -tA -X -c "SELECT extname FROM pg_extension WHERE extname='vector'" 2>/dev/null || echo "")
+  if [[ "$VEC" = "vector" ]]; then
+    echo "  ✓ pgvector 확장 활성"
+  else
+    echo "  ! pgvector 확장 없음 — setup-shared-pg.sh 재실행 필요"
+  fi
+
+  echo
+  echo "✓ EXTERNAL postgres 준비 완료. 다음: bash start_api.sh"
+  exit 0
+fi
+
+# ── 이하 SELF-MANAGED 모드 (default) ─────────────────────────────────
 if [[ ! -f "$APPT_DIR/postgres.sif" ]]; then
   echo "[ERROR] postgres.sif 없음. 먼저: bash build.sh" >&2
   exit 1
@@ -16,6 +69,25 @@ fi
 if instance_running "$INST_POSTGRES"; then
   echo "✓ $INST_POSTGRES 이미 실행 중"
 else
+  # ── Stale-lock cleanup (MXWhitePaper 패턴) ────────────────────────────
+  # postgres 컨테이너가 정상 종료 못 했을 때 (host reboot / OOM / kill -9 /
+  # apptainer stop while busy) socket lock + postmaster.pid 가 남는다.
+  # 다음 start 시 다음 에러로 pg_isready 무한 대기:
+  #   FATAL: lock file ".s.PGSQL.5435.lock" already exists
+  #   HINT:  Is another postmaster (PID 14) using socket file ...
+  # 안전 가드:
+  #   1) 인스턴스가 정말 동작 중이 아닐 때만 정리 (위 instance_running 통과)
+  #   2) lock 의 PID 가 진짜 살아있는지 kill -0 으로 확인 (실수로 라이브 DB 죽이지 X)
+  for f in "$DATA_DIR/postgres-run/.s.PGSQL.${POSTGRES_PORT}.lock" \
+           "$DATA_DIR/postgres/pgdata/postmaster.pid"; do
+    [ -e "$f" ] || continue
+    pid="$(head -n1 "$f" 2>/dev/null | tr -dc '0-9')"
+    if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+      echo "  → stale lock 정리: $(basename "$f") (pid=${pid:-?} 미존재)"
+      rm -f "$f"
+    fi
+  done
+
   require_port_free "$POSTGRES_PORT" "POSTGRES"
   echo "→ start $INST_POSTGRES"
 

@@ -16,8 +16,10 @@ if [[ -f "$LOG_DIR/api.pid" ]]; then
   rm -f "$LOG_DIR/api.pid"
 fi
 
-# PG instance
-if instance_running "$INST_POSTGRES"; then
+# PG instance — EXTERNAL 모드면 절대 안 멈춤 (다른 프로젝트 거니까)
+if [[ "${EXTERNAL_POSTGRES:-0}" = "1" ]]; then
+  echo "  (EXTERNAL_POSTGRES=1 — 외부 PG 는 그대로 두고 종료)"
+elif instance_running "$INST_POSTGRES"; then
   apptainer instance stop "$INST_POSTGRES" && echo "✓ $INST_POSTGRES 정지"
 else
   echo "  ($INST_POSTGRES 이미 정지)"
