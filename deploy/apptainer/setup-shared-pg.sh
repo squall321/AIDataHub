@@ -33,12 +33,26 @@ load_env
 CHECK_ONLY=0
 [ "${1:-}" = "--check" ] && CHECK_ONLY=1
 
-# ── env 검증 ─────────────────────────────────────────────────────
-: "${POSTGRES_HOST:?POSTGRES_HOST 필요 (예: 127.0.0.1)}"
-: "${POSTGRES_PORT:?POSTGRES_PORT 필요 (공유 PG 포트, 예: 5532)}"
-: "${POSTGRES_USER:?POSTGRES_USER 필요 (만들 user 이름)}"
-: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 필요}"
-: "${POSTGRES_DB:?POSTGRES_DB 필요 (만들 DB 이름)}"
+# ── env 검증 + 기본값 ───────────────────────────────────────────
+# POSTGRES_HOST 가 .env 에 없어도 127.0.0.1 로 기본 (대부분 케이스).
+: "${POSTGRES_HOST:=127.0.0.1}"
+# 나머지 필수 — 비어 있으면 명확한 에러 + 예시
+if [[ -z "${POSTGRES_PORT:-}" ]]; then
+  echo "[ERROR] .env 에 POSTGRES_PORT 없음 (MXWP 공유 시 5532)" >&2
+  exit 2
+fi
+if [[ -z "${POSTGRES_USER:-}" ]]; then
+  echo "[ERROR] .env 에 POSTGRES_USER 없음 (만들 user 이름, 예: aidh)" >&2
+  exit 2
+fi
+if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
+  echo "[ERROR] .env 에 POSTGRES_PASSWORD 없음" >&2
+  exit 2
+fi
+if [[ -z "${POSTGRES_DB:-}" ]]; then
+  echo "[ERROR] .env 에 POSTGRES_DB 없음 (만들 DB 이름, 예: aidh)" >&2
+  exit 2
+fi
 EXT_INST="${EXTERNAL_PG_INSTANCE:-mxwp_postgres}"
 EXT_SUPER="${EXTERNAL_PG_SUPERUSER:-mxwp}"
 EXT_SUPER_DB="${EXTERNAL_PG_SUPERUSER_DB:-mxwp}"
