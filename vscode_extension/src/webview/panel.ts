@@ -905,7 +905,13 @@ async function pickExistingOrFirst(candidates: string[], fs: typeof import('node
   for (const p of candidates) {
     try { await fs.stat(p); return p; } catch { /* not found */ }
   }
-  return candidates[0];
+  // None exists — pick by platform so first-install writes to the correct OS path.
+  const plat = process.platform;
+  const preferred =
+    plat === 'win32'  ? candidates.find(c => c.includes('AppData')) :
+    plat === 'darwin' ? candidates.find(c => c.includes('Library')) :
+                        candidates.find(c => c.includes('.config'));
+  return preferred ?? candidates[0];
 }
 
 /**
