@@ -61,10 +61,26 @@ if [[ -n "$EMBEDDER_OVERRIDE" ]]; then
   echo "[INFO] EMBEDDING_PROVIDER → $EMBEDDING_PROVIDER (.env 갱신)"
 fi
 
+# ── HOST_IP 감지 + .env 기록 (최초 1회 또는 placeholder 상태일 때) ────────
+HOST_IP_VAL="$(detect_host_ip)"
+ENV_FILE="$APPT_DIR/.env"
+# .env 에 HOST_IP 가 없거나 아직 literal "HOST_IP" placeholder 면 감지값으로 교체
+if ! grep -q "^HOST_IP=" "$ENV_FILE" 2>/dev/null || grep -q "^HOST_IP=HOST_IP$" "$ENV_FILE" 2>/dev/null; then
+  if grep -q "^HOST_IP=" "$ENV_FILE" 2>/dev/null; then
+    sed -i "s|^HOST_IP=.*|HOST_IP=${HOST_IP_VAL}|" "$ENV_FILE"
+  else
+    echo "HOST_IP=${HOST_IP_VAL}" >> "$ENV_FILE"
+  fi
+  echo "[INFO] HOST_IP → $HOST_IP_VAL (.env 갱신)"
+else
+  HOST_IP_VAL="$(grep '^HOST_IP=' "$ENV_FILE" | cut -d= -f2)"
+fi
+
 echo "================================================================"
 echo " AI Data Hub — setup.sh"
 echo "================================================================"
 echo " ROOT       : $ROOT_DIR"
+echo " host IP    : $HOST_IP_VAL"
 echo " skip_server: $SKIP_SERVER  skip_ext: $SKIP_EXTENSION  force: $FORCE"
 echo " embedder   : ${EMBEDDING_PROVIDER:-hash}"
 echo "================================================================"
@@ -137,9 +153,10 @@ echo "================================================================"
 echo " ✓ 완료"
 echo "================================================================"
 if [[ "$SKIP_SERVER" -eq 0 ]]; then
-  echo " API   : http://127.0.0.1:${API_PORT}/api/system/health"
-  echo " docs  : http://127.0.0.1:${API_PORT}/docs"
-  echo " PG    : 127.0.0.1:${POSTGRES_PORT} (user=${POSTGRES_USER} db=${POSTGRES_DB})"
+  echo " Dashboard : http://${HOST_IP_VAL}:${API_PORT}/dashboard"
+  echo " API       : http://${HOST_IP_VAL}:${API_PORT}/api/system/health"
+  echo " Extension : http://${HOST_IP_VAL}:${API_PORT}/downloads/ai-data-hub-uploader-latest.vsix"
+  echo " PG        : 127.0.0.1:${POSTGRES_PORT} (user=${POSTGRES_USER} db=${POSTGRES_DB})"
 fi
 if [[ "$SKIP_EXTENSION" -eq 0 && -n "$VSIX" ]]; then
   echo " VSIX  : $VSIX"
@@ -156,7 +173,7 @@ echo "================================================================"
 
 # 대시보드 자동 오픈 (서버 셋업 포함된 경우만)
 if [[ "$SKIP_SERVER" -eq 0 ]]; then
-  DASH_URL="http://127.0.0.1:${API_PORT}/dashboard"
+  DASH_URL="http://${HOST_IP_VAL}:${API_PORT}/dashboard"
   if command -v xdg-open >/dev/null 2>&1; then
     echo "→ 대시보드 오픈: $DASH_URL"
     xdg-open "$DASH_URL" 2>/dev/null || true
