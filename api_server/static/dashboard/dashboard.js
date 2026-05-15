@@ -275,6 +275,29 @@ async function loadStatus() {
     });
     linkCard.appendChild(linkUl);
     target.appendChild(linkCard);
+
+    // Card: VSCode Extension 다운로드
+    const extCard = el("div", { class: "card" });
+    extCard.appendChild(el("div", { class: "label" }, "VSCode Extension"));
+    apiFetch("/downloads/extension-meta.json")
+      .then((meta) => {
+        extCard.appendChild(el("div", { class: "value small" }, "v" + (meta.version || "?")));
+        extCard.appendChild(el("div", { style: "margin-top:8px;" }, [
+          el("a", {
+            href: "/downloads/" + (meta.filename || "ai-data-hub-uploader-latest.vsix"),
+            class: "btn",
+            style: "display:inline-block; padding:5px 12px; font-size:12px; text-decoration:none;",
+          }, "Download .vsix"),
+        ]));
+        if (meta.built_at) {
+          extCard.appendChild(el("div", { class: "value small", style: "margin-top:4px; opacity:.6;" },
+            "빌드: " + fmtDate(meta.built_at)));
+        }
+      })
+      .catch(() => {
+        extCard.appendChild(el("div", { class: "value small" }, "(빌드 없음 — setup.sh 실행 필요)"));
+      });
+    target.appendChild(extCard);
   } catch (err) {
     showError(target, err);
   }

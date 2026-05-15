@@ -124,6 +124,20 @@ if DASHBOARD_DIR.exists():
     )
 
 # ---------------------------------------------------------------------------
+# /downloads — VSCode extension .vsix 및 배포 파일 다운로드.
+# setup.sh 가 빌드 후 api_server/static/downloads/ 에 복사한다.
+# ---------------------------------------------------------------------------
+DOWNLOADS_DIR = (
+    Path(__file__).resolve().parent.parent.parent / "static" / "downloads"
+)
+DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/downloads",
+    StaticFiles(directory=str(DOWNLOADS_DIR)),
+    name="downloads",
+)
+
+# ---------------------------------------------------------------------------
 # /mcp — MCP (Model Context Protocol) Streamable HTTP server (mcp-http-server).
 # Cline / Claude Desktop / Claude Code 등 MCP 클라이언트가 우리 도구를 자동 발견.
 # lifespan 은 위의 통합 lifespan() 에서 처리한다.
