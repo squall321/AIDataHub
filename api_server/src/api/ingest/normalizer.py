@@ -183,6 +183,22 @@ def detect_variant(raw: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 # 변종별 추출/검증
 # ---------------------------------------------------------------------------
+def _union(*lists: Any) -> list[str]:
+    """여러 리스트를 순서 보존 + 중복 제거로 합친다 (앞 인자 우선).
+
+    meta(본문 추출) 와 raw(사용자 입력) 의 tags/agents 를 둘 다 살리기 위함.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for lst in lists:
+        for v in lst or []:
+            s = str(v)
+            if s and s not in seen:
+                seen.add(s)
+                out.append(s)
+    return out
+
+
 def _extract_doc(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     """DOC variant: 공통 메타와 ``content`` 를 추출."""
     meta = raw.get("meta") or {}
@@ -195,8 +211,12 @@ def _extract_doc(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         "doc_type": meta.get("doc_type") or raw.get("doc_type"),
         "title": meta.get("title", "") or raw.get("title", ""),
         "summary": meta.get("summary", "") or raw.get("summary", ""),
-        "tags": list(meta.get("tags") or raw.get("tags") or []),
-        "agents": list(meta.get("agent_scope") or raw.get("agents") or []),
+        # meta(컨버터 본문 추출) + raw(사용자 입력) 를 union 한다. 과거에는
+        # ``meta or raw`` 단락이라 본문 추출 태그가 있으면 사용자가 폼에서
+        # 넘긴 tags/agents 가 통째로 버려져 bind-matching 이 핵심 문서를
+        # 놓치는 문제가 있었다 (실데이터 적재로 발견).
+        "tags": _union(meta.get("tags"), raw.get("tags")),
+        "agents": _union(meta.get("agent_scope"), raw.get("agents")),
         "schema_version": str(raw.get("schema_version", "1.0")),
         "source_file": meta.get("source_file") or raw.get("source_file"),
         "author": meta.get("author", "") or raw.get("author", ""),

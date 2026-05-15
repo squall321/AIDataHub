@@ -129,6 +129,59 @@ def _clean_title(text: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+# 너무 일반적이라 질의어로 쓸모없는 섹션/제목 (도메인 신호 0).
+_GENERIC_TITLES = {
+    "본문", "배경", "결과", "개요", "서론", "결론", "목차", "요약",
+    "introduction", "background", "result", "results", "overview",
+    "summary", "conclusion", "contents", "abstract", "appendix", "참고문헌",
+}
+
+
+def _build_sample_queries(
+    signal: dict[str, Any], base_name: str, top_tags: list[str]
+) -> list[str]:
+    """라우팅 정확도에 쓸 만한 sample_queries 합성.
+
+    우선순위:
+      1) generic 하지 않은 섹션/문서 제목 → "<제목> 사용법/방법 알려줘"
+      2) 부족하면 base_name + 상위 태그 조합으로 도메인 질의 생성
+    generic 제목("본문/배경/결과"...)은 신호가 없어 제외한다.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def _add(q: str) -> None:
+        q = q.strip()
+        if q and q.lower() not in seen and len(q) >= 4:
+            seen.add(q.lower())
+            out.append(q)
+
+    candidates = list(signal.get("sample_section_titles") or []) + list(
+        signal.get("sample_titles") or []
+    )
+    for raw in candidates:
+        c = _clean_title(raw)
+        if not c or c.lower() in _GENERIC_TITLES or len(c) < 3:
+            continue
+        # 제목이 이미 '사용법/방법/절차' 류로 끝나면 접미사 중복 회피.
+        if re.search(r"(사용법|방법|절차|가이드)$", c):
+            _add(f"{c} 알려줘")
+        else:
+            _add(f"{c} 사용법 알려줘")
+        if len(out) >= 4:
+            break
+
+    # 도메인 기반 보강 — 항상 base_name + 태그로 1~2개는 채운다.
+    if base_name:
+        _add(f"{base_name} 관련 자료 찾아줘")
+    for t in top_tags[:3]:
+        if len(out) >= 5:
+            break
+        _add(f"{base_name} 에서 {t} 어떻게 처리해?")
+
+    return out[:5] or [f"{base_name} 관련 자료 찾아줘"]
+
+
 def _heuristic_draft(signal: dict[str, Any], hint: str | None) -> dict[str, Any]:
     top_tags = signal["top_tags"]
     data_types = signal["data_types"] or ["DOC"]
@@ -136,11 +189,7 @@ def _heuristic_draft(signal: dict[str, Any], hint: str | None) -> dict[str, Any]
     base_name = hint.strip() if hint else (top_tags[0] if top_tags else "데이터")
     agent_type = _slugify(base_name) + "-assistant"
     name = f"{base_name} 어시스턴트"
-    sample_qs = []
-    for t in (signal["sample_section_titles"] or signal["sample_titles"])[:5]:
-        clean = _clean_title(t)
-        if clean:
-            sample_qs.append(f"{clean} 에 대해 알려줘")
+    sample_qs = _build_sample_queries(signal, base_name, top_tags)
     system_prompt = (
         f"당신은 {base_name} 전문 보조입니다. 2~3문장 이내로 답하고, "
         f"출처는 record_id §섹션 형식으로 인용하세요. "

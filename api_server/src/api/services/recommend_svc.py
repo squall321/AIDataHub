@@ -20,12 +20,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..db.models import Agent, Record, RecordSection
 from ..services import sample_embedding_svc, search_svc
 
-# v0.13.0 — recommend_agents 점수 정책 (Migration 0016 후속).
-# - record-section 점수는 sum/candidate_sections 로 정규화 → [0,1] 범위.
-# - sample 점수는 raw similarity ∈ [0,1] × _SAMPLE_WEIGHT.
-# - 두 항을 합산 → SAMPLE_WEIGHT=5 면 "강한 sample 매칭 1건 ≈ 강한 section 매칭 5건".
-# - per-agent sample cap: 한 agent 의 sample 이 top-k 전체를 점유하지 못하게 제한.
-_SAMPLE_WEIGHT = float(os.environ.get("AGENT_SAMPLE_WEIGHT", "5.0"))
+# v0.14.0 — recommend_agents 점수 정책 (실데이터 적재로 스케일 불균형 발견 후 개정).
+# 과거: record 항 = sum/candidate_sections (전역 50 으로 나눠 항상 과소),
+#       sample 항 = sum(sims) × 5.0 (개수에 비례 + 5배 → ~17배 지배).
+# 개정: 두 항 모두 [0,1] 평균값으로 정규화.
+# - record 항 = 해당 agent 의 매칭 section 평균 유사도 (∈[0,1]).
+# - sample 항 = 해당 agent 의 (cap 적용) sample 평균 유사도 (∈[0,1], sum 아님).
+# - 합산 score = record_mean + _SAMPLE_WEIGHT × sample_mean.
+#   기본 1.0 → "완벽한 sample 매칭 ≈ 완벽한 콘텐츠 매칭". 환경변수로 조정.
+# - per-agent sample cap: 한 agent 가 sample 로 top-k 를 독점하지 못하게 제한.
+_SAMPLE_WEIGHT = float(os.environ.get("AGENT_SAMPLE_WEIGHT", "1.0"))
 _SAMPLE_TOP_K = int(os.environ.get("AGENT_SAMPLE_TOP_K", "20"))
 _SAMPLE_PER_AGENT_CAP = int(os.environ.get("AGENT_SAMPLE_PER_AGENT_CAP", "3"))
 
@@ -71,19 +75,18 @@ async def recommend_agents(
             )
         ).scalars().all()
 
-    # 3) agent 집계 — record-section 기여분 (정규화: sum / candidate_sections).
-    # 단순 sum 은 후보 N 이 클수록 거대해져 sample 점수와 비교 불가.
-    # /candidate_sections 로 normalize 하면 "agent 의 평균 section 유사도" 가 되며
-    # 정상 범위 ∈ [0, 1] 로 sample 점수와 동일 스케일.
-    agent_record_score: dict[str, float] = defaultdict(float)
+    # 3) agent 집계 — record-section 기여분.
+    # section 유사도 합과 개수를 모은 뒤(아래 3c) 에서 agent별 평균 = mean
+    # section similarity ∈ [0,1] 로 환산한다. 전역 candidate_sections 로
+    # 나누던 과거 방식은 콘텐츠가 풍부한 agent 를 부당하게 과소평가했다.
+    agent_section_sim_sum: dict[str, float] = defaultdict(float)
     agent_records: dict[str, set[str]] = defaultdict(set)
     agent_sections: dict[str, int] = defaultdict(int)
-    denom = max(1, int(candidate_sections))
     for r in rec_rows:
         rid_scores = section_score_by_rid.get(r.id, [])
         rid_score_sum = sum(rid_scores)
         for at in r.agents or []:
-            agent_record_score[at] += rid_score_sum / denom
+            agent_section_sim_sum[at] += rid_score_sum
             agent_records[at].add(r.id)
             agent_sections[at] += len(rid_scores)
 
@@ -106,10 +109,17 @@ async def recommend_agents(
             {"sample_text": h.get("sample_text") or "", "score": s}
         )
 
-    # 3c) 두 항 합산 → 최종 agent_score
+    # 3c) 두 항 모두 [0,1] 평균으로 환산 후 합산.
+    # record_mean  = agent 매칭 section 의 평균 유사도.
+    # sample_mean  = agent (cap 적용) sample 의 평균 유사도.
     agent_score: dict[str, float] = defaultdict(float)
-    for at in set(list(agent_record_score.keys()) + list(agent_sample_score.keys())):
-        agent_score[at] = agent_record_score[at] + _SAMPLE_WEIGHT * agent_sample_score[at]
+    all_ats = set(list(agent_section_sim_sum.keys()) + list(agent_sample_score.keys()))
+    for at in all_ats:
+        n_sec = agent_sections.get(at, 0)
+        record_mean = (agent_section_sim_sum[at] / n_sec) if n_sec else 0.0
+        n_smp = len(agent_sample_hits.get(at, []))
+        sample_mean = (agent_sample_score[at] / n_smp) if n_smp else 0.0
+        agent_score[at] = record_mean + _SAMPLE_WEIGHT * sample_mean
 
     if not agent_score:
         return []
