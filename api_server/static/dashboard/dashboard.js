@@ -281,14 +281,36 @@ async function loadStatus() {
     extCard.appendChild(el("div", { class: "label" }, "VSCode Extension"));
     apiFetch("/downloads/extension-meta.json")
       .then((meta) => {
+        const fname = meta.filename || "ai-data-hub-uploader-latest.vsix";
+        const fullUrl = location.origin + "/downloads/" + fname;
         extCard.appendChild(el("div", { class: "value small" }, "v" + (meta.version || "?")));
         extCard.appendChild(el("div", { style: "margin-top:8px;" }, [
           el("a", {
-            href: "/downloads/" + (meta.filename || "ai-data-hub-uploader-latest.vsix"),
+            href: "/downloads/" + fname,
             class: "btn",
             style: "display:inline-block; padding:5px 12px; font-size:12px; text-decoration:none;",
           }, "Download .vsix"),
         ]));
+        // 직접 링크 — 다른 사람에게 공유/복사용 (현재 접속 origin 기준).
+        const linkRow = el("div", { style: "margin-top:8px; display:flex; gap:6px; align-items:center;" });
+        const linkInput = el("input", {
+          type: "text", readonly: "readonly", value: fullUrl,
+          onclick: function () { this.select(); },
+          style: "flex:1; font-size:11px; padding:3px 6px; font-family:var(--mono); "
+               + "border:1px solid var(--border,#ccc); border-radius:3px; background:transparent; color:inherit;",
+        });
+        const copyBtn = el("button", {
+          class: "btn ghost",
+          style: "padding:3px 8px; font-size:11px;",
+          onclick: () => {
+            navigator.clipboard?.writeText(fullUrl);
+            copyBtn.textContent = "복사됨";
+            setTimeout(() => (copyBtn.textContent = "복사"), 1200);
+          },
+        }, "복사");
+        linkRow.appendChild(linkInput);
+        linkRow.appendChild(copyBtn);
+        extCard.appendChild(linkRow);
         if (meta.built_at) {
           extCard.appendChild(el("div", { class: "value small", style: "margin-top:4px; opacity:.6;" },
             "빌드: " + fmtDate(meta.built_at)));
