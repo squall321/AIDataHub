@@ -133,9 +133,10 @@
     </div>
 
     <div class="card" style="margin-top:20px;">
-      <div class="label">새 서버 한 줄 셋업</div>
+      <div class="label">새 서버 셋업 (2단계)</div>
       <ul>
-        <li><code>bash setup.sh</code> → PG+API 기동 · Extension 빌드·게시 · (code CLI 있으면) 자동 설치 · 대시보드 오픈</li>
+        <li>0) <code>sudo bash bootstrap.sh</code> — 시스템 의존성(apptainer/node20/python3.12-venv) 1회. idempotent — MXWhitePaper 선행 시 거의 no-op</li>
+        <li>1) <code>bash setup.sh</code> → PG+API 기동 · Extension 빌드·게시 · (code CLI 있으면) 자동 설치 · 대시보드 오픈</li>
         <li>상태 점검: <code>bash status.sh</code> / 상세: <code>bash diag.sh --tail-logs</code></li>
         <li>Extension 받기: 이 대시보드 <b>상태 탭</b> → VSCode Extension 카드 → Download .vsix</li>
       </ul>

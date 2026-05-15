@@ -230,11 +230,21 @@ DB만 쌓여 있으면 LLM은 모른다. **연결 액션**:
 
 ---
 
-## 9. 새 서버 한 줄 셋업
+## 9. 새 서버 셋업 (2단계)
 
 ```
-bash setup.sh
+# 0) 시스템 의존성 (root 1회) — apptainer/node20/python3.12-venv/git/curl
+sudo bash bootstrap.sh
+#    idempotent. 같은 서버에 MXWhitePaper 를 먼저 셋업했다면 대부분 이미
+#    깔려 있어 거의 no-op 으로 끝난다. 사내 프록시/오프라인 자동 처리.
+
+# 1) 한 줄 셋업 (일반 계정)
+bash setup.sh          # 또는  bash quickstart.sh (bundle/source 자동 + 검증)
 ```
-→ PG+API 기동 → Extension 빌드·`/downloads` 게시 → (code CLI 있으면) 자동 설치 →
-대시보드 자동 오픈. 이후 누구나 `http://HOST_IP:8001/dashboard`의
-**VSCode Extension** 카드에서 `.vsix` 직링크로 받을 수 있다.
+`setup.sh` → PG+API 기동(마이그레이션 0001~0017 자동) → Extension 빌드
+(서버 URL 주입)·`/downloads` 게시 → (code CLI 있으면) 자동 설치 → 대시보드
+자동 오픈. 이후 누구나 `http://HOST_IP:8001/dashboard`의 **VSCode Extension**
+카드에서 `.vsix` 직링크로 받을 수 있다.
+
+> `bootstrap.sh` 만 root 가 필요하다 (apt/dpkg). 그 외 전부 일반 계정.
+> 의존성이 이미 있으면 0단계는 건너뛰어도 된다 (setup.sh 가 검증).

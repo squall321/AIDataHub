@@ -31,7 +31,8 @@ echo "================================================================"
 # ── Preflight ─────────────────────────────────────────────────────
 echo "[Preflight]"
 ERR=0
-for cmd in apptainer python3 git curl; do
+# node/npm 포함 — source 모드(setup.sh)의 extension 빌드가 필요로 한다.
+for cmd in apptainer python3 git curl node npm; do
   if command -v "$cmd" >/dev/null 2>&1; then
     echo "  ✓ $cmd"
   else
@@ -41,10 +42,13 @@ done
 if [[ $ERR -eq 1 ]]; then
   cat <<'EOH'
 
-[Preflight 실패] Ubuntu 24.04 설치 명령:
-  sudo add-apt-repository -y ppa:apptainer/ppa
-  sudo apt update
-  sudo apt install -y apptainer python3.12 python3.12-venv git curl
+[Preflight 실패] 시스템 의존성을 한 번에 설치하는 부트스트랩이 있다:
+
+  sudo bash bootstrap.sh
+
+  (apptainer / node20+npm / python3.12+venv / git / curl / build-essential —
+   idempotent, 사내 프록시·오프라인 자동 처리. 같은 서버에 MXWhitePaper 를
+   먼저 셋업했다면 대부분 이미 깔려 있어 거의 no-op 으로 끝난다.)
 
 설치 후 quickstart.sh 재실행.
 EOH
