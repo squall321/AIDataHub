@@ -318,6 +318,35 @@ export class UploaderPanel {
         }
         return;
       }
+      // ---- v0.14.0 — LLM-assisted agent draft + auto-bind ----
+      case 'draftAgentRequest': {
+        const client = await this.getClient();
+        if (!client) {
+          this.post({ type: 'draftAgentResponse', reqId: msg.reqId, ok: false, error: 'Not connected' });
+          return;
+        }
+        try {
+          const payload = await client.draftAgent(msg.payload);
+          this.post({ type: 'draftAgentResponse', reqId: msg.reqId, ok: true, payload });
+        } catch (err) {
+          this.post({ type: 'draftAgentResponse', reqId: msg.reqId, ok: false, error: formatError(err) });
+        }
+        return;
+      }
+      case 'bindMatchingRequest': {
+        const client = await this.getClient();
+        if (!client) {
+          this.post({ type: 'bindMatchingResponse', reqId: msg.reqId, ok: false, error: 'Not connected' });
+          return;
+        }
+        try {
+          const payload = await client.bindMatchingRecords(msg.agentType, msg.limit ?? 500);
+          this.post({ type: 'bindMatchingResponse', reqId: msg.reqId, ok: true, payload });
+        } catch (err) {
+          this.post({ type: 'bindMatchingResponse', reqId: msg.reqId, ok: false, error: formatError(err) });
+        }
+        return;
+      }
       // ---- v0.13.0 — Resync agent sample embeddings (Migration 0016) ----
       case 'resyncAgentSamplesRequest': {
         const client = await this.getClient();
@@ -873,6 +902,28 @@ async function installMcpConfig(
         promptPath: prompt ? 'Gemini CLI: 표준 system_prompt 저장 위치가 없습니다 — 세션 시작 시 수동 복사' : undefined,
       };
     }
+    case 'codex': {
+      // OpenAI Codex CLI: ~/.codex/config.toml 의 [mcp_servers.aidatahub] 블록.
+      // streamable HTTP 는 url 키로 지정. prompt 는 Codex 가 읽는 AGENTS.md 로.
+      const home = os.homedir();
+      const target = path.join(home, '.codex', 'config.toml');
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      const action = await mergeCodexToml(target, mcpUrl, fs);
+      const base: McpInstallResult = { client, configPath: target, action, hint: 'Codex CLI 를 재시작하세요 (새 세션부터 도구 인식).' };
+      return attachPromptResult(base, async () => {
+        // Codex: workspace AGENTS.md (없으면 ~/.codex/AGENTS.md).
+        const ws = vscode.workspace.workspaceFolders?.[0];
+        const mdPath = ws
+          ? path.join(ws.uri.fsPath, 'AGENTS.md')
+          : path.join(os.homedir(), '.codex', 'AGENTS.md');
+        await fs.mkdir(path.dirname(mdPath), { recursive: true });
+        let cur = '';
+        try { cur = await fs.readFile(mdPath, 'utf-8'); } catch { /* new file */ }
+        const merged = mergePromptBlock(cur, prompt, agentType || 'aidatahub');
+        await fs.writeFile(mdPath, merged.text, 'utf-8');
+        return { action: merged.action, path: mdPath };
+      });
+    }
   }
   throw new Error(`unknown client: ${client}`);
 }
@@ -912,6 +963,40 @@ async function pickExistingOrFirst(candidates: string[], fs: typeof import('node
     plat === 'darwin' ? candidates.find(c => c.includes('Library')) :
                         candidates.find(c => c.includes('.config'));
   return preferred ?? candidates[0];
+}
+
+/**
+ * Codex CLI ``~/.codex/config.toml`` 의 ``[mcp_servers.aidatahub]`` 블록을
+ * 머지한다. TOML 파서 없이 해당 테이블 블록만 정규식으로 교체/추가한다.
+ * - 기존 블록 있으면 통째로 교체, 없으면 파일 끝에 append.
+ * - 다른 ``[mcp_servers.*]`` / 일반 설정은 보존.
+ */
+async function mergeCodexToml(
+  filePath: string,
+  mcpUrl: string,
+  fs: typeof import('node:fs/promises'),
+): Promise<'created' | 'updated'> {
+  let existing = '';
+  let isNew = false;
+  try {
+    existing = await fs.readFile(filePath, 'utf-8');
+  } catch {
+    isNew = true;
+  }
+  const block =
+    `[mcp_servers.aidatahub]\n` +
+    `url = "${mcpUrl}"\n`;
+  // 기존 [mcp_servers.aidatahub] 테이블 (다음 [ 헤더 또는 EOF 까지) 매치.
+  const re = /\[mcp_servers\.aidatahub\][^\[]*/;
+  let next: string;
+  if (re.test(existing)) {
+    next = existing.replace(re, block);
+  } else {
+    const sep = existing.length && !existing.endsWith('\n') ? '\n\n' : (existing.length ? '\n' : '');
+    next = existing + sep + block;
+  }
+  await fs.writeFile(filePath, next, 'utf-8');
+  return isNew ? 'created' : 'updated';
 }
 
 /**

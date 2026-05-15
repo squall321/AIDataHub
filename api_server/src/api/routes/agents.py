@@ -8,9 +8,17 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.db.base import get_session
-from api.services import agent_svc, preview_svc, recommend_svc, sample_embedding_svc
+from api.services import (
+    agent_draft_svc,
+    agent_svc,
+    preview_svc,
+    recommend_svc,
+    sample_embedding_svc,
+)
 
 from ._schemas import (
+    AgentBindMatchingIn,
+    AgentDraftIn,
     AgentHistoryOut,
     AgentHistoryPruneOut,
     AgentIn,
@@ -186,6 +194,55 @@ async def preview_agent_recipe(
         response_config=payload.response_config or {},
     )
     return AgentPreviewOut.model_validate(result)
+
+
+# ---------------------------------------------------------------------------
+# LLM 보조 초안 생성 — 기존 레코드 신호로 agent 정의 초안을 제안 (저장 X).
+# ---------------------------------------------------------------------------
+@router.post(
+    "/draft",
+    summary="기존 레코드(또는 hint)를 분석해 agent 정의 초안을 생성 (저장 안 함)",
+)
+async def draft_agent(
+    payload: AgentDraftIn,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """LLM 가능 시 LLM 초안, 아니면 빈도 기반 휴리스틱 초안.
+
+    응답은 ``AgentIn`` 형태 + ``_source`` / ``_note`` / ``_signal`` 메타.
+    사람이 검토·수정 후 ``POST /api/agents`` 로 저장한다.
+    """
+    return await agent_draft_svc.generate_draft(
+        session,
+        record_ids=payload.record_ids or None,
+        hint=payload.hint,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 저장 후 매칭 레코드 자동 바인딩 — 데이터↔agent 루프 닫기.
+# ---------------------------------------------------------------------------
+@router.post(
+    "/{agent_type}/bind-matching",
+    summary="agent 기대 스키마에 부합하는 기존 레코드를 이 agent 에 자동 바인딩",
+)
+async def bind_matching_records(
+    agent_type: str,
+    payload: AgentBindMatchingIn,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    agent = await agent_svc.get_agent(session, agent_type)
+    if agent is None:
+        raise HTTPException(status_code=404, detail=f"agent not found: {agent_type}")
+    return await agent_draft_svc.bind_matching_records(
+        session,
+        agent_type=agent_type,
+        required_doc_type=agent.required_doc_type,
+        required_tags=list(agent.required_tags or []),
+        common_tags=list(agent.common_tags or []),
+        data_types=list(agent.data_types or []),
+        limit=payload.limit,
+    )
 
 
 # ---------------------------------------------------------------------------

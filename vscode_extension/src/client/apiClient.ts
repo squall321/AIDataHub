@@ -433,6 +433,31 @@ export class ApiClient {
     return (await res.json()) as AgentSamplesResyncOutT;
   }
 
+  /** POST /api/agents/draft — LLM/heuristic agent definition draft (not saved). */
+  async draftAgent(body: { record_ids?: string[]; hint?: string | null }): Promise<Record<string, unknown>> {
+    const res = await fetch(joinUrl(this.baseUrl, '/api/agents/draft'), {
+      method: 'POST',
+      headers: this.headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as Record<string, unknown>;
+  }
+
+  /** POST /api/agents/{agent_type}/bind-matching — auto-bind matching records. */
+  async bindMatchingRecords(agentType: string, limit = 500): Promise<Record<string, unknown>> {
+    const res = await fetch(
+      joinUrl(this.baseUrl, `/api/agents/${encodeURIComponent(agentType)}/bind-matching`),
+      {
+        method: 'POST',
+        headers: this.headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ limit }),
+      },
+    );
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as Record<string, unknown>;
+  }
+
   /** GET /api/discover — system-wide catalog. */
   async discover(): Promise<DiscoverResponse> {
     const res = await fetch(joinUrl(this.baseUrl, '/api/discover'), {

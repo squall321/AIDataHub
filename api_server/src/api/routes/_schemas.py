@@ -127,6 +127,20 @@ class AgentIn(_Base):
     sample_queries: list[str] = Field(default_factory=list)
 
 
+class AgentDraftIn(_Base):
+    """``POST /api/agents/draft`` — LLM/휴리스틱 agent 초안 생성 요청."""
+
+    record_ids: list[str] = Field(default_factory=list)
+    hint: str | None = None
+
+
+class AgentBindMatchingIn(_Base):
+    """``POST /api/agents/{agent_type}/bind-matching`` — 저장 후 매칭
+    레코드 자동 바인딩 요청 (비우면 agent 의 현재 기대 스키마 사용)."""
+
+    limit: int = Field(500, ge=1, le=5000)
+
+
 class AgentPatch(_Base):
     name: str | None = None
     description: str | None = None

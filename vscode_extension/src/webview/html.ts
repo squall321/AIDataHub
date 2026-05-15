@@ -2246,10 +2246,26 @@ function clientScript(): string {
         + '</div>';
     }
 
+    var draftBlock = isEdit ? '' : (
+        '<details style="margin:8px 0;padding:8px 10px;border:1px dashed var(--vscode-panel-border);border-radius:4px"'
+        + (a.draftBusy ? ' open' : '') + '>'
+      + '  <summary style="cursor:pointer;font-weight:600">LLM 초안 생성 (선택)</summary>'
+      + '  <p class="subtle" style="margin:6px 0">기존 허브 데이터를 분석해 agent 정의 초안을 자동 제안합니다. OPENAI_API_KEY 가 있으면 LLM, 없으면 빈도 휴리스틱. 결과는 폼에 채워지며 검토·수정 후 저장하세요.</p>'
+      + '  <label>의도 힌트 (선택) <span class="muted" style="font-size:11px">— 예: "LS-DYNA 메시 매핑 자동화"</span></label>'
+      + '  <input id="af-draft-hint" type="text" placeholder="비워두면 최근 레코드 표본으로 추론" value="' + escapeHtml(a.draftHint || '') + '" />'
+      + '  <div class="toolbar" style="margin-top:8px">'
+      + '    <button id="af-draft-gen"' + (a.draftBusy ? ' disabled' : '') + '>' + (a.draftBusy ? '생성 중…' : '초안 생성') + '</button>'
+      + (a.draftNote ? '<span class="muted" style="font-size:11px;align-self:center">' + escapeHtml(a.draftNote) + '</span>' : '')
+      + '  </div>'
+      + (a.draftError ? '<div class="status err" style="margin-top:6px">' + escapeHtml(a.draftError) + '</div>' : '')
+      + '</details>'
+    );
+
     wrap.innerHTML = '<h1>' + (isEdit ? 'Edit agent' : 'New agent') + '</h1>'
       + '<p class="subtle">' + (isEdit
           ? 'Editing <code>' + escapeHtml(a.editing) + '</code>. <code>agent_type</code> cannot be changed.'
           : 'Define a new agent. <code>agent_type</code> should be lowercase with hyphens (e.g. <code>iga-analyst</code>).') + '</p>'
+      + draftBlock
       + '<div class="agent-form">'
       + '  <label>agent_type *</label>'
       + '  <input id="af-type" type="text" placeholder="iga-analyst" value="' + escapeHtml(fv.agent_type) + '"' + (isEdit ? ' readonly' : '') + ' />'
@@ -2306,6 +2322,10 @@ function clientScript(): string {
       + renderAgentPreviewBlock()
       + errHtml
       + savingHtml
+      + (isEdit ? '' :
+          '<label style="margin-top:10px"><input id="af-bind-matching" type="checkbox"'
+          + (a.bindAfterSave ? ' checked' : '') + ' /> 저장 후 기대 스키마에 맞는 기존 레코드 자동 바인딩'
+          + ' <span class="muted" style="font-size:11px">— required_doc_type / required_tags / common_tags 일치 레코드의 agents 배열에 추가</span></label>')
       + '<div class="toolbar">'
       + '  <button id="af-save">' + (isEdit ? 'Save changes' : 'Create agent') + '</button>'
       + '  <button id="af-cancel" class="secondary">Cancel</button>'
@@ -2442,6 +2462,48 @@ function clientScript(): string {
         saving: false,
       };
       render();
+    });
+    // v0.14.0 — LLM 초안 생성: 폼 채움.
+    on('af-draft-gen', 'click', function(){
+      var hint = val('af-draft-hint').trim();
+      state.agents.draftHint = hint;
+      state.agents.draftBusy = true;
+      state.agents.draftError = null;
+      state.agents.draftNote = null;
+      render();
+      rpc('draftAgentRequest', { payload: { hint: hint || null } }, 60000)
+        .then(function(d){
+          state.agents.draftBusy = false;
+          var v = state.agents.formValues;
+          if (d.agent_type) v.agent_type = String(d.agent_type);
+          if (d.name) v.name = String(d.name);
+          if (d.description != null) v.description = String(d.description);
+          if (Array.isArray(d.common_tags)) v.common_tags = d.common_tags;
+          if (Array.isArray(d.data_types)) v.data_types = d.data_types;
+          if (d.required_doc_type != null) v.required_doc_type = String(d.required_doc_type);
+          if (Array.isArray(d.required_tags)) v.required_tags = d.required_tags;
+          if (Array.isArray(d.excluded_tags)) v.excluded_tags = d.excluded_tags;
+          var rc = d.retrieval_config || {};
+          if (rc.top_k != null) v.retrieval_top_k = String(rc.top_k);
+          if (rc.score_threshold != null) v.retrieval_score_threshold = String(rc.score_threshold);
+          if (d.system_prompt != null) v.system_prompt = String(d.system_prompt);
+          var rsp = d.response_config || {};
+          if (rsp.max_tokens != null) v.response_max_tokens = String(rsp.max_tokens);
+          if (rsp.citation_required != null) v.response_citation_required = !!rsp.citation_required;
+          if (rsp.refusal_message != null) v.response_refusal_message = String(rsp.refusal_message);
+          if (Array.isArray(d.sample_queries)) v.sample_queries = d.sample_queries;
+          state.agents.draftNote = (d._source === 'llm' ? 'LLM 초안 적용됨' : '휴리스틱 초안 적용됨')
+            + (d._note ? ' — ' + d._note : '');
+          render();
+        })
+        .catch(function(err){
+          state.agents.draftBusy = false;
+          state.agents.draftError = String((err && err.message) || err);
+          render();
+        });
+    });
+    on('af-bind-matching', 'change', function(e){
+      state.agents.bindAfterSave = !!(e.target && e.target.checked);
     });
     on('af-save', 'click', function(){
       // Snapshot inputs into formValues, then submit.
@@ -2831,16 +2893,31 @@ function clientScript(): string {
       var createBody = Object.assign({ agent_type: v.agent_type }, payload);
       promise = rpc('createAgentRequest', { payload: createBody });
     }
+    var doBind = !isEdit && !!state.agents.bindAfterSave;
+    var newAgentType = v.agent_type;
     promise
       .then(function(){
         state.agents.saving = false;
         state.agents.screen = 'list';
         state.agents.editing = null;
         state.agents.banner = { kind: 'ok', text: isEdit ? 'Agent updated.' : 'Agent created.' };
-        // Refresh list — banner persists until next action.
         reloadAgentsList();
-        // Banner auto-clears after a few seconds.
-        setTimeout(function(){ if (state.agents.banner) { state.agents.banner = null; render(); } }, 3500);
+        // v0.14.0 — 생성 직후 매칭 레코드 자동 바인딩 (루프 닫기).
+        if (doBind) {
+          rpc('bindMatchingRequest', { agentType: newAgentType, limit: 500 }, 60000)
+            .then(function(r){
+              var n = (r && r.bound_count != null) ? r.bound_count : 0;
+              state.agents.banner = { kind: 'ok', text: 'Agent created. ' + n + '개 레코드 자동 바인딩됨.' };
+              reloadAgentsList();
+              setTimeout(function(){ if (state.agents.banner) { state.agents.banner = null; render(); } }, 4000);
+            })
+            .catch(function(e){
+              state.agents.banner = { kind: 'err', text: 'Agent 생성됨, 바인딩 실패: ' + String((e && e.message) || e) };
+              render();
+            });
+        } else {
+          setTimeout(function(){ if (state.agents.banner) { state.agents.banner = null; render(); } }, 3500);
+        }
       })
       .catch(function(err){
         state.agents.saving = false;
@@ -3024,6 +3101,7 @@ function clientScript(): string {
         ['cursor', 'Cursor'],
         ['copilot', 'VSCode Copilot Chat'],
         ['gemini', 'Gemini CLI'],
+        ['codex', 'Codex CLI (OpenAI)'],
       ].forEach(function(p){
         html.push('<option value="' + p[0] + '"' + (p[0]===mcpClient?' selected':'') + '>' + p[1] + '</option>');
       });
@@ -3185,6 +3263,13 @@ function clientScript(): string {
         location: '~/.gemini/mcp.json 또는 셸: gemini config mcp add aidatahub ' + url,
         body: JSON.stringify(cfgG, null, 2),
         note: 'Gemini CLI 0.x+ 에서 MCP HTTP transport 지원. CLI 명령이 더 간단하다.',
+      };
+    }
+    if (client === 'codex') {
+      return {
+        location: '~/.codex/config.toml (자동설치가 [mcp_servers.aidatahub] 블록 작성)',
+        body: '[mcp_servers.aidatahub]\nurl = "' + url + '"',
+        note: 'Codex CLI 재시작 후 새 세션부터 도구 인식. system_prompt 는 AGENTS.md 에 주입됨.',
       };
     }
     // Cline / Claude Desktop / Cursor — 모두 동일 mcpServers 구조
@@ -3354,6 +3439,7 @@ function clientScript(): string {
                || m.type === 'createAgentResponse' || m.type === 'updateAgentResponse'
                || m.type === 'deleteAgentResponse'
                || m.type === 'downloadAgentTemplateResponse'
+               || m.type === 'draftAgentResponse' || m.type === 'bindMatchingResponse'
                || m.type === 'listDocTypesResponse' || m.type === 'createDocTypeResponse') {
       const p = _pendingReq.get(m.reqId);
       if (!p) return;

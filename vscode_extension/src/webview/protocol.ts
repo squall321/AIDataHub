@@ -58,6 +58,9 @@ export type WebviewToHost =
   | { type: 'listAgentHistoryRequest'; reqId: number; agentType: string; limit?: number }
   | { type: 'previewAgentRecipeRequest'; reqId: number; payload: AgentPreviewInT }
   | { type: 'resyncAgentSamplesRequest'; reqId: number; agentType: string }
+  // ---- v0.14.0 LLM-assisted agent draft + auto-bind ----
+  | { type: 'draftAgentRequest'; reqId: number; payload: { record_ids?: string[]; hint?: string | null } }
+  | { type: 'bindMatchingRequest'; reqId: number; agentType: string; limit?: number }
   // ---- v0.8.0 Agent Word template download ----
   | { type: 'downloadAgentTemplateRequest'; reqId: number; agentType: string }
   // ---- v0.9.0 Console tab (agent-discovery-console) ----
@@ -68,7 +71,7 @@ export type WebviewToHost =
   | {
       type: 'installMcpConfigRequest';
       reqId: number;
-      client: 'cline' | 'claude_desktop' | 'claude_code' | 'cursor' | 'copilot' | 'gemini';
+      client: 'cline' | 'claude_desktop' | 'claude_code' | 'cursor' | 'copilot' | 'gemini' | 'codex';
       baseUrl: string;  // 'http://host:port' (no trailing slash, /mcp/ 추가는 host측)
       // v0.13.0 — admin system_prompt 도 같이 자동 주입 (가능한 클라이언트 한정).
       systemPrompt?: string | null;
@@ -119,6 +122,9 @@ export type HostToWebview =
   | { type: 'listAgentHistoryResponse'; reqId: number; ok: boolean; payload?: AgentHistoryOutT[]; error?: string }
   | { type: 'previewAgentRecipeResponse'; reqId: number; ok: boolean; payload?: AgentPreviewOutT; error?: string }
   | { type: 'resyncAgentSamplesResponse'; reqId: number; ok: boolean; payload?: AgentSamplesResyncOutT; error?: string }
+  // ---- v0.14.0 LLM-assisted agent draft + auto-bind responses ----
+  | { type: 'draftAgentResponse'; reqId: number; ok: boolean; payload?: Record<string, unknown>; error?: string }
+  | { type: 'bindMatchingResponse'; reqId: number; ok: boolean; payload?: Record<string, unknown>; error?: string }
   // ---- v0.8.0 Agent Word template download ----
   | { type: 'downloadAgentTemplateResponse'; reqId: number; ok: boolean; savedPath?: string; error?: string }
   // ---- v0.9.0 Console tab responses ----
