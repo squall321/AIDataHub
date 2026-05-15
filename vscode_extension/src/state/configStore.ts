@@ -9,7 +9,9 @@ const SECRET_API_KEY = 'aidh.apiKey';
  * 사용자가 한 번 입력해 saveConfig 하면 globalState 에 저장되고
  * 그 이후에는 저장된 값이 우선한다.
  */
-export const DEFAULT_BASE_URL = 'http://110.15.177.125:8000';
+// 빈 문자열 — 사용자가 자기 서버 URL 을 직접 입력해야 한다 (welcome 화면).
+// 과거 사내 개발 IP 가 하드코딩돼 있어 새 환경에서 연결이 잘못 잡혔다.
+export const DEFAULT_BASE_URL = '';
 
 export interface ConnectionConfig {
   baseUrl: string;

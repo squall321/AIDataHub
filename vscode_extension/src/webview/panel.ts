@@ -656,10 +656,11 @@ export class UploaderPanel {
       return;
     }
 
-    // 동적 폴백: 입력된 URL → 실패 시 localhost:8000 자동 시도.
+    // 동적 폴백: 입력된 URL → 실패 시 localhost 자동 시도.
     // NAT loopback 환경 (자기 외부 IP 가 자기 PC 에서 안 닿음) 등에서
     // 사용자가 일일이 URL 을 바꾸지 않아도 동작하도록.
-    const FALLBACK_URL = 'http://localhost:8000';
+    // 포트는 배포 표준(8001) — start_api.sh 기본값과 일치.
+    const FALLBACK_URL = 'http://localhost:8001';
     const candidates: string[] = [normalizedUrl];
     if (
       !/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(normalizedUrl)

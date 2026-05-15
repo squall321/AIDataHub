@@ -405,7 +405,7 @@ async def get_system_prompt(
     agent_type: str,
     base_url: str = Query(
         "http://<host>:8001",
-        description="이 시스템에 닿을 수 있는 base URL. 예: http://110.15.177.120:8001",
+        description="이 시스템에 닿을 수 있는 base URL. 예: http://<your-host>:8001",
     ),
     session: AsyncSession = Depends(get_session),
 ) -> str:
