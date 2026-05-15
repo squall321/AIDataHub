@@ -1,17 +1,17 @@
 import * as vscode from 'vscode';
+import { BUILD_DEFAULT_BASE_URL } from './buildDefaults';
 
 const KEY_BASE_URL = 'aidh.baseUrl';
 const KEY_CONNECTED = 'aidh.connected';
 const SECRET_API_KEY = 'aidh.apiKey';
 
 /**
- * 첫 사용 시 보이는 기본 URL — 운영 서버의 외부 IP.
- * 사용자가 한 번 입력해 saveConfig 하면 globalState 에 저장되고
- * 그 이후에는 저장된 값이 우선한다.
+ * 첫 사용 시 보이는 기본 URL.
+ * setup.sh 가 빌드한 vsix 면 그 서버 URL 이 buildDefaults 에 주입돼 있어
+ * 대시보드에서 받아 설치하면 바로 연결된다. 수동 빌드면 빈 문자열 →
+ * welcome 화면에서 사용자가 입력. saveConfig 후에는 globalState 우선.
  */
-// 빈 문자열 — 사용자가 자기 서버 URL 을 직접 입력해야 한다 (welcome 화면).
-// 과거 사내 개발 IP 가 하드코딩돼 있어 새 환경에서 연결이 잘못 잡혔다.
-export const DEFAULT_BASE_URL = '';
+export const DEFAULT_BASE_URL = BUILD_DEFAULT_BASE_URL;
 
 export interface ConnectionConfig {
   baseUrl: string;
