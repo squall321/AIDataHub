@@ -133,8 +133,26 @@ if [[ "$SKIP_SERVER" -eq 0 ]]; then
 fi
 if [[ "$SKIP_EXTENSION" -eq 0 && -n "$VSIX" ]]; then
   echo " VSIX  : $VSIX"
-  echo "         설치 → code --install-extension \"$VSIX\""
-  echo "         또는 VSCode 명령 팔레트: Extensions: Install from VSIX..."
+  if command -v code >/dev/null 2>&1; then
+    echo "→ code --install-extension (자동)"
+    code --install-extension "$VSIX" --force 2>&1 | sed 's/^/   /'
+  else
+    echo "         설치 → code --install-extension \"$VSIX\""
+    echo "         또는 VSCode 명령 팔레트: Extensions: Install from VSIX..."
+  fi
 fi
 echo " 정지  : bash $APPT_DIR/stop.sh"
 echo "================================================================"
+
+# 대시보드 자동 오픈 (서버 셋업 포함된 경우만)
+if [[ "$SKIP_SERVER" -eq 0 ]]; then
+  DASH_URL="http://127.0.0.1:${API_PORT}/dashboard"
+  if command -v xdg-open >/dev/null 2>&1; then
+    echo "→ 대시보드 오픈: $DASH_URL"
+    xdg-open "$DASH_URL" 2>/dev/null || true
+  elif command -v open >/dev/null 2>&1; then
+    open "$DASH_URL" 2>/dev/null || true
+  else
+    echo " 대시보드: $DASH_URL"
+  fi
+fi
