@@ -434,7 +434,7 @@ export class ApiClient {
   }
 
   /** POST /api/agents/draft — LLM/heuristic agent definition draft (not saved). */
-  async draftAgent(body: { record_ids?: string[]; hint?: string | null }): Promise<Record<string, unknown>> {
+  async draftAgent(body: { record_ids?: string[]; filter_tags?: string[]; filter_data_types?: string[]; hint?: string | null }): Promise<Record<string, unknown>> {
     const res = await fetch(joinUrl(this.baseUrl, '/api/agents/draft'), {
       method: 'POST',
       headers: this.headers({ 'Content-Type': 'application/json' }),

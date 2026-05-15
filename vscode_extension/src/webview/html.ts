@@ -2253,6 +2253,9 @@ function clientScript(): string {
       + '  <p class="subtle" style="margin:6px 0">기존 허브 데이터를 분석해 agent 정의 초안을 자동 제안합니다. OPENAI_API_KEY 가 있으면 LLM, 없으면 빈도 휴리스틱. 결과는 폼에 채워지며 검토·수정 후 저장하세요.</p>'
       + '  <label>의도 힌트 (선택) <span class="muted" style="font-size:11px">— 예: "LS-DYNA 메시 매핑 자동화"</span></label>'
       + '  <input id="af-draft-hint" type="text" placeholder="비워두면 최근 레코드 표본으로 추론" value="' + escapeHtml(a.draftHint || '') + '" />'
+      + '  <label style="margin-top:8px">데이터 군 한정 (선택) <span class="muted" style="font-size:11px">— 이 태그/타입에 해당하는 레코드만 분석</span></label>'
+      + '  <div id="af-draft-tagchips" class="chips"></div>'
+      + '  <input id="af-draft-dt" type="text" style="margin-top:4px" placeholder="data_type 필터 (콤마, 예: DOC,SIM) — 비우면 전체" value="' + escapeHtml(a.draftDataTypes || '') + '" />'
       + '  <div class="toolbar" style="margin-top:8px">'
       + '    <button id="af-draft-gen"' + (a.draftBusy ? ' disabled' : '') + '>' + (a.draftBusy ? '생성 중…' : '초안 생성') + '</button>'
       + (a.draftNote ? '<span class="muted" style="font-size:11px;align-self:center">' + escapeHtml(a.draftNote) + '</span>' : '')
@@ -2337,6 +2340,7 @@ function clientScript(): string {
     var rtagChips = makeChipsSeeded('af-chips-rtags', 'add required tag…', fv.required_tags || []);
     var xtagChips = makeChipsSeeded('af-chips-xtags', 'add excluded tag…', fv.excluded_tags || []);
     var sampleChips = makeChipsSeeded('af-chips-samples', 'add sample query…', fv.sample_queries || []);
+    var draftTagChips = isEdit ? null : makeChipsSeeded('af-draft-tagchips', 'add tag filter…', a.draftTags || []);
 
     // data_types checkboxes — keep state.formValues.data_types in sync.
     document.querySelectorAll('#af-dts input[type="checkbox"]').forEach(function(cb){
@@ -2466,12 +2470,21 @@ function clientScript(): string {
     // v0.14.0 — LLM 초안 생성: 폼 채움.
     on('af-draft-gen', 'click', function(){
       var hint = val('af-draft-hint').trim();
+      var dtRaw = val('af-draft-dt').trim();
+      var dtList = dtRaw ? dtRaw.split(',').map(function(s){return s.trim();}).filter(Boolean) : [];
+      var tagList = draftTagChips ? draftTagChips.get() : [];
       state.agents.draftHint = hint;
+      state.agents.draftDataTypes = dtRaw;
+      state.agents.draftTags = tagList;
       state.agents.draftBusy = true;
       state.agents.draftError = null;
       state.agents.draftNote = null;
       render();
-      rpc('draftAgentRequest', { payload: { hint: hint || null } }, 60000)
+      rpc('draftAgentRequest', { payload: {
+        hint: hint || null,
+        filter_tags: tagList,
+        filter_data_types: dtList,
+      } }, 60000)
         .then(function(d){
           state.agents.draftBusy = false;
           var v = state.agents.formValues;
@@ -2492,7 +2505,9 @@ function clientScript(): string {
           if (rsp.citation_required != null) v.response_citation_required = !!rsp.citation_required;
           if (rsp.refusal_message != null) v.response_refusal_message = String(rsp.refusal_message);
           if (Array.isArray(d.sample_queries)) v.sample_queries = d.sample_queries;
+          var rc = (d._signal && d._signal.record_count != null) ? d._signal.record_count : '?';
           state.agents.draftNote = (d._source === 'llm' ? 'LLM 초안 적용됨' : '휴리스틱 초안 적용됨')
+            + ' (분석 레코드 ' + rc + '건)'
             + (d._note ? ' — ' + d._note : '');
           render();
         })

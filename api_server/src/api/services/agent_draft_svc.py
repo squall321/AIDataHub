@@ -44,13 +44,27 @@ async def _gather_signal(
     session: AsyncSession,
     *,
     record_ids: list[str] | None,
+    filter_tags: list[str] | None = None,
+    filter_data_types: list[str] | None = None,
 ) -> dict[str, Any]:
-    """표본 레코드에서 tag/doc_type/data_type 분포 + 제목·요약을 집계."""
+    """표본 레코드에서 tag/doc_type/data_type 분포 + 제목·요약을 집계.
+
+    데이터 군 한정: record_ids 직접 지정 우선. 없으면 filter_tags(겹침) /
+    filter_data_types 로 좁힌다. tag 겹침은 dialect 호환 위해 파이썬 후필터.
+    """
     stmt = select(Record).where(Record.deleted_at.is_(None))
     if record_ids:
         stmt = stmt.where(Record.id.in_(record_ids))
-    stmt = stmt.order_by(Record.created_at.desc()).limit(_SAMPLE_RECORD_CAP)
-    recs = (await session.execute(stmt)).scalars().all()
+    if filter_data_types:
+        stmt = stmt.where(Record.data_type.in_(list(filter_data_types)))
+    # 표본 cap 의 3배를 가져온 뒤 tag 후필터 → cap (필터로 줄어드는 분량 보전).
+    fetch_cap = _SAMPLE_RECORD_CAP * 3 if filter_tags else _SAMPLE_RECORD_CAP
+    stmt = stmt.order_by(Record.created_at.desc()).limit(fetch_cap)
+    recs = list((await session.execute(stmt)).scalars().all())
+    if filter_tags:
+        want = set(filter_tags)
+        recs = [r for r in recs if want.intersection(set(r.tags or []))]
+        recs = recs[:_SAMPLE_RECORD_CAP]
 
     tag_c: Counter[str] = Counter()
     doc_type_c: Counter[str] = Counter()
@@ -225,13 +239,21 @@ async def generate_draft(
     session: AsyncSession,
     *,
     record_ids: list[str] | None = None,
+    filter_tags: list[str] | None = None,
+    filter_data_types: list[str] | None = None,
     hint: str | None = None,
 ) -> dict[str, Any]:
     """기존 레코드 신호 + (선택) 자연어 의도 → agent 정의 초안.
 
+    데이터 군 한정: record_ids / filter_tags / filter_data_types.
     LLM 가능 시 LLM 초안, 아니면 휴리스틱 폴백. 저장은 하지 않는다.
     """
-    signal = await _gather_signal(session, record_ids=record_ids)
+    signal = await _gather_signal(
+        session,
+        record_ids=record_ids,
+        filter_tags=filter_tags,
+        filter_data_types=filter_data_types,
+    )
     if signal["record_count"] == 0 and not hint:
         # 신호도 의도도 없으면 빈 골격만.
         return {

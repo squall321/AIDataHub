@@ -128,9 +128,15 @@ class AgentIn(_Base):
 
 
 class AgentDraftIn(_Base):
-    """``POST /api/agents/draft`` — LLM/휴리스틱 agent 초안 생성 요청."""
+    """``POST /api/agents/draft`` — LLM/휴리스틱 agent 초안 생성 요청.
+
+    데이터 군 한정 (선택): record_ids 직접 지정, 또는 filter_tags /
+    filter_data_types 로 표본을 좁힌다. 셋 다 비우면 최근 레코드 전체 표본.
+    """
 
     record_ids: list[str] = Field(default_factory=list)
+    filter_tags: list[str] = Field(default_factory=list)
+    filter_data_types: list[str] = Field(default_factory=list)
     hint: str | None = None
 
 

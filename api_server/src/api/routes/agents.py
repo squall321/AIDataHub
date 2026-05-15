@@ -215,6 +215,8 @@ async def draft_agent(
     return await agent_draft_svc.generate_draft(
         session,
         record_ids=payload.record_ids or None,
+        filter_tags=payload.filter_tags or None,
+        filter_data_types=payload.filter_data_types or None,
         hint=payload.hint,
     )
 

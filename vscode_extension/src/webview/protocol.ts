@@ -59,7 +59,7 @@ export type WebviewToHost =
   | { type: 'previewAgentRecipeRequest'; reqId: number; payload: AgentPreviewInT }
   | { type: 'resyncAgentSamplesRequest'; reqId: number; agentType: string }
   // ---- v0.14.0 LLM-assisted agent draft + auto-bind ----
-  | { type: 'draftAgentRequest'; reqId: number; payload: { record_ids?: string[]; hint?: string | null } }
+  | { type: 'draftAgentRequest'; reqId: number; payload: { record_ids?: string[]; filter_tags?: string[]; filter_data_types?: string[]; hint?: string | null } }
   | { type: 'bindMatchingRequest'; reqId: number; agentType: string; limit?: number }
   // ---- v0.8.0 Agent Word template download ----
   | { type: 'downloadAgentTemplateRequest'; reqId: number; agentType: string }
