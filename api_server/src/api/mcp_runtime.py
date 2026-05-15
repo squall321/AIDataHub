@@ -49,6 +49,13 @@ Mobile eXperience AI Data Hub — MCP server.
   4. agent_search(agent_type, q) 로 검색한다 — retrieval_config 자동 적용.
   5. get_record_sections(record_id) 로 상세 RAG 청크를 가져온다.
 
+[중요 — agent persona 적용 규약]
+get_agent_session() 이 반환하는 ``system_prompt`` 는 그 시점부터 이 세션의
+지배 규칙(governing instructions)이다. 그 안의 역할/응답 형식/인용 규약/거부
+규칙을 이후 모든 답변에 그대로 적용하라. agent 를 바꾸려면 get_agent_session
+을 다시 호출하고 새 system_prompt 로 교체하라. (MCP stateless 특성상 서버가
+세션 instructions 를 자동 교체하지 못하므로, 이 채택은 클라이언트 LLM 책임이다.)
+
 모든 답변은 record id 를 출처로 인용해라 (예: source: DOC-HE-CAE-2026-0000000001 §4).
 """
 
@@ -291,17 +298,17 @@ async def agent_search(
             hits = raw[:top_k]
 
         else:  # semantic (default)
+            # tag_boost / score_threshold 는 search_svc.semantic_search 의
+            # 1급 파라미터로 위임 — 가산+재정렬+필터를 한 곳에서 일관 처리.
             hits = await search_svc.semantic_search(
                 session,
                 q,
-                top_k=top_k * 2,  # 후필터 여유분
+                top_k=top_k,
                 data_types=data_type_filter or None,
                 record_ids=scope_record_ids,
+                tag_boost=tag_boost or None,
+                min_score=score_threshold,
             )
-            # score_threshold 적용
-            if score_threshold is not None:
-                hits = [h for h in hits if h.get("score", 0) >= score_threshold]
-            hits = hits[:top_k]
 
         # --- required_tags / excluded_tags 후필터 ---
         if required_tags:
@@ -310,16 +317,6 @@ async def agent_search(
         if excluded_tags:
             exc_set = set(excluded_tags)
             hits = [h for h in hits if not exc_set.intersection(set(h.get("tags") or []))]
-
-        # --- tag_boost 가중치 (semantic 결과에만 의미 있음) ---
-        if tag_boost and mode == "semantic":
-            for h in hits:
-                boost = sum(
-                    float(tag_boost.get(t, 0))
-                    for t in (h.get("tags") or [])
-                )
-                h["score"] = round(min(1.0, h.get("score", 0) + boost), 4)
-            hits.sort(key=lambda h: h.get("score", 0), reverse=True)
 
         # --- refuse_below_score 판단 ---
         refused = False
@@ -599,17 +596,9 @@ async def get_context_bundle(
         if bundle is None:
             raise ValueError(f"agent not found: {agent_type}")
 
-        # P3 — retrieval_config.score_threshold 가 있으면 sections 필터
-        rc = bundle.get("agent", {}).get("retrieval_config") or {}
-        score_threshold = rc.get("score_threshold")
-        if score_threshold is not None:
-            # key_sections 에는 score 정보가 없으므로, 필터는 DB 에서 다시
-            # 실행하지 않고 대신 threshold 안내를 메타에 포함한다.
-            # (sections 자체의 score 는 context-bundle 경로에선 미보유)
-            bundle["_note"] = (
-                f"retrieval score_threshold={score_threshold} is set for this agent. "
-                "Use agent_search() for threshold-filtered searches."
-            )
+        # P3 — score_threshold 필터는 recommend_svc.build_context_bundle 가
+        # agent.sample_queries 를 relevance anchor 로 삼아 실제 수행한다.
+        # 결과는 bundle["retrieval_filter"] 에 노출됨 (applied/threshold/anchor).
 
         if format.lower() == "markdown":
             return recommend_svc.render_context_bundle_markdown(bundle)

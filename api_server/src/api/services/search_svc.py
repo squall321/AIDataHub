@@ -187,6 +187,8 @@ async def semantic_search(
     top_k: int = 5,
     data_types: Sequence[str] | None = None,
     record_ids: Sequence[str] | None = None,
+    tag_boost: dict[str, float] | None = None,
+    min_score: float | None = None,
 ) -> list[dict]:
     """시맨틱 검색.
 
@@ -201,6 +203,20 @@ async def semantic_search(
            코사인 유사도, 1 이 최고).
 
     ``data_types`` / ``record_ids`` 필터는 양쪽 백엔드에서 동일하게 적용.
+
+    에이전트 인지 랭킹 / 스코어 임계값 (양쪽 백엔드 동일 적용):
+        - ``tag_boost`` : ``{tag: delta}`` 매핑. 각 결과의 ``tags`` 에 대해
+          ``sum(tag_boost.get(tag, 0.0))`` 를 ``score`` 에 가산하고 최종
+          ``score`` 를 1.0 으로 클램프 + ``round(.., 4)``. 가산 후 ``score``
+          내림차순으로 재정렬한다. None/빈 dict 이면 무동작.
+        - ``min_score`` : 가산 후 ``score`` 가 이 값보다 작은(strict) 결과를
+          제거한다. None 이면 무동작.
+
+    연산 순서: 기본 유사도 계산 → ``tag_boost`` 가산+재정렬 → ``min_score``
+    필터 → ``top_k`` 자르기. ``tag_boost``/``min_score`` 가 활성이면 DB/numpy
+    에서 ``max(top_k * 3, top_k)`` 만큼 넉넉히 후보를 가져온 뒤 파이썬에서
+    가산→필터→``[:top_k]`` 순으로 처리한다. 둘 다 비활성이면 기존의 SQL
+    ``LIMIT top_k`` 동작을 그대로 유지해 성능 저하를 피한다.
     """
     from .embedding import get_embedder
 
@@ -210,6 +226,22 @@ async def semantic_search(
     embedder = get_embedder()
     qvec = embedder.encode(query)
     top_k = max(1, min(int(top_k), 100))
+
+    # tag_boost / min_score 가 활성이면 재랭킹/필터를 위해 후보 풀을 넓게 가져온다.
+    rerank = bool(tag_boost) or (min_score is not None)
+    fetch_k = max(top_k * 3, top_k) if rerank else top_k
+
+    def _apply_rerank(results: list[dict]) -> list[dict]:
+        """tag_boost 가산+재정렬 → min_score 필터 → top_k 자르기."""
+        if tag_boost:
+            for r in results:
+                delta = sum(tag_boost.get(t, 0.0) for t in r.get("tags") or [])
+                if delta:
+                    r["score"] = round(min(1.0, r["score"] + delta), 4)
+            results.sort(key=lambda r: r["score"], reverse=True)
+        if min_score is not None:
+            results = [r for r in results if r["score"] >= min_score]
+        return results[:top_k]
 
     if is_postgres(session):
         # pgvector cosine distance: ``<=>`` (0 = identical, 2 = opposite).
@@ -237,7 +269,7 @@ async def semantic_search(
             stmt = stmt.where(Record.data_type.in_(list(data_types)))
         if record_ids:
             stmt = stmt.where(RecordSection.record_id.in_(list(record_ids)))
-        stmt = stmt.order_by(distance.asc()).limit(top_k)
+        stmt = stmt.order_by(distance.asc()).limit(fetch_k)
         rows = (await session.execute(stmt)).all()
         results: list[dict] = []
         for row in rows:
@@ -255,6 +287,8 @@ async def semantic_search(
                     "tags": list(row.tags or []),
                 }
             )
+        if rerank:
+            results = _apply_rerank(results)
         return results
 
     # SQLite 폴백 — 전체 로드 후 numpy 로 코사인.
@@ -298,7 +332,7 @@ async def semantic_search(
 
     scored.sort(key=lambda t: t[0], reverse=True)
     out: list[dict] = []
-    for score, sec, rec in scored[:top_k]:
+    for score, sec, rec in scored[:fetch_k]:
         out.append(
             {
                 "record_id": rec.id,
@@ -311,6 +345,8 @@ async def semantic_search(
                 "tags": list(rec.tags or []),
             }
         )
+    if rerank:
+        out = _apply_rerank(out)
     return out
 
 

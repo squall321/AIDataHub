@@ -176,6 +176,61 @@ async def build_context_bundle(
     if agent is None:
         return None
 
+    # v0.13.0 — context-bundle 에는 라이브 쿼리가 없으므로 score_threshold 가
+    # 의미를 가지려면 relevance anchor 가 필요하다. agent.sample_queries 를
+    # anchor 로 삼아 각 section embedding 과의 MAX 코사인 유사도를 relevance
+    # 로 쓰고, threshold 미달 section 을 드롭한다 (BOTH 조건일 때만).
+    rc_cfg = dict(getattr(agent, "retrieval_config", None) or {})
+    sample_queries: list[str] = [
+        s for s in (list(getattr(agent, "sample_queries", None) or [])) if s
+    ]
+    _raw_thr = rc_cfg.get("score_threshold")
+    score_threshold: float | None = None
+    if isinstance(_raw_thr, (int, float)) and not isinstance(_raw_thr, bool):
+        score_threshold = float(_raw_thr)
+    do_filter = score_threshold is not None and bool(sample_queries)
+
+    # sample_query 벡터는 per-section 루프 전에 1회만 인코딩 (캐시).
+    query_vecs: list[Any] = []
+    if do_filter:
+        import numpy as np
+
+        from .embedding import get_embedder
+
+        embedder = get_embedder()
+        for sq in sample_queries:
+            qv = np.asarray(embedder.encode(sq), dtype="float32")
+            qn = float(np.linalg.norm(qv))
+            if qn < 1e-12:
+                continue
+            query_vecs.append(qv / qn)
+        # 모든 anchor 벡터가 zero-norm 이면 의미있는 스코어링 불가 → 필터 비활성.
+        if not query_vecs:
+            do_filter = False
+
+    def _relevance(emb: Any) -> float | None:
+        """search_svc.semantic_search 의 SQLite 경로와 동일한 코사인 수식.
+
+        normalize → dot → cosine ∈ [-1,1] 를 (sim+1)/2 로 [0,1] 매핑.
+        sample_queries 전체에 대한 MAX 유사도를 반환. emb None → None.
+        """
+        if emb is None:
+            return None
+        import numpy as np
+
+        v = np.asarray(emb, dtype="float32")
+        vnorm = float(np.linalg.norm(v))
+        if vnorm < 1e-12:
+            return None
+        best: float | None = None
+        for qv in query_vecs:
+            if v.shape != qv.shape:
+                continue
+            sim = float(np.dot(qv, v) / vnorm)
+            sim01 = max(0.0, min(1.0, (sim + 1.0) / 2.0))
+            best = sim01 if best is None else max(best, sim01)
+        return best
+
     # agent 소속 records — agents ARRAY 에 포함된 것
     # GIN index 활용을 위해 PostgreSQL 의 ANY 연산 사용 (dialect-agnostic 폴백 X).
     from sqlalchemy import literal
@@ -201,15 +256,60 @@ async def build_context_bundle(
 
     records_payload: list[dict[str, Any]] = []
     for r in rec_rows:
-        # 핵심 sections — record_sections 에서 상위 N (level 정렬)
-        secs = (
-            await session.execute(
-                select(RecordSection)
-                .where(RecordSection.record_id == r.id)
-                .order_by(RecordSection.level.asc(), RecordSection.id.asc())
-                .limit(max_sections_per_record)
+        if do_filter:
+            # relevance 필터 활성 — level cap 전에 후보를 넓게 가져와서
+            # sample_queries anchor 와의 MAX 코사인으로 스코어링 후
+            # threshold 미달을 드롭, relevance 내림차순 정렬 → cap.
+            sec_rows = (
+                await session.execute(
+                    select(RecordSection)
+                    .where(RecordSection.record_id == r.id)
+                    .order_by(RecordSection.level.asc(), RecordSection.id.asc())
+                )
+            ).scalars().all()
+            scored_secs: list[tuple[float | None, RecordSection]] = []
+            for s in sec_rows:
+                rel = _relevance(s.embedding)
+                if rel is None:
+                    # embedding 없음 → 스코어 불가. 드롭하지 않고 유지.
+                    scored_secs.append((None, s))
+                elif rel >= score_threshold:  # type: ignore[operator]
+                    scored_secs.append((rel, s))
+                # rel < threshold → 드롭.
+            # relevance 내림차순. None(미스코어)은 뒤로.
+            scored_secs.sort(
+                key=lambda t: (t[0] is not None, t[0] or 0.0), reverse=True
             )
-        ).scalars().all()
+            key_sections: list[dict[str, Any]] = []
+            for rel, s in scored_secs[:max_sections_per_record]:
+                item: dict[str, Any] = {
+                    "section_id": s.section_id,
+                    "level": s.level,
+                    "title": s.title,
+                    "excerpt": (s.content_text or "")[:500],
+                }
+                if rel is not None:
+                    item["relevance"] = round(rel, 4)
+                key_sections.append(item)
+        else:
+            # 핵심 sections — record_sections 에서 상위 N (level 정렬)
+            secs = (
+                await session.execute(
+                    select(RecordSection)
+                    .where(RecordSection.record_id == r.id)
+                    .order_by(RecordSection.level.asc(), RecordSection.id.asc())
+                    .limit(max_sections_per_record)
+                )
+            ).scalars().all()
+            key_sections = [
+                {
+                    "section_id": s.section_id,
+                    "level": s.level,
+                    "title": s.title,
+                    "excerpt": (s.content_text or "")[:500],
+                }
+                for s in secs
+            ]
         records_payload.append(
             {
                 "id": r.id,
@@ -220,15 +320,7 @@ async def build_context_bundle(
                 "summary": r.summary or "",
                 "tags": list(r.tags or []),
                 "doc_type": r.doc_type,
-                "key_sections": [
-                    {
-                        "section_id": s.section_id,
-                        "level": s.level,
-                        "title": s.title,
-                        "excerpt": (s.content_text or "")[:500],
-                    }
-                    for s in secs
-                ],
+                "key_sections": key_sections,
             }
         )
 
@@ -248,6 +340,14 @@ async def build_context_bundle(
             "sample_queries": list(getattr(agent, "sample_queries", None) or []),
         },
         "records": records_payload,
+        # v0.13.0 — context-bundle 에 relevance 필터가 적용됐는지 노출.
+        # applied=True 면 key_sections 가 sample_queries anchor MAX-코사인
+        # 으로 score_threshold 필터 + relevance 내림차순 정렬된 결과.
+        "retrieval_filter": {
+            "applied": bool(do_filter),
+            "score_threshold": score_threshold if do_filter else None,
+            "anchor": "sample_queries",
+        },
         "totals": {
             "records_returned": len(records_payload),
             "max_records": max_records,
