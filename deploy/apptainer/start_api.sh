@@ -33,6 +33,9 @@ BUILD_SHA=$BUILD_SHA
 OPENAI_API_KEY=${OPENAI_API_KEY:-}
 OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
 OPENAI_ASK_MODEL=${OPENAI_ASK_MODEL:-}
+# 모델이 로컬 캐시에 있으면 HuggingFace 네트워크 확인 생략 (MCP 첫 호출 블로킹 방지)
+HF_HUB_OFFLINE=1
+TRANSFORMERS_OFFLINE=1
 EOF
 
 cd "$API_DIR"
@@ -94,6 +97,9 @@ fi
 require_port_free "$API_PORT" "API"
 
 echo "→ uvicorn api.main:app --host $API_HOST --port $API_PORT (백그라운드)"
+# HuggingFace 모델이 로컬 캐시에 있으면 네트워크 확인을 건너뛴다.
+# MCP 첫 호출 시 수십 초 블로킹을 막기 위해 프로세스 환경에 직접 export.
+export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 nohup uvicorn api.main:app \
     --host "$API_HOST" --port "$API_PORT" \
     --proxy-headers --forwarded-allow-ips="*" \
