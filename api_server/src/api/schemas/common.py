@@ -93,6 +93,9 @@ class RecordIn(BaseModel):
     source_system: str | None = None
     language: str = "ko"
     parent_record_id: str | None = None
+    # 계층 깊이 (Migration 0017): 0=campaign/root, 1=specimen, ...
+    # RecordOut(RecordIn) 이 상속받아 응답에 노출된다.
+    depth: int = 0
     derivation: Derivation = "original"
     capabilities: list[str] = Field(default_factory=list)
     quality_score: int | None = None

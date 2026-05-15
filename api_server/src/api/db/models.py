@@ -177,6 +177,12 @@ class Record(Base):
         ForeignKey("records.id", ondelete="SET NULL", name="fk_records_parent"),
         nullable=True,
     )
+    # 계층 깊이 (Migration 0017). 0 = campaign/root, 1 = specimen, ...
+    # parent_record_id 설정/변경 시 parent.depth+1 로 자동 계산된다.
+    # ID 에 인코딩하지 않는 이유: ID 불변(인용 키) 유지 + 재부모화 가능.
+    depth: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, server_default="0"
+    )
     derivation: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="original"
     )

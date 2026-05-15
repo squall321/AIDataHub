@@ -123,6 +123,28 @@ def _blocks_to_text(blocks: list[dict[str, Any]]) -> str:
     return "\n".join(parts)
 
 
+async def compute_depth(
+    session: AsyncSession, parent_record_id: str | None
+) -> int:
+    """parent_record_id 로부터 계층 깊이 계산.
+
+    부모 없음 → 0 (campaign/root). 부모 있으면 parent.depth + 1.
+    부모 미존재(아직 미적재) → 0 으로 안전 폴백 (나중 재부모화 시 보정 가능).
+    """
+    if not parent_record_id:
+        return 0
+    from ..db.models import Record as _Rec
+
+    parent = (
+        await session.execute(
+            select(_Rec.depth).where(_Rec.id == parent_record_id)
+        )
+    ).scalar_one_or_none()
+    if parent is None:
+        return 0
+    return int(parent) + 1
+
+
 # ---------------------------------------------------------------------------
 # 메인 진입점
 # ---------------------------------------------------------------------------
@@ -275,6 +297,9 @@ async def write_record(
         existing.source_system = record_in.source_system
         existing.language = record_in.language
         existing.parent_record_id = record_in.parent_record_id
+        existing.depth = await compute_depth(
+            session, record_in.parent_record_id
+        )
         existing.derivation = record_in.derivation
         existing.capabilities = list(record_in.capabilities)
         existing.quality_score = record_in.quality_score
@@ -332,6 +357,11 @@ async def write_record(
         # Migration 0011: doc_type 컬럼은 운영 모델에만 존재 (mirror 모델 미존재).
         if "doc_type" in Record.__table__.c:
             target.doc_type = record_doc_type
+        # Migration 0017: 계층 깊이 (parent.depth+1, 부모 없으면 0).
+        if "depth" in Record.__table__.c:
+            target.depth = await compute_depth(
+                session, record_in.parent_record_id
+            )
         session.add(target)
         action = "inserted"
         # 섹션은 flush 이후 FK 가 살아있도록 add 후 동기화 한 번 수행.

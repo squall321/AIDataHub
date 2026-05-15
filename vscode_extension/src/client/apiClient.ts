@@ -230,6 +230,29 @@ export class ApiClient {
     return (await res.json()) as FacetedSearchResponse;
   }
 
+  /** GET /api/records/{id}/suggest-parent — format-similar campaign candidates. */
+  async suggestParent(id: string, topK = 5): Promise<Record<string, unknown>> {
+    const u = new URL(joinUrl(this.baseUrl, `/api/records/${encodeURIComponent(id)}/suggest-parent`));
+    u.searchParams.set('top_k', String(topK));
+    const res = await fetch(u.toString(), { method: 'GET', headers: this.headers() });
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as Record<string, unknown>;
+  }
+
+  /** PATCH /api/records/{id} — partial update (e.g. set parent_record_id). */
+  async patchRecord(id: string, patch: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const res = await fetch(
+      joinUrl(this.baseUrl, `/api/records/${encodeURIComponent(id)}`),
+      {
+        method: 'PATCH',
+        headers: this.headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(patch),
+      },
+    );
+    if (!res.ok) throw await parseError(res);
+    return (await res.json()) as Record<string, unknown>;
+  }
+
   /** GET /api/records/{id} — full record detail. */
   async getRecord(id: string): Promise<FullRecord> {
     const res = await fetch(

@@ -78,6 +78,8 @@ class RecordPatch(_Base):
     agents: list[str] | None = None
     project: str | None = None
     version: str | None = None
+    # 사후 부모 연결 (specimen → campaign). suggest-parent 확인 후 사용.
+    parent_record_id: str | None = None
 
 
 class RecordListResponse(_Base):

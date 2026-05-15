@@ -61,6 +61,9 @@ export type WebviewToHost =
   // ---- v0.14.0 LLM-assisted agent draft + auto-bind ----
   | { type: 'draftAgentRequest'; reqId: number; payload: { record_ids?: string[]; filter_tags?: string[]; filter_data_types?: string[]; hint?: string | null } }
   | { type: 'bindMatchingRequest'; reqId: number; agentType: string; limit?: number }
+  // ---- v0.15.0 parent linkage (hybrid campaign↔specimen) ----
+  | { type: 'suggestParentRequest'; reqId: number; recordId: string; topK?: number }
+  | { type: 'patchRecordRequest'; reqId: number; recordId: string; patch: Record<string, unknown> }
   // ---- v0.8.0 Agent Word template download ----
   | { type: 'downloadAgentTemplateRequest'; reqId: number; agentType: string }
   // ---- v0.9.0 Console tab (agent-discovery-console) ----
@@ -125,6 +128,9 @@ export type HostToWebview =
   // ---- v0.14.0 LLM-assisted agent draft + auto-bind responses ----
   | { type: 'draftAgentResponse'; reqId: number; ok: boolean; payload?: Record<string, unknown>; error?: string }
   | { type: 'bindMatchingResponse'; reqId: number; ok: boolean; payload?: Record<string, unknown>; error?: string }
+  // ---- v0.15.0 parent linkage responses ----
+  | { type: 'suggestParentResponse'; reqId: number; ok: boolean; payload?: Record<string, unknown>; error?: string }
+  | { type: 'patchRecordResponse'; reqId: number; ok: boolean; payload?: Record<string, unknown>; error?: string }
   // ---- v0.8.0 Agent Word template download ----
   | { type: 'downloadAgentTemplateResponse'; reqId: number; ok: boolean; savedPath?: string; error?: string }
   // ---- v0.9.0 Console tab responses ----

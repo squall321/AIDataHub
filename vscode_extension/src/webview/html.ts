@@ -1240,6 +1240,14 @@ function clientScript(): string {
           <div class="k">Title</div><div>\${escapeHtml(r.record.title)}</div>
         </div>
         \${autoBlock}
+        <details style="margin-top:12px;padding:8px 10px;border:1px dashed var(--vscode-panel-border);border-radius:4px">
+          <summary style="cursor:pointer;font-weight:600">유사 부모(campaign) 연결 (선택)</summary>
+          <p class="subtle" style="margin:6px 0">이 데이터와 포맷이 같았던 기존 레코드를 부모로 제안합니다. 확인 후 연결하면 계층(specimen→campaign)이 형성됩니다.</p>
+          <div class="toolbar">
+            <button id="btn-suggest-parent">유사 부모 후보 찾기</button>
+          </div>
+          <div id="parent-suggest-box" style="margin-top:8px"></div>
+        </details>
         <div class="toolbar">
           <button id="btn-again">Upload Another</button>
           <button id="btn-view-record" class="secondary">View record</button>
@@ -1277,6 +1285,51 @@ function clientScript(): string {
           .then((rec) => { state.search.detail = rec; state.search.detailLoading = false; render(); })
           .catch((err) => { state.search.detailError = String(err.message || err); state.search.detailLoading = false; render(); });
       }
+    });
+    // v0.15.0 — 유사 부모 후보 찾기 + 확인 후 연결.
+    on('btn-suggest-parent', 'click', () => {
+      const r = state.upload.response;
+      const box = document.getElementById('parent-suggest-box');
+      if (!r || !r.record_id || !box) return;
+      box.innerHTML = '<p class="muted">후보 검색 중…</p>';
+      rpc('suggestParentRequest', { recordId: r.record_id, topK: 5 })
+        .then((res) => {
+          const cands = (res && res.candidates) || [];
+          if (!cands.length) {
+            box.innerHTML = '<p class="muted">' + escapeHtml(String((res && res.note) || '유사 부모 후보 없음 — 이 레코드가 campaign(부모)일 수 있습니다.')) + '</p>';
+            return;
+          }
+          let html = '<table class="agents-table"><thead><tr><th>record_id</th><th>제목</th><th>conf</th><th>근거</th><th></th></tr></thead><tbody>';
+          cands.forEach((c, i) => {
+            html += '<tr>'
+              + '<td><code style="font-size:11px">' + escapeHtml(String(c.record_id)) + '</code></td>'
+              + '<td>' + escapeHtml(String(c.title || '')) + '</td>'
+              + '<td>' + escapeHtml(String(c.confidence || '')) + ' (' + escapeHtml(String(c.score)) + ')</td>'
+              + '<td style="font-size:11px">' + escapeHtml(String(c.why || '')) + '</td>'
+              + '<td><button class="tiny" data-pp="' + i + '">이 부모로 연결</button></td>'
+              + '</tr>';
+          });
+          html += '</tbody></table>';
+          box.innerHTML = html;
+          box.querySelectorAll('button[data-pp]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+              const idx = parseInt(btn.getAttribute('data-pp'), 10);
+              const pid = String(cands[idx].record_id);
+              btn.textContent = '연결 중…';
+              rpc('patchRecordRequest', { recordId: r.record_id, patch: { parent_record_id: pid } })
+                .then((rec) => {
+                  box.innerHTML = '<div class="status ok">부모 연결됨 → <code>' + escapeHtml(pid)
+                    + '</code> (depth=' + escapeHtml(String((rec && rec.depth) != null ? rec.depth : '?')) + ')</div>';
+                })
+                .catch((err) => {
+                  box.innerHTML = '<div class="status err">연결 실패: ' + escapeHtml(String(err.message || err)) + '</div>';
+                });
+            });
+          });
+        })
+        .catch((err) => {
+          box.innerHTML = '<div class="status err">후보 검색 실패: ' + escapeHtml(String(err.message || err)) + '</div>';
+        });
     });
   }
 
@@ -3455,6 +3508,7 @@ function clientScript(): string {
                || m.type === 'deleteAgentResponse'
                || m.type === 'downloadAgentTemplateResponse'
                || m.type === 'draftAgentResponse' || m.type === 'bindMatchingResponse'
+               || m.type === 'suggestParentResponse' || m.type === 'patchRecordResponse'
                || m.type === 'listDocTypesResponse' || m.type === 'createDocTypeResponse') {
       const p = _pendingReq.get(m.reqId);
       if (!p) return;

@@ -347,6 +347,35 @@ export class UploaderPanel {
         }
         return;
       }
+      // ---- v0.15.0 — parent linkage (hybrid campaign↔specimen) ----
+      case 'suggestParentRequest': {
+        const client = await this.getClient();
+        if (!client) {
+          this.post({ type: 'suggestParentResponse', reqId: msg.reqId, ok: false, error: 'Not connected' });
+          return;
+        }
+        try {
+          const payload = await client.suggestParent(msg.recordId, msg.topK ?? 5);
+          this.post({ type: 'suggestParentResponse', reqId: msg.reqId, ok: true, payload });
+        } catch (err) {
+          this.post({ type: 'suggestParentResponse', reqId: msg.reqId, ok: false, error: formatError(err) });
+        }
+        return;
+      }
+      case 'patchRecordRequest': {
+        const client = await this.getClient();
+        if (!client) {
+          this.post({ type: 'patchRecordResponse', reqId: msg.reqId, ok: false, error: 'Not connected' });
+          return;
+        }
+        try {
+          const payload = await client.patchRecord(msg.recordId, msg.patch);
+          this.post({ type: 'patchRecordResponse', reqId: msg.reqId, ok: true, payload });
+        } catch (err) {
+          this.post({ type: 'patchRecordResponse', reqId: msg.reqId, ok: false, error: formatError(err) });
+        }
+        return;
+      }
       // ---- v0.13.0 — Resync agent sample embeddings (Migration 0016) ----
       case 'resyncAgentSamplesRequest': {
         const client = await this.getClient();

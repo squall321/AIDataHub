@@ -378,6 +378,12 @@ async def patch_record(
             # ``project`` 만 명시적 None 허용 (nullable 컬럼)
             continue
         setattr(rec, key, value)
+    # 재부모화 시 depth 재계산 (Migration 0017). suggest-parent 확인 후
+    # parent_record_id 를 PATCH 하는 표준 흐름을 지원한다.
+    if "parent_record_id" in data:
+        from api.ingest.db_writer import compute_depth
+
+        rec.depth = await compute_depth(session, rec.parent_record_id)
     post_snap = record_snapshot(rec)
 
     diff = compute_diff(pre_snap, post_snap)
@@ -394,6 +400,30 @@ async def patch_record(
     await session.commit()
     await session.refresh(rec)
     return RecordOut.model_validate(rec)
+
+
+# ---------------------------------------------------------------------------
+# Suggest parent (포맷 유사 campaign 추천 — 사람 확인용)
+# ---------------------------------------------------------------------------
+@router.get("/{record_id}/suggest-parent")
+async def suggest_parent(
+    record_id: str,
+    top_k: int = Query(5, ge=1, le=20),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """이 record 와 포맷이 유사했던 부모(campaign) 후보를 점수순으로 제안.
+
+    결정론적 휴리스틱 (doc_type/team-group/data_type/섹션구조/태그).
+    사람이 확인 후 ``PATCH /api/records/{id}`` 의 ``parent_record_id`` 로 연결.
+    """
+    from api.services import parent_suggest_svc
+
+    try:
+        return await parent_suggest_svc.suggest_parents(
+            session, record_id=record_id, top_k=top_k
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------

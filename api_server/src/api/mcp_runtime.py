@@ -235,6 +235,11 @@ async def agent_search(
         score_threshold: float | None = rc.get("score_threshold")
         data_type_filter: list[str] | None = rc.get("data_type_filter") or None
         tag_boost: dict[str, float] = rc.get("tag_boost") or {}
+        # Migration 0017 — 계층 깊이 필터. retrieval_config.max_depth 가
+        # 지정되면 depth <= max_depth 인 record 만 검색 (예: 0 = campaign만,
+        # 미지정 = 전체). ID 인코딩 대신 depth 컬럼으로 "조회 여부" 제어.
+        _md = rc.get("max_depth")
+        max_depth: int | None = int(_md) if isinstance(_md, (int, float)) and not isinstance(_md, bool) else None
         required_tags: list[str] = list(agent.required_tags or [])
         excluded_tags: list[str] = list(agent.excluded_tags or [])
         refuse_below: float | None = rsp.get("refuse_below_score")
@@ -244,20 +249,23 @@ async def agent_search(
         if not data_type_filter and agent.data_types:
             data_type_filter = list(agent.data_types)
 
-        # agent 소속 record_ids 조회
+        # agent 소속 record_ids 조회 (max_depth 지정 시 depth 필터 동시 적용)
         try:
             from sqlalchemy import literal
             id_stmt = select(Record.id).where(
                 literal(agent_type) == Record.agents.any_()  # type: ignore[attr-defined]
             )
+            if max_depth is not None:
+                id_stmt = id_stmt.where(Record.depth <= max_depth)
             agent_record_ids = list((await session.execute(id_stmt)).scalars().all())
         except Exception:
             # 폴백 — 파이썬 후필터
             from .services.sql_compat import array_overlap
             pred = array_overlap(Record.agents, [agent_type], session)
-            all_recs = (await session.execute(
-                select(Record.id).where(pred.where_clause)
-            )).scalars().all()
+            fb_stmt = select(Record.id).where(pred.where_clause)
+            if max_depth is not None:
+                fb_stmt = fb_stmt.where(Record.depth <= max_depth)
+            all_recs = (await session.execute(fb_stmt)).scalars().all()
             agent_record_ids = list(all_recs)
 
         scope_record_ids = agent_record_ids or None  # None = 범위 제한 없음
@@ -340,6 +348,7 @@ async def agent_search(
                 "score_threshold": score_threshold,
                 "data_type_filter": data_type_filter,
                 "tag_boost_applied": bool(tag_boost),
+                "max_depth": max_depth,
                 "required_tags": required_tags,
                 "excluded_tags": excluded_tags,
                 "agent_record_scope": len(agent_record_ids) if agent_record_ids else "all",

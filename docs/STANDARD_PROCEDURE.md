@@ -112,6 +112,31 @@ Agent는 단순 태그가 아니라 **검색·응답 레시피**다.
 
 ---
 
+## 3-1. 계층 데이터 (campaign ↔ specimen) — Migration 0017
+
+여러 시료 시험처럼 "집단(campaign) + 개별 시료(specimen)" 구조는 record ID가
+아니라 `parent_record_id` 참조 + `depth` 컬럼으로 표현한다. ID는 영구 불변
+(인용 키)이라 ID에 계층을 인코딩하지 않는다 — 재부모화 시 ID가 깨지기 때문.
+
+- **depth**: 0 = campaign/root, 1 = specimen, ... `parent_record_id` 설정/변경
+  시 자동으로 `parent.depth + 1` 재계산 (ingest + PATCH 양쪽).
+- **연결 경로**:
+  1. 적재 시 — Upload 폼의 `parent_record_id` 입력칸 (= campaign id)
+  2. 사후 — `PATCH /api/records/{id}` 의 `parent_record_id`
+- **포맷 유사 부모 추천**: `GET /api/records/{id}/suggest-parent` →
+  doc_type/team-group/data_type/섹션구조/태그 유사도로 후보를 점수화,
+  "기존 자식 보유"는 가점. Extension 업로드 결과 화면의
+  "유사 부모(campaign) 연결" → 후보 표 → 사람이 확인 후 한 클릭 연결.
+- **lineage 조회**: `GET /api/records/{id}/lineage` (조상/자손 체인).
+- **깊이로 검색 제어**: agent `retrieval_config.max_depth` 지정 시
+  `agent_search` 가 `depth <= max_depth` 인 record 만 검색
+  (예: `max_depth=0` = campaign 요약만, 미지정 = 전체).
+
+판단 기준: 시료 수십 + "시험군 요약" 위주 → campaign 1 record로 충분.
+시료 수백 또는 "특정 시료/시료 비교" 잦음 → specimen별 record + parent.
+
+---
+
 ## 4. Agent 활성화 (가장 중요한 다음 액션)
 
 DB만 쌓여 있으면 LLM은 모른다. **연결 액션**:

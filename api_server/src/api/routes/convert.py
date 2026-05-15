@@ -103,6 +103,7 @@ def _build_overrides(
     summary_override: str | None,
     agent_hints: str | None = None,
     related_record_ids: str | None = None,
+    parent_record_id: str | None = None,
     query_examples: str | None = None,
     access_pattern: str | None = None,
 ) -> dict[str, Any]:
@@ -171,6 +172,9 @@ def _build_overrides(
     related = _split_csv(related_record_ids or "")
     if related:
         overrides["related_record_ids"] = related
+
+    if parent_record_id and parent_record_id.strip():
+        overrides["parent_record_id"] = parent_record_id.strip()
 
     examples = _split_csv(query_examples or "")
     if examples:
@@ -349,6 +353,7 @@ async def convert_and_ingest(
     # ---- Agent discovery hints (Migration 0007) -----------------------
     agent_hints: str = Form(""),
     related_record_ids: str = Form(""),
+    parent_record_id: str = Form(""),
     query_examples: str = Form(""),
     access_pattern: str = Form(""),
     persist_attachments: bool = Form(True),
@@ -378,6 +383,7 @@ async def convert_and_ingest(
         summary_override=summary_override,
         agent_hints=agent_hints,
         related_record_ids=related_record_ids,
+        parent_record_id=parent_record_id,
         query_examples=query_examples,
         access_pattern=access_pattern,
     )
