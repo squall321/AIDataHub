@@ -27,21 +27,125 @@
 </header>
 
 <nav class="tabs">
-  <button data-tab="status" class="active"><span class="tab-num">01</span>상태</button>
-  <button data-tab="catalog"><span class="tab-num">02</span>카탈로그</button>
-  <button data-tab="search"><span class="tab-num">03</span>검색</button>
-  <button data-tab="groups"><span class="tab-num">04</span>그룹·분류</button>
-  <button data-tab="analytics"><span class="tab-num">05</span>분석</button>
-  <button data-tab="org"><span class="tab-num">06</span>조직 관리</button>
-  <button data-tab="docs"><span class="tab-num">07</span>API 가이드</button>
+  <button data-tab="guide" class="active"><span class="tab-num">01</span>시작 가이드</button>
+  <button data-tab="status"><span class="tab-num">02</span>상태</button>
+  <button data-tab="catalog"><span class="tab-num">03</span>카탈로그</button>
+  <button data-tab="search"><span class="tab-num">04</span>검색</button>
+  <button data-tab="groups"><span class="tab-num">05</span>그룹·분류</button>
+  <button data-tab="analytics"><span class="tab-num">06</span>분석</button>
+  <button data-tab="org"><span class="tab-num">07</span>조직 관리</button>
+  <button data-tab="docs"><span class="tab-num">08</span>API 가이드</button>
 </nav>
 
 <main>
 
   <!-- ============================================================ -->
+  <!-- Section 0: 시작 가이드 (표준 절차) -->
+  <!-- ============================================================ -->
+  <section class="panel active" data-panel="guide">
+    <div class="panel-head">
+      <div>
+        <h2>시작 가이드 — 표준 절차</h2>
+        <p class="panel-sub">데이터 적재부터 AI가 그 데이터를 쓰기까지의 전체 흐름. 처음이면 위에서 아래로 따라가세요.</p>
+      </div>
+      <a class="btn ghost" href="https://github.com/squall321/AIDataHub/blob/main/docs/STANDARD_PROCEDURE.md" target="_blank" rel="noopener">↗ 전체 절차서</a>
+    </div>
+
+    <div class="guide-flow">
+      <div class="guide-step">
+        <div class="guide-badge">1</div>
+        <div class="guide-body">
+          <h3>데이터 적재</h3>
+          <p>VSCode Extension의 <b>Upload 탭</b>에 파일을 드래그(<code>.docx .pdf .pptx .xlsx .md</code>) 또는 <b>Bundle 탭</b>에 zip.</p>
+          <ul>
+            <li>필수 메타: <code>team</code>(대문자 2~4자, org에 등록) · <code>group</code>(대문자 <b>2~5자</b>) · <code>year</code></li>
+            <li><code>seq</code> 비우면 자동 증가 — 기존 레코드 안 덮어씀</li>
+            <li>폼의 <code>tags</code>/<code>agents</code>는 본문 추출 태그와 <b>합쳐서</b> 보존됨</li>
+            <li>계층 데이터면 <code>parent_record_id</code>(campaign id) 입력 — 비워도 업로드 후 추천받아 연결 가능</li>
+          </ul>
+          <p class="guide-check">확인: 이 대시보드 <b>카탈로그 / 분석 탭</b> 또는 <code>/api/discover</code></p>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-badge">2</div>
+        <div class="guide-body">
+          <h3>Agent 정의</h3>
+          <p>Extension <b>Agents 탭</b> → "New agent". 또는 <b>"LLM 초안 생성"</b>(데이터군 태그/타입 한정 → 폼 자동 채움 → 검토·수정).</p>
+          <ul>
+            <li>핵심: <code>common_tags</code> · <code>data_types</code> · <code>retrieval_config</code>(top_k/score_threshold/max_depth) · <code>system_prompt</code> · <code>sample_queries</code></li>
+            <li>기존 agent 수정은 목록의 <b>Edit</b> (agent_type만 고정) — 이력은 자동 보존</li>
+            <li>저장 전 "Test preview"로 실제 검색·답변 미리보기</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-badge">3</div>
+        <div class="guide-body">
+          <h3>데이터 ↔ Agent 연결</h3>
+          <p>업로드 시 <code>agents=</code> 직접 지정, 또는 Agent 저장 시 <b>"저장 후 매칭 레코드 자동 바인딩"</b> 체크.</p>
+          <ul>
+            <li>매칭: required_doc_type + data_types + (required_tags 전부 / 없으면 common_tags 겹침)</li>
+            <li>계층: 업로드 결과 화면의 <b>"유사 부모(campaign) 연결"</b> → 후보 표 확인 → 한 클릭 연결</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-badge">4</div>
+        <div class="guide-body">
+          <h3>Agent 활성화 <span class="guide-key">가장 중요</span></h3>
+          <p>DB만 쌓이면 LLM은 모릅니다. Extension <b>Console 탭</b>에서:</p>
+          <ul>
+            <li>agent 선택 → AI 클라이언트 선택(Cline/Claude Desktop/Claude Code/Cursor/Copilot/Gemini/Codex)</li>
+            <li><b>"1,2,3 불러오기"</b> → <b>"자동 설치 (MCP + Prompt)"</b></li>
+            <li>→ MCP 서버 등록 + 그 agent의 system_prompt가 클라이언트 룰 파일에 주입</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-badge">5</div>
+        <div class="guide-body">
+          <h3>런타임 사용 (LLM 측)</h3>
+          <p>설치된 클라이언트 새 세션에서 자동 흐름:</p>
+          <ol>
+            <li><code>get_agent_session(agent_type)</code> — persona·설정 초기화</li>
+            <li><code>agent_search(agent_type, q)</code> — retrieval_config 자동 적용 검색</li>
+            <li><code>get_record_sections(record_id)</code> — 상세 RAG 청크</li>
+            <li>답변마다 <code>(source: &lt;record_id&gt; §&lt;section&gt;)</code> 인용</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="guide-step">
+        <div class="guide-badge">6</div>
+        <div class="guide-body">
+          <h3>운영 루프</h3>
+          <ul>
+            <li>새 데이터 → 해당 agent <code>bind-matching</code> 재실행</li>
+            <li>sample_queries 변경 → <code>resync-samples</code></li>
+            <li>설정 튜닝 → Agents Edit → 필요 시 클라이언트 재-자동설치</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:20px;">
+      <div class="label">새 서버 한 줄 셋업</div>
+      <ul>
+        <li><code>bash setup.sh</code> → PG+API 기동 · Extension 빌드·게시 · (code CLI 있으면) 자동 설치 · 대시보드 오픈</li>
+        <li>상태 점검: <code>bash status.sh</code> / 상세: <code>bash diag.sh --tail-logs</code></li>
+        <li>Extension 받기: 이 대시보드 <b>상태 탭</b> → VSCode Extension 카드 → Download .vsix</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
   <!-- Section 1: 상태 -->
   <!-- ============================================================ -->
-  <section class="panel active" data-panel="status">
+  <section class="panel" data-panel="status">
     <div class="panel-head">
       <div>
         <h2>백엔드 상태</h2>

@@ -1263,3 +1263,28 @@ pre.docs-output {
   border: 2px solid var(--bg);
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+
+/* ── 시작 가이드 (표준 절차) ─────────────────────────────────── */
+.guide-flow { display: flex; flex-direction: column; gap: 14px; margin-top: 8px; }
+.guide-step {
+  display: flex; gap: 14px;
+  border: 1px solid var(--border, #2a2f3a);
+  border-radius: 8px; padding: 14px 16px;
+  background: var(--card-bg, rgba(255,255,255,0.02));
+}
+.guide-badge {
+  flex: 0 0 32px; height: 32px; width: 32px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; font-weight: 700; font-size: 15px;
+  background: var(--accent, #1f6feb); color: #fff;
+}
+.guide-body { flex: 1; }
+.guide-body h3 { margin: 2px 0 6px; font-size: 15px; }
+.guide-body p { margin: 4px 0; font-size: 13px; line-height: 1.6; }
+.guide-body ul, .guide-body ol { margin: 6px 0 4px; padding-left: 20px; font-size: 13px; line-height: 1.7; }
+.guide-body code { font-size: 12px; }
+.guide-key {
+  font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 10px;
+  background: rgba(220,80,80,0.18); color: #ff8a8a; margin-left: 6px;
+}
+.guide-check { color: var(--text-muted, #8b94a3); font-size: 12px !important; }
