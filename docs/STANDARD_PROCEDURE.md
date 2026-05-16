@@ -234,9 +234,11 @@ DB만 쌓여 있으면 LLM은 모른다. **연결 액션**:
 
 ```
 # 0) 시스템 의존성 (root 1회) — apptainer/node20/python3.12-venv/git/curl
+#    + 방화벽: API 포트(.env 의 API_PORT, 기본 8001) ufw 자동 개방
 sudo bash bootstrap.sh
 #    idempotent. 같은 서버에 MXWhitePaper 를 먼저 셋업했다면 대부분 이미
 #    깔려 있어 거의 no-op 으로 끝난다. 사내 프록시/오프라인 자동 처리.
+#    (ufw 없는 환경=클라우드 보안그룹 등은 API 포트 인바운드 별도 개방 필요)
 
 # 1) 한 줄 셋업 (일반 계정)
 bash setup.sh          # 또는  bash quickstart.sh (bundle/source 자동 + 검증)

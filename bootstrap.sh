@@ -264,6 +264,30 @@ else
   ok "$(node --version)  (npm $(npm --version 2>/dev/null || echo '?'))"
 fi
 
+# ── Step 4: Firewall (API 포트 개방) ────────────────────────────────
+# 대시보드/Extension/MCP 가 같은 망의 클라이언트에서 접속되므로 API 포트를
+# 미리 연다. postgres 포트는 localhost 전용이라 열지 않는다 (보안).
+# .env 가 있으면 거기 API_PORT 를, 없으면 기본 8001.
+step "Step 4 — Firewall (API 포트 개방)"
+API_PORT_VAL="8001"
+_envf="$REPO_ROOT/deploy/apptainer/.env"
+[ -f "$_envf" ] || _envf="$REPO_ROOT/deploy/apptainer/.env.example"
+if [ -f "$_envf" ]; then
+  _p="$(grep -E '^API_PORT=' "$_envf" 2>/dev/null | tail -1 | cut -d= -f2 | tr -dc '0-9')"
+  [ -n "$_p" ] && API_PORT_VAL="$_p"
+fi
+if command -v ufw >/dev/null 2>&1; then
+  # ufw allow 는 비활성 상태여도 규칙을 저장해 두므로(나중에 켜도 적용)
+  # 멱등하게 항상 추가한다. ufw 가 규칙 중복은 알아서 무시.
+  run ufw allow "${API_PORT_VAL}/tcp" || warn "ufw allow 실패 — 수동: sudo ufw allow ${API_PORT_VAL}/tcp"
+  state="$(ufw status 2>/dev/null | head -1)"
+  ok "ufw: ${API_PORT_VAL}/tcp 허용 (${state:-status unknown})"
+  note "postgres 포트는 열지 않음 (localhost 전용 — 보안)"
+else
+  warn "ufw 없음 — 호스트 방화벽 미관리."
+  note "클라우드 보안그룹/사내망 방화벽이면 ${API_PORT_VAL}/tcp 인바운드를 별도 개방하세요."
+fi
+
 # ── Done ────────────────────────────────────────────────────────────
 echo
 ok "Bootstrap 완료 (mode: $MODE)"
