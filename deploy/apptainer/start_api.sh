@@ -63,8 +63,30 @@ _pip_fail() {
   echo "          - 오프라인이면: requirements 휠을 사전 stage 후 PIP_FIND_LINKS 사용" >&2
   exit 1
 }
-python -m pip install --upgrade pip > "$LOG_DIR/pip.log" 2>&1 || _pip_fail
-python -m pip install -r requirements.txt >> "$LOG_DIR/pip.log" 2>&1 || _pip_fail
+# MXWP build.sh 의 _run_with_fallback 패턴을 호스트 pip 에 이식.
+# 1차: 현재 env (export_proxy 가 강제한 사내 폴백 프록시일 수 있음)
+# 2차: BUILD_PROXY 명시 재시도 (사내망)
+# 3차: 프록시 완전 제거 재시도 (외부망 직결 서버 — 강제된 사내 프록시가
+#      오히려 pip 를 막는 케이스. MXWP 가 사내망이라 안 겪던 상황).
+_pip() {
+  # $@ = pip 인자
+  if python -m pip "$@" >> "$LOG_DIR/pip.log" 2>&1; then return 0; fi
+  local fb_https="${BUILD_PROXY_HTTPS:-}"
+  local fb_http="${BUILD_PROXY_HTTP:-${BUILD_PROXY_HTTPS:-}}"
+  if [[ -n "$fb_https" && "$fb_https" != "off" ]]; then
+    echo "  [WARN] pip 1차 실패 — BUILD_PROXY 재시도 ($fb_https)" >&2
+    if env HTTPS_PROXY="$fb_https" https_proxy="$fb_https" \
+           HTTP_PROXY="$fb_http" http_proxy="$fb_http" \
+           python -m pip "$@" >> "$LOG_DIR/pip.log" 2>&1; then return 0; fi
+  fi
+  echo "  [WARN] pip 재시도 실패 — 프록시 제거 후 직결 재시도" >&2
+  if env -u HTTPS_PROXY -u https_proxy -u HTTP_PROXY -u http_proxy \
+         python -m pip "$@" >> "$LOG_DIR/pip.log" 2>&1; then return 0; fi
+  return 1
+}
+: > "$LOG_DIR/pip.log"
+_pip install --upgrade pip || _pip_fail
+_pip install -r requirements.txt || _pip_fail
 
 # 선택 임베더 — .env 의 EMBEDDING_PROVIDER 값에 따라 추가 패키지 자동 설치 +
 # EMBEDDING_DIM 자동 매핑 (alembic 0013 의 vector(NNN) 컬럼과 정합 필요).
