@@ -128,8 +128,40 @@ echo "  ✓ deps installed (embedder=${EMBEDDING_PROVIDER:-hash}, dim=${EMBEDDIN
 
 export PYTHONPATH="$API_DIR/src"
 
+# alembic 전 PostgreSQL 준비 대기 — 새 서버에서 PG 가 아직 초기화 중이면
+# alembic 이 연결에서 무한 대기(hang)한다. TCP 포트로 bounded 대기.
+PG_HOST="${POSTGRES_HOST:-127.0.0.1}"
+echo "→ PostgreSQL 대기 ($PG_HOST:$POSTGRES_PORT, 최대 60s)"
+_pg_ready=0
+for _i in $(seq 1 30); do
+  if (exec 3<>"/dev/tcp/$PG_HOST/$POSTGRES_PORT") 2>/dev/null; then
+    exec 3>&- 3<&-; _pg_ready=1; break
+  fi
+  sleep 2
+done
+if [[ "$_pg_ready" -ne 1 ]]; then
+  echo "[ERROR] PostgreSQL($PG_HOST:$POSTGRES_PORT) 60s 내 미응답." >&2
+  echo "        먼저 기동: bash $APPT_DIR/start_postgres.sh" >&2
+  echo "        진단     : bash $APPT_DIR/diag.sh --tail-logs" >&2
+  exit 1
+fi
+
 echo "→ alembic upgrade head"
-"$VENV_PY" -m alembic upgrade head > "$LOG_DIR/alembic.log" 2>&1
+_alembic_fail() {
+  echo >&2
+  echo "[ERROR] alembic upgrade head 실패." >&2
+  echo "        로그 마지막 30줄 ($LOG_DIR/alembic.log):" >&2
+  tail -30 "$LOG_DIR/alembic.log" 2>/dev/null | sed 's/^/    /' >&2
+  echo >&2
+  echo "        점검:" >&2
+  echo "          - PG 자격/포트: .env 의 POSTGRES_USER/PASSWORD/PORT/DB" >&2
+  echo "          - 마이그레이션 충돌: tail -50 $LOG_DIR/alembic.log" >&2
+  echo "          - 빈 DB 0001~0017 첫 적용 실패 시 위 로그에 원인 표기됨" >&2
+  exit 1
+}
+# timeout — 마이그레이션이 DB 락 등으로 무한 hang 하면 5분 후 강제 종료 →
+# _alembic_fail 로 원인 표면화 (영원히 멈춰 있지 않게).
+timeout 300 "$VENV_PY" -m alembic upgrade head > "$LOG_DIR/alembic.log" 2>&1 || _alembic_fail
 
 echo "→ seed agents (멱등)"
 "$VENV_PY" -m api.seed -v > "$LOG_DIR/seed.log" 2>&1 || echo "  [WARN] seed 실패 — 무시"
