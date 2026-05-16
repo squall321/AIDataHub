@@ -46,10 +46,25 @@ fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
 
-# pip 은 HTTP_PROXY/HTTPS_PROXY 환경변수를 자동 사용
+# pip 은 HTTP_PROXY/HTTPS_PROXY 환경변수를 자동 사용.
+# set -euo pipefail 하에서 출력이 pip.log 로 리다이렉트돼 있어, 실패 시
+# 에러 한 줄 없이 스크립트가 죽는 문제가 있었다 (새 서버에서 PyPI/프록시
+# 미도달이 가장 흔함). 실패를 반드시 표면화한다.
 echo "→ pip install -r requirements.txt (로그: $LOG_DIR/pip.log)"
-python -m pip install --upgrade pip   > "$LOG_DIR/pip.log" 2>&1
-python -m pip install -r requirements.txt >> "$LOG_DIR/pip.log" 2>&1
+_pip_fail() {
+  echo >&2
+  echo "[ERROR] pip install 실패 — 새 서버에서는 보통 PyPI/프록시 미도달입니다." >&2
+  echo "        로그 마지막 30줄 ($LOG_DIR/pip.log):" >&2
+  tail -30 "$LOG_DIR/pip.log" 2>/dev/null | sed 's/^/    /' >&2
+  echo >&2
+  echo "        점검:" >&2
+  echo "          - 인터넷/프록시: .env 의 HTTPS_PROXY/BUILD_PROXY_HTTPS (사내망)" >&2
+  echo "          - 외부망이면  : .env 에 BUILD_PROXY_HTTPS=off" >&2
+  echo "          - 오프라인이면: requirements 휠을 사전 stage 후 PIP_FIND_LINKS 사용" >&2
+  exit 1
+}
+python -m pip install --upgrade pip > "$LOG_DIR/pip.log" 2>&1 || _pip_fail
+python -m pip install -r requirements.txt >> "$LOG_DIR/pip.log" 2>&1 || _pip_fail
 
 # 선택 임베더 — .env 의 EMBEDDING_PROVIDER 값에 따라 추가 패키지 자동 설치 +
 # EMBEDDING_DIM 자동 매핑 (alembic 0013 의 vector(NNN) 컬럼과 정합 필요).
