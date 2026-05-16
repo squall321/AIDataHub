@@ -117,15 +117,45 @@ else
 fi
 
 echo "→ pg_isready 대기..."
+_pg_ok=0
 for i in $(seq 1 60); do
   if apptainer exec "instance://$INST_POSTGRES" \
        pg_isready -h 127.0.0.1 -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
        >/dev/null 2>&1; then
     echo "✓ postgres ready (${i}s)"
-    break
+    _pg_ok=1; break
   fi
   sleep 1
 done
+if [[ "$_pg_ok" -ne 1 ]]; then
+  echo "[ERROR] postgres 60s 내 미응답 — 인스턴스 로그 확인:" >&2
+  echo "        apptainer logs $INST_POSTGRES   |   tail -30 $LOG_DIR/postgres-start.log" >&2
+  exit 1
+fi
+
+# 앱 DB/role 실존 검증. postgres 이미지는 POSTGRES_DB/USER 를 PGDATA 최초
+# init 시에만 생성한다. 이전 실패 run 이 PGDATA 를 다른 설정으로 초기화해
+# 두면 (또는 .env 의 POSTGRES_DB 오타) 이 DB 가 영영 안 생기고, 그대로
+# 두면 alembic 이 난해한 스택트레이스로 터진다. 여기서 명확히 멈춘다.
+echo "→ DB '$POSTGRES_DB' 실존 검증"
+if ! apptainer exec "instance://$INST_POSTGRES" \
+     psql -h 127.0.0.1 -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+          -tAc "SELECT 1" >/dev/null 2>&1; then
+  echo "[ERROR] role/DB '$POSTGRES_USER'/'$POSTGRES_DB' 로 접속 불가." >&2
+  echo "        원인: postgres 이미지는 PGDATA *최초 init* 때만 POSTGRES_DB/" >&2
+  echo "        USER 를 만든다. 이전 실패 run 이 PGDATA 를 다른 설정으로" >&2
+  echo "        초기화했거나 .env 의 POSTGRES_DB 가 틀렸을 때 발생." >&2
+  echo >&2
+  echo "        조치:" >&2
+  echo "          1) .env 확인 — POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD" >&2
+  echo "             (.env.example 기본값: POSTGRES_DB=aidh, POSTGRES_USER=aidh)" >&2
+  echo "          2) PGDATA 완전 초기화 후 재시도:" >&2
+  echo "             bash $APPT_DIR/clean.sh        # data 디렉토리 wipe" >&2
+  echo "             bash setup.sh                  # 다시" >&2
+  echo "          (외부 공유 PG 면 EXTERNAL_POSTGRES=1 + setup-shared-pg.sh)" >&2
+  exit 1
+fi
+echo "✓ DB '$POSTGRES_DB' 접속 OK"
 
 echo "→ CREATE EXTENSION IF NOT EXISTS vector;"
 apptainer exec "instance://$INST_POSTGRES" \
