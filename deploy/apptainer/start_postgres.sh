@@ -133,29 +133,45 @@ if [[ "$_pg_ok" -ne 1 ]]; then
   exit 1
 fi
 
-# 앱 DB/role 실존 검증. postgres 이미지는 POSTGRES_DB/USER 를 PGDATA 최초
-# init 시에만 생성한다. 이전 실패 run 이 PGDATA 를 다른 설정으로 초기화해
-# 두면 (또는 .env 의 POSTGRES_DB 오타) 이 DB 가 영영 안 생기고, 그대로
-# 두면 alembic 이 난해한 스택트레이스로 터진다. 여기서 명확히 멈춘다.
-echo "→ DB '$POSTGRES_DB' 실존 검증"
-if ! apptainer exec "instance://$INST_POSTGRES" \
+# 앱 DB 멱등 보장 — 없으면 생성, 있으면 그대로 사용.
+# postgres 이미지는 POSTGRES_DB 를 PGDATA *최초 init* 때만 만든다. .env 의
+# POSTGRES_DB 가 init 이후 바뀌었거나(오타 수정 등) 이전 run 이 다른 이름으로
+# 초기화했으면 그 DB 가 없다. 단, role(POSTGRES_USER)은 한 번이라도 init 됐으면
+# 슈퍼유저로 존재하므로, 관리DB(postgres)에 붙어 CREATE DATABASE 로 보강한다.
+echo "→ DB '$POSTGRES_DB' 보장 (없으면 생성)"
+_psql_maint() {
+  # 관리용 'postgres' DB 에 POSTGRES_USER 로 접속해 임의 SQL 실행.
+  apptainer exec "instance://$INST_POSTGRES" \
+    psql -h 127.0.0.1 -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d postgres \
+         -tA -X -v ON_ERROR_STOP=1 "$@"
+}
+if apptainer exec "instance://$INST_POSTGRES" \
      psql -h 127.0.0.1 -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
           -tAc "SELECT 1" >/dev/null 2>&1; then
-  echo "[ERROR] role/DB '$POSTGRES_USER'/'$POSTGRES_DB' 로 접속 불가." >&2
-  echo "        원인: postgres 이미지는 PGDATA *최초 init* 때만 POSTGRES_DB/" >&2
-  echo "        USER 를 만든다. 이전 실패 run 이 PGDATA 를 다른 설정으로" >&2
-  echo "        초기화했거나 .env 의 POSTGRES_DB 가 틀렸을 때 발생." >&2
+  echo "✓ DB '$POSTGRES_DB' 이미 존재 — 사용"
+elif _psql_maint -c "SELECT 1" >/dev/null 2>&1; then
+  # role/비번은 정상 (관리DB 접속 OK) — 앱 DB 만 없음 → 생성.
+  if _psql_maint -c "SELECT 1 FROM pg_database WHERE datname='$POSTGRES_DB'" \
+       2>/dev/null | grep -q 1; then
+    echo "✓ DB '$POSTGRES_DB' 존재 확인"
+  else
+    echo "  → CREATE DATABASE \"$POSTGRES_DB\" OWNER \"$POSTGRES_USER\""
+    _psql_maint -c "CREATE DATABASE \"$POSTGRES_DB\" OWNER \"$POSTGRES_USER\";" \
+      || { echo "[ERROR] CREATE DATABASE 실패 — apptainer logs $INST_POSTGRES" >&2; exit 1; }
+    echo "✓ DB '$POSTGRES_DB' 생성됨"
+  fi
+else
+  # 관리DB 접속조차 실패 = role/비번이 PGDATA 와 불일치 (다른 설정으로 init).
+  echo "[ERROR] role '$POSTGRES_USER' 로 접속 불가 — PGDATA 가 다른 자격으로 초기화됨." >&2
+  echo "        .env 의 POSTGRES_USER/PASSWORD 가 PGDATA 최초 init 값과 다릅니다." >&2
   echo >&2
   echo "        조치:" >&2
-  echo "          1) .env 확인 — POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD" >&2
-  echo "             (.env.example 기본값: POSTGRES_DB=aidh, POSTGRES_USER=aidh)" >&2
+  echo "          1) .env 확인 (.env.example 기본: POSTGRES_USER=aidh)" >&2
   echo "          2) PGDATA 완전 초기화 후 재시도:" >&2
-  echo "             bash $APPT_DIR/clean.sh        # data 디렉토리 wipe" >&2
-  echo "             bash setup.sh                  # 다시" >&2
+  echo "             bash $APPT_DIR/clean.sh && bash setup.sh" >&2
   echo "          (외부 공유 PG 면 EXTERNAL_POSTGRES=1 + setup-shared-pg.sh)" >&2
   exit 1
 fi
-echo "✓ DB '$POSTGRES_DB' 접속 OK"
 
 echo "→ CREATE EXTENSION IF NOT EXISTS vector;"
 apptainer exec "instance://$INST_POSTGRES" \
