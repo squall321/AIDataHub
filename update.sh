@@ -10,16 +10,17 @@
 #   1. 잠금 (concurrent update 방지)
 #   2. 서비스 정지 (systemd 알아서 또는 stop.sh)
 #   3. postgres 만 다시 기동 (alembic 마이그레이션 위해)
-#   4. git pull → pip install → alembic upgrade head
+#   4. git pull → pip install → [DB 자동 백업] → alembic upgrade head
 #   5. 서비스 기동 (systemd 가 idempotent — PG 는 skip 되고 API 만 새로)
 #   6. health verify (10초 timeout)
-#   7. 실패 시 명확한 rollback hint
+#   7. 실패 시 명확한 rollback hint (+ 백업 복원 경로 안내)
 #
 # 사용:
-#   bash update.sh                  # 전체 (권장)
+#   bash update.sh                  # 전체 (권장, 마이그레이션 전 DB 백업 포함)
 #   bash update.sh --pull-only      # git pull 만 (서비스 영향 X)
 #   bash update.sh --skip-deps      # pip install 건너뜀 (코드만 바뀌었을 때)
-#   bash update.sh --no-migrate     # alembic skip
+#   bash update.sh --no-migrate     # alembic skip (백업도 불필요해 skip)
+#   bash update.sh --no-backup      # 마이그레이션 전 DB 백업 건너뜀
 #   bash update.sh --force-unlock   # 잠금 강제 해제 후 진행
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,12 +34,14 @@ mkdir -p "$LOG_DIR"
 PULL_ONLY=0
 SKIP_DEPS=0
 NO_MIGRATE=0
+NO_BACKUP=0
 FORCE_UNLOCK=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --pull-only)     PULL_ONLY=1; shift ;;
     --skip-deps)     SKIP_DEPS=1; shift ;;
     --no-migrate)    NO_MIGRATE=1; shift ;;
+    --no-backup)     NO_BACKUP=1; shift ;;
     --force-unlock)  FORCE_UNLOCK=1; shift ;;
     -h|--help)       sed -n '2,21p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "[ERROR] unknown arg: $1" >&2; exit 2 ;;
@@ -172,6 +175,20 @@ else
     exit 1
   fi
   ok "deps OK"
+fi
+
+# alembic 직전 자동 DB 백업 — 마이그레이션은 되돌리기 어려운 변경이므로
+# 기본으로 한 번 뜬다 (--no-backup 으로 생략, --no-migrate 면 불필요).
+if [[ $NO_MIGRATE -ne 1 && $NO_BACKUP -ne 1 ]]; then
+  BK="$LOG_DIR/pre-update-db-$(date +%Y%m%d-%H%M%S).sql.gz"
+  info "마이그레이션 전 DB 백업 → $BK"
+  if bash "$APPT_DIR/backup-db.sh" "$BK" > "$LOG_DIR/update-backup.log" 2>&1; then
+    ok "백업 완료 ($(du -h "$BK" 2>/dev/null | cut -f1)) — 복원: bash $APPT_DIR/restore-db.sh $BK"
+  else
+    fail "DB 백업 실패 — tail $LOG_DIR/update-backup.log"
+    fail "안전을 위해 중단. 백업 불필요하면 --no-backup 로 재실행."
+    exit 1
+  fi
 fi
 
 # alembic
