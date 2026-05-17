@@ -184,3 +184,38 @@ ensure_dirs() {
   mkdir -p "$DATA_DIR/postgres" "$DATA_DIR/postgres-run" \
            "$DATA_DIR/attachments" "$DATA_DIR/figures" "$LOG_DIR"
 }
+
+# 약한/기본 비밀번호 가드. .env.example 은 POSTGRES_PASSWORD=aidh_change_me
+# 로 배포된다. 그대로 운영에 올라가면 DB 기본 비번 노출. 기본은 경고만
+# (PoC/내부망 흐름 안 깨게), AIDH_REQUIRE_STRONG_PW=1 이면 차단(운영용).
+check_secrets() {
+  local pw="${POSTGRES_PASSWORD:-}"
+  local weak=0
+  case "$pw" in
+    ""|aidh_change_me|*CHANGE_ME*|*change_me*|postgres|aidh) weak=1 ;;
+  esac
+  [[ "$weak" -eq 1 ]] || return 0
+  if [[ "${AIDH_REQUIRE_STRONG_PW:-0}" = "1" ]]; then
+    echo "[ERROR] POSTGRES_PASSWORD 가 기본/약한 값('$pw') — AIDH_REQUIRE_STRONG_PW=1." >&2
+    echo "        .env 의 POSTGRES_PASSWORD 를 강한 값으로 바꾸고 재실행." >&2
+    echo "        (이미 기동 중 DB 면 비번 변경 후 재초기화/ALTER USER 필요)" >&2
+    exit 1
+  fi
+  echo "[WARN] POSTGRES_PASSWORD 가 기본/약한 값입니다 ('$pw')."
+  echo "       운영 전 .env 에서 강한 값으로 회전하세요. (강제: AIDH_REQUIRE_STRONG_PW=1)"
+}
+
+# 로그 size-기반 회전 — 파일이 cap(MB) 초과면 .1 로 1세대 보관 후 새로 시작.
+# uvicorn.log 처럼 장기 무재시작 운행 시 무한 증가하는 로그용.
+# rotate_log <file> [cap_mb=20]
+rotate_log() {
+  local f="$1" cap_mb="${2:-20}"
+  [[ -f "$f" ]] || return 0
+  local sz_mb
+  sz_mb=$(( $(stat -c %s "$f" 2>/dev/null || echo 0) / 1024 / 1024 ))
+  if [[ "$sz_mb" -ge "$cap_mb" ]]; then
+    mv -f "$f" "$f.1" 2>/dev/null || true
+    : > "$f"
+    echo "[INFO] rotate_log: $(basename "$f") ${sz_mb}MB ≥ ${cap_mb}MB → $(basename "$f").1"
+  fi
+}

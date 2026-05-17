@@ -62,11 +62,29 @@ build_or_pull() {
   fi
 }
 
+# SIF 빌드/풀 최종 실패 — 조용히 죽지 않게 조치 안내를 표면화.
+# (apptainer 자체 에러는 위에 출력되지만 '무엇을 해야 하는지' 가 없었음.)
+_build_fail() {
+  local what="$1"
+  echo >&2
+  echo "[ERROR] $what 생성 실패 (apptainer build/pull)." >&2
+  echo "        점검:" >&2
+  echo "          - 네트워크/프록시: Docker Hub(docker://pgvector) 도달 필요." >&2
+  echo "            사내망 → .env 의 BUILD_PROXY_HTTPS, 외부망 → 그대로 직통." >&2
+  echo "          - 디스크: SIF ~145M×2 + 빌드 임시공간. df -h \$APPT_DIR" >&2
+  echo "          - apptainer fakeroot/권한: apptainer build 가 root/fakeroot 필요할 수 있음." >&2
+  echo "          - 오프라인: 인터넷 되는 곳에서 빌드한 *.sif 를 $APPT_DIR/ 에" >&2
+  echo "            미리 두면 이 단계는 skip 된다 (bundle.sh --with-sif 로 반입)." >&2
+  exit 1
+}
+
 # 1) base 이미지 pull (Docker Hub → SIF 변환)
-build_or_pull "$APPT_DIR/postgres-base.sif" "docker://pgvector/pgvector:pg16"
+build_or_pull "$APPT_DIR/postgres-base.sif" "docker://pgvector/pgvector:pg16" \
+  || _build_fail "postgres-base.sif"
 
 # 2) wrapper (startscript 추가) — instance start 가능하게
-build_or_pull "$APPT_DIR/postgres.sif" "" "$APPT_DIR/postgres.def"
+build_or_pull "$APPT_DIR/postgres.sif" "" "$APPT_DIR/postgres.def" \
+  || _build_fail "postgres.sif"
 
 echo
 echo "✓ images ready in $APPT_DIR"

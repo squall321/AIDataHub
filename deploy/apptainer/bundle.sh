@@ -13,10 +13,13 @@
 #
 # 사용:
 #   bash deploy/apptainer/bundle.sh                 # 코드만
-#   bash deploy/apptainer/bundle.sh --all           # SIF + vsix 포함 (권장 — 새 서버에 그대로 가져가)
-#   bash deploy/apptainer/bundle.sh --with-sif --with-vsix
+#   bash deploy/apptainer/bundle.sh --all           # SIF + vsix (권장 — 사내망 새 서버)
+#   bash deploy/apptainer/bundle.sh --offline-all   # SIF+vsix+모델+휠 (완전 폐쇄망)
+#   bash deploy/apptainer/bundle.sh --with-model    # HF 임베딩 모델 sidecar(.model.tar.gz)
+#   bash deploy/apptainer/bundle.sh --with-wheels   # pip 휠 sidecar(.wheels.tar.gz)
 #   bash deploy/apptainer/bundle.sh --output /path/to/x.tar.gz
-#   bash deploy/apptainer/bundle.sh --split 100M    # 100MB 단위 분할 (메일 첨부 등)
+#   bash deploy/apptainer/bundle.sh --split 100M    # 100MB 단위 분할
+#   * 모델/휠은 1GB+ 라 메인 tar 와 분리된 sidecar 파일 — 같이 전송할 것
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
@@ -26,14 +29,19 @@ TS=$(date +%Y%m%d-%H%M%S)
 OUT="/tmp/aidh-bundle-${TS}.tar.gz"
 WITH_SIF=0
 WITH_VSIX=0
+WITH_MODEL=0
+WITH_WHEELS=0
 SPLIT_SIZE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --output|-o)  OUT="$2"; shift 2 ;;
-    --with-sif)   WITH_SIF=1; shift ;;
-    --with-vsix)  WITH_VSIX=1; shift ;;
-    --all)        WITH_SIF=1; WITH_VSIX=1; shift ;;
-    --split)      SPLIT_SIZE="$2"; shift 2 ;;
+    --output|-o)   OUT="$2"; shift 2 ;;
+    --with-sif)    WITH_SIF=1; shift ;;
+    --with-vsix)   WITH_VSIX=1; shift ;;
+    --with-model)  WITH_MODEL=1; shift ;;
+    --with-wheels) WITH_WHEELS=1; shift ;;
+    --all)         WITH_SIF=1; WITH_VSIX=1; shift ;;
+    --offline-all) WITH_SIF=1; WITH_VSIX=1; WITH_MODEL=1; WITH_WHEELS=1; shift ;;
+    --split)       SPLIT_SIZE="$2"; shift 2 ;;
     -h|--help)
       sed -n '2,18p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "[ERROR] unknown arg: $1" >&2; exit 2 ;;
@@ -115,6 +123,42 @@ tar "${EXCLUDES[@]}" -czf "$OUT" -C "$ROOT_DIR" .
 SIZE=$(ls -lh "$OUT" | awk '{print $5}')
 SHA=$(sha256sum "$OUT" | awk '{print $1}')
 
+# ── 오프라인 컴패니언 (옵트인) — 메인 tar 안 부풀리게 별도 파일 ──────────
+# 모델/휠은 1GB+ 이고 선택적이라 sidecar tarball 로 뽑는다. 타겟에서
+# 수동 복원 (manifest 에 명령 기재) — install.sh 자동복원은 범위 밖.
+MODEL_TAR=""; WHEELS_TAR=""
+if [[ $WITH_MODEL -eq 1 ]]; then
+  HF_HUB="${HF_HOME:-$HOME/.cache/huggingface}/hub"
+  if compgen -G "$HF_HUB/models--*" >/dev/null 2>&1; then
+    MODEL_TAR="${OUT%.tar.gz}.model.tar.gz"
+    echo
+    echo "→ [--with-model] HF 모델 캐시 → $(basename "$MODEL_TAR")"
+    tar -czf "$MODEL_TAR" -C "$HF_HUB" $(cd "$HF_HUB" && ls -d models--* 2>/dev/null)
+    echo "  ✓ $(ls -lh "$MODEL_TAR" | awk '{print $5}')  (복원: tar -xzf 후 ~/.cache/huggingface/hub/)"
+  else
+    echo "[WARN] --with-model 지정했지만 $HF_HUB/models--* 없음 — 모델 먼저 1회 로드 필요"
+  fi
+fi
+if [[ $WITH_WHEELS -eq 1 ]]; then
+  VPY="$ROOT_DIR/api_server/.venv/bin/python"
+  REQ="$ROOT_DIR/api_server/requirements.txt"
+  if [[ -x "$VPY" && -f "$REQ" ]]; then
+    WHEELS_TAR="${OUT%.tar.gz}.wheels.tar.gz"
+    WDIR="$(mktemp -d)"
+    echo
+    echo "→ [--with-wheels] pip download -r requirements.txt → $(basename "$WHEELS_TAR")"
+    if "$VPY" -m pip download -r "$REQ" -d "$WDIR" > "$LOG_DIR/bundle-wheels.log" 2>&1; then
+      tar -czf "$WHEELS_TAR" -C "$WDIR" .
+      echo "  ✓ $(ls -lh "$WHEELS_TAR" | awk '{print $5}')  (복원: 풀고 pip install --no-index --find-links <dir>)"
+    else
+      echo "[WARN] pip download 실패 — tail $LOG_DIR/bundle-wheels.log (휠 제외하고 계속)"
+    fi
+    rm -rf "$WDIR"
+  else
+    echo "[WARN] --with-wheels: .venv 또는 requirements.txt 없음 — start_api.sh 먼저 1회 실행 필요"
+  fi
+fi
+
 # ── manifest 별도 파일로 저장 ─────────────────────────────────────────
 MANIFEST="${OUT%.tar.gz}.manifest.txt"
 {
@@ -132,6 +176,18 @@ MANIFEST="${OUT%.tar.gz}.manifest.txt"
   echo "  - alembic migrations (0001-$(ls api_server/alembic/versions/*.py 2>/dev/null | sed 's/.*0*\([0-9]\+\)_.*/\1/' | sort -n | tail -1))"
   [[ $WITH_SIF -eq 1 ]] && echo "  - Pre-built SIF (postgres-base.sif + postgres.sif)"
   [[ $WITH_VSIX -eq 1 ]] && echo "  - VSCode extension .vsix ($(ls vscode_extension/*.vsix 2>/dev/null | xargs -n1 basename | head -1))"
+  if [[ -n "$MODEL_TAR" ]]; then
+    echo
+    echo "Companion (offline, 별도 전송 필요):"
+    echo "  - $(basename "$MODEL_TAR")  → 타겟에서: mkdir -p ~/.cache/huggingface/hub && \\"
+    echo "      tar -xzf $(basename "$MODEL_TAR") -C ~/.cache/huggingface/hub"
+  fi
+  if [[ -n "$WHEELS_TAR" ]]; then
+    [[ -n "$MODEL_TAR" ]] || { echo; echo "Companion (offline, 별도 전송 필요):"; }
+    echo "  - $(basename "$WHEELS_TAR")  → 타겟에서: mkdir -p /tmp/aidh-wheels && \\"
+    echo "      tar -xzf $(basename "$WHEELS_TAR") -C /tmp/aidh-wheels  그리고 .env 에"
+    echo "      PIP_FIND_LINKS=/tmp/aidh-wheels PIP_NO_INDEX=1 export 후 setup.sh"
+  fi
   echo
   echo "Excludes (regenerated on target):"
   echo "  - .git (clone fresh)"

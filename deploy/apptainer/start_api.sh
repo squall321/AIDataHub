@@ -6,6 +6,7 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 load_env
 export_proxy
+check_secrets
 require_python_venv
 ensure_dirs
 
@@ -177,6 +178,8 @@ fi
 require_port_free "$API_PORT" "API"
 
 echo "→ uvicorn api.main:app --host $API_HOST --port $API_PORT (백그라운드)"
+# 직전 세대 로그 1개 보존(.1) 후 새로 시작 — 장기 운행 무한 증가 방지.
+rotate_log "$LOG_DIR/uvicorn.log" "${AIDH_LOG_CAP_MB:-20}"
 # HuggingFace 모델이 로컬 캐시에 있으면 네트워크 확인을 건너뛴다.
 # MCP 첫 호출 시 수십 초 블로킹을 막기 위해 프로세스 환경에 직접 export.
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
