@@ -91,12 +91,14 @@ if [[ "$RESULT" != "fail" ]]; then
   echo "      mkdir -p ~/.cache/huggingface/hub && tar -xzf *.model.tar.gz -C ~/.cache/huggingface/hub"
 else
   echo >&2
-  echo "[ERROR] 모델 다운로드/로드 실패." >&2
-  echo "        점검:" >&2
-  echo "          - 인터넷/프록시: 이 서버가 huggingface.co 에 닿아야 함" >&2
-  echo "            (사내망 → .env 의 HTTPS_PROXY/BUILD_PROXY_HTTPS)" >&2
-  echo "          - 디스크: HF 캐시에 수백MB~1GB 필요. df -h ~" >&2
-  echo "          - 차원 정합: EMBEDDING_PROVIDER vs EMBEDDING_DIM (e5_base=768)" >&2
-  echo "          - 우회: .env 의 EMBEDDING_PROVIDER=hash (모델 불필요, 품질↓)" >&2
+  echo "[ERROR] 모델 다운로드/로드 실패 (huggingface.co 차단 가능성)." >&2
+  echo "        조치 (위에서부터):" >&2
+  echo "          1) HF 미러 재시도:" >&2
+  echo "             HF_ENDPOINT=https://hf-mirror.com bash $0" >&2
+  echo "          2) 인터넷 되는 서버에서 받아 반입 (HF 접근 불필요):" >&2
+  echo "             (그쪽) bash deploy/apptainer/bundle.sh --with-model" >&2
+  echo "             (여기) tar -xzf *.model.tar.gz -C ~/.cache/huggingface/hub" >&2
+  echo "          3) 당장 우회: .env 의 EMBEDDING_PROVIDER=hash (모델 불필요, 품질↓)" >&2
+  echo "        그 외: 디스크(df -h ~), 차원 정합(e5_base=768), 프록시 설정 확인." >&2
   exit 1
 fi
