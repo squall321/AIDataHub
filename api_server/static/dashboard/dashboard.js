@@ -279,7 +279,8 @@ async function loadStatus() {
     // Card: VSCode Extension 다운로드
     const extCard = el("div", { class: "card" });
     extCard.appendChild(el("div", { class: "label" }, "VSCode Extension"));
-    apiFetch("/downloads/extension-meta.json")
+    // 캐시 무력화 — 브라우저가 옛 메타(버전)를 재사용하던 문제 방지.
+    apiFetch("/downloads/extension-meta.json?_=" + Date.now())
       .then((meta) => {
         // 버전 박힌 파일 우선 (고유 URL → 브라우저 캐시 무관). 없으면 latest.
         const vfile = meta.versioned_filename || meta.filename || "ai-data-hub-uploader-latest.vsix";
