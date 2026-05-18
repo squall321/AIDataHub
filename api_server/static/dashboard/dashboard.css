@@ -194,11 +194,11 @@ main {
 section.panel {
   display: none;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   padding: 24px 28px;
   margin-bottom: 22px;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
 }
 
 section.panel.active { display: block; }
@@ -231,11 +231,14 @@ section.panel.active { display: block; }
 
 .section-h3, h3.section-h3 {
   font-size: 12px;
-  margin: 12px 0 10px;
+  margin: 12px 0 14px;
+  padding: 0 0 8px 10px;
   font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  border-left: 3px solid var(--accent);
+  border-bottom: 1px solid var(--border-strong);
 }
 
 .mini-h {
@@ -437,6 +440,11 @@ label.field.grow input { width: 100%; }
   align-content: center;
 }
 
+.hero-stat + .hero-stat {
+  border-left: 1px solid var(--border-strong);
+  padding-left: 16px;
+}
+
 .hero-stat .label {
   font-size: 11px;
   color: var(--text-muted);
@@ -470,15 +478,16 @@ label.field.grow input { width: 100%; }
 
 .card {
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   padding: 16px 18px;
+  box-shadow: var(--shadow-sm);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .card:hover {
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-sm);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-md);
 }
 
 .card .label {
@@ -719,11 +728,20 @@ tr.detail-row td {
 .two-col {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px;
+  gap: 32px;
+}
+
+.two-col > * + * {
+  border-left: 1px solid var(--border-strong);
+  padding-left: 32px;
 }
 
 @media (max-width: 900px) {
-  .two-col { grid-template-columns: 1fr; }
+  .two-col {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .two-col > * + * { border-left: 0; padding-left: 0; }
 }
 
 /* ===================================================================== */
