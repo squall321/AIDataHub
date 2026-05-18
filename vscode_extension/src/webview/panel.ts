@@ -895,16 +895,49 @@ async function installMcpConfig(
     case 'claude_code': {
       const cp = await import('node:child_process');
       const cmd = `claude mcp add aidatahub --transport http ${mcpUrl}`;
-      await new Promise<void>((resolve, reject) => {
-        cp.exec(cmd, { timeout: 10000 }, (err, _stdout, stderr) => {
-          if (err) {
-            reject(new Error((stderr || err.message).trim()));
-            return;
-          }
-          resolve();
+      // 제어/비정상 바이트 제거 — 비UTF-8 로케일 stderr 가 토스트에서
+      // 깨져 보이던 문제 방지.
+      const clean = (s: string) =>
+        Array.from(s || '').filter(function(c){
+          var x = c.charCodeAt(0);
+          return x === 9 || x === 10 || x === 13 || (x >= 32 && x !== 127 && x !== 0xFFFD);
+        }).join('').trim().slice(0, 500);
+      // VSCode 확장 호스트 exec 는 최소 PATH — claude 가 흔한 위치에 있어도
+      // 못 찾는다. 플랫폼별로 PATH 보강 (win32 는 ; 구분, POSIX 디렉토리 금지).
+      const isWin = process.platform === 'win32';
+      const extraPaths = isWin
+        ? [
+            process.env.APPDATA ? `${process.env.APPDATA}\\npm` : '',
+            process.env.LOCALAPPDATA ? `${process.env.LOCALAPPDATA}\\Programs\\claude` : '',
+          ]
+        : [`${os.homedir()}/.local/bin`, '/usr/local/bin', '/opt/homebrew/bin'];
+      const execEnv = {
+        ...process.env,
+        PATH: [process.env.PATH || '', ...extraPaths]
+          .filter(Boolean).join(path.delimiter),
+      };
+      // claude_code 는 어떤 exec 실패든 graceful — hard-fail 로 토스트에
+      // (윈도우/한글) 깨진 메시지를 던지지 않는다. 프롬프트(CLAUDE.md)는
+      // CLI 없이도 적용되고, MCP 등록 1회 수동 명령을 hint 로 안내한다.
+      // (claude CLI 가 PATH 에 없는 케이스 = Claude Code for VS Code 만 설치
+      //  한 윈도우 환경 등에서 흔함.)
+      let cliOk = true;
+      let cliErr = '';
+      try {
+        await new Promise<void>((resolve, reject) => {
+          cp.exec(cmd, { timeout: 10000, env: execEnv }, (err, _stdout, stderr) => {
+            if (err) { reject(new Error(clean(stderr) || clean(err.message) || 'exec failed')); return; }
+            resolve();
+          });
         });
-      });
-      const base: McpInstallResult = { client, action: 'shell', shellCommand: cmd, hint: 'Claude Code 의 새 세션부터 도구가 인식됩니다.' };
+      } catch (e) {
+        cliOk = false;
+        cliErr = clean(e instanceof Error ? e.message : String(e)) || '(원인 미상)';
+      }
+      const base: McpInstallResult = cliOk
+        ? { client, action: 'shell', shellCommand: cmd, hint: 'Claude Code 의 새 세션부터 도구가 인식됩니다.' }
+        : { client, action: 'shell', shellCommand: cmd,
+            hint: `프롬프트는 적용됨. claude CLI 자동등록 실패(${cliErr}) — 터미널에서 1회 실행: ${cmd}` };
       return attachPromptResult(base, async () => {
         // Claude Code: workspace CLAUDE.md (없으면 ~/.claude/CLAUDE.md).
         const ws = vscode.workspace.workspaceFolders?.[0];
