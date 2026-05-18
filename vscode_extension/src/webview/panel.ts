@@ -934,10 +934,27 @@ async function installMcpConfig(
         cliOk = false;
         cliErr = clean(e instanceof Error ? e.message : String(e)) || '(원인 미상)';
       }
-      const base: McpInstallResult = cliOk
-        ? { client, action: 'shell', shellCommand: cmd, hint: 'Claude Code 의 새 세션부터 도구가 인식됩니다.' }
-        : { client, action: 'shell', shellCommand: cmd,
-            hint: `프롬프트는 적용됨. claude CLI 자동등록 실패(${cliErr}) — 터미널에서 1회 실행: ${cmd}` };
+      let base: McpInstallResult;
+      if (cliOk) {
+        base = { client, action: 'shell', shellCommand: cmd,
+                 hint: 'Claude Code 의 새 세션부터 도구가 인식됩니다.' };
+      } else {
+        // 확장 호스트 exec 은 PATH 가 빈약해 claude 를 못 찾는다. 통합
+        // 터미널은 사용자 실제 셸(claude 가 PATH 에 있는 환경)을 쓰므로
+        // 거기에 명령을 자동 입력·실행 → 사실상 원클릭. (Claude Code for
+        // VS Code 만 설치한 윈도우 등에서 이 경로가 정상.)
+        try {
+          const term = vscode.window.createTerminal({ name: 'AIDataHub MCP 등록' });
+          term.show(true);
+          term.sendText(cmd, true); // true = 개행 포함 → 바로 실행
+          base = { client, action: 'shell', shellCommand: cmd,
+                   hint: '프롬프트 적용됨 + 통합 터미널에서 MCP 등록 명령을 '
+                       + '자동 실행했습니다 (터미널 출력 확인). Claude Code 새 세션부터 인식.' };
+        } catch {
+          base = { client, action: 'shell', shellCommand: cmd,
+                   hint: `프롬프트는 적용됨. claude 자동등록 실패(${cliErr}) — 터미널에서 1회 실행: ${cmd}` };
+        }
+      }
       return attachPromptResult(base, async () => {
         // Claude Code: workspace CLAUDE.md (없으면 ~/.claude/CLAUDE.md).
         const ws = vscode.workspace.workspaceFolders?.[0];
