@@ -42,6 +42,7 @@
 - [ ] agent 관련 질문 → agent_search 호출 + record_id 인용
 - [ ] Cline 설정에서 `cline.customInstructions` 에 `<!-- aidatahub:system-prompt:* -->` 블록 존재
 - 실패 시: Cline 패널의 MCP 탭 새로고침 / VSCode 재시작 / URL 끝 `/` 확인
+- **http/TLS 비고**: plain-HTTP MCP URL 정상 동작 (전용 WebFetch 도구 없음 → http→https 승격 이슈 없음). 코드측 수정 불필요.
 
 ## 2. Claude Desktop
 
@@ -60,6 +61,9 @@
 - [ ] Project Instructions 에 system_prompt 붙여넣었는지 → 페르소나대로 답/인용
 - 실패 시: HTTP transport 미지원 빌드일 수 있음 → `npx mcp-remote http://<HOST_IP>:8001/mcp/`
   를 command 형 stdio 서버로 등록 후 재시도
+- **http/TLS 비고**: 구버전은 plain-HTTP remote MCP URL 자체를 거부할 수 있음(HTTPS 가정).
+  이 경우 `npx mcp-remote http://<HOST_IP>:8001/mcp/` stdio 브리지로 우회(브리지가 평문
+  http 로 프록시). 클라이언트 자체 동작 — 코드측 수정 불가, 위 우회로 대응.
 
 ## 3. Claude Code (CLI)
 
@@ -76,6 +80,15 @@
 - [ ] agent 질의 → agent_search + 인용
 - [ ] `CLAUDE.md` 에 `<!-- aidatahub:system-prompt:* -->` 블록
 - 실패 시: `claude mcp remove aidatahub` 후 재등록 / 새 세션 / URL 끝 `/`
+- **http/TLS 비고 (사용자 보고 핵심 케이스)**: MCP transport 자체는 plain-HTTP
+  정상. 그러나 Claude Code 는 내장 `WebFetch` 도구가 있어, 모델이 RAG 결과를
+  가져올 때 MCP 도구 대신 `WebFetch {base_url}/api/...` 를 선택하면 http→https
+  자동 승격 → 무인증서 허브에서 TLS handshake 즉시 실패 → 호출 드롭. 코드측
+  완화: system_prompt/`aidh://llm-guide`/discover 결과가 모두 "MCP 도구를 이름으로
+  호출, WebFetch 금지, 부득이하면 LITERAL http:// curl" 로 안내(commit b83f322
+  + 본 변경에서 endpoints/llm.txt/discover 까지 확장). 그래도 모델이 WebFetch 를
+  고르면 클라이언트 판단 문제 → CLAUDE.md 의 주입된 블록을 세션 규칙으로 채택
+  했는지 확인, 필요 시 `curl -s "http://<HOST_IP>:8001/api/..."` (https 금지).
 
 ## 4. Cursor
 
@@ -90,6 +103,10 @@
 - [ ] agent 질의 → agent_search + 인용
 - [ ] `.cursorrules` 에 marker 블록
 - 실패 시: Settings → MCP → aidatahub 토글 off/on / Cursor 재시작
+- **http/TLS 비고**: plain-HTTP MCP URL 동작. Cursor 의 웹 검색/fetch 기능은
+  자동 http→https 승격을 하지 않으나, 일부 버전이 비-TLS remote MCP 에
+  경고를 띄울 수 있음(연결은 됨). 코드측 수정 불필요 — `.cursorrules` 의
+  주입 블록이 MCP 도구 우선 사용을 안내.
 
 ## 5. VSCode Copilot Chat
 
@@ -105,6 +122,9 @@
 - [ ] Agent 모드에서 "레코드 몇 건?" → discover 호출 → 숫자
 - [ ] codeGeneration.instructions 에 `[aidatahub:...]` entry 존재
 - 실패 시: Copilot 확장 버전 확인 (MCP 지원), VSCode 재시작, settings 범위(Workspace/User) 확인
+- **http/TLS 비고**: `chat.mcp.servers` 의 plain-HTTP url 동작. Copilot 의
+  `#fetch` 툴은 명시 호출 시 http 그대로 시도(자동 https 승격 없음). 코드측
+  수정 불필요 — instructions entry 가 MCP 도구 우선 사용 안내.
 
 ## 6. Gemini CLI
 
@@ -119,6 +139,12 @@
 - [ ] "레코드 몇 건?" → discover → 숫자
 - [ ] system_prompt 수동 주입했는지 → 페르소나/인용
 - 실패 시: `gemini config mcp list` 확인 / URL 끝 `/` / 재시작
+- **http/TLS 비고**: plain-HTTP MCP URL 동작. Gemini CLI 의 `web-fetch` 툴은
+  내부적으로 https 우선 시도 후 http 폴백하는 버전이 있어, 모델이 MCP 도구
+  대신 web-fetch 로 `{base_url}/api/...` 를 치면 지연/실패 가능. 코드측 완화:
+  llm-guide/discover/system_prompt 가 MCP 도구 호출을 안내(본 변경 포함).
+  system_prompt 가 수동 주입 클라이언트이므로 세션 시작 시 프롬프트를
+  꼭 붙여넣을 것(미주입 시 모델이 web-fetch 로 빠질 위험 ↑).
 
 ## 7. Codex CLI (OpenAI)
 
@@ -138,6 +164,10 @@
 - [ ] `AGENTS.md` 에 marker 블록 → 페르소나/인용
 - 실패 시: Codex 버전의 MCP HTTP 지원 여부 확인 / `[mcp_servers.aidatahub]`
   블록 문법 / 새 세션
+- **http/TLS 비고**: 구버전 Codex 는 `[mcp_servers]` 의 plain-HTTP url 을
+  거부(HTTPS 가정)할 수 있음 → `npx mcp-remote http://<HOST_IP>:8001/mcp/`
+  stdio 브리지로 우회. Codex 에 자동 https 승격하는 내장 fetch 는 없음.
+  클라이언트 자체 동작 — 코드측 수정 불가, 위 우회로 대응.
 
 ---
 
@@ -150,6 +180,8 @@
 | connection refused | 서버 미기동 — `bash status.sh` / `bash diag.sh --tail-logs` |
 | "Not Acceptable" | 클라이언트가 `Accept: application/json, text/event-stream` 미전송 — 클라이언트 MCP 구현/버전 문제 |
 | HTTP transport 미지원 | Claude Desktop/Codex 구버전 → `npx mcp-remote <url>` stdio 브리지로 우회 |
+| MCP 는 붙는데 모델이 자료를 못 가져옴 (TLS handshake fail / connection drop) | 모델이 MCP 도구 대신 WebFetch 로 `{base_url}/api/...` 를 친 것. WebFetch 는 http→https 자동 승격하는데 내부 허브는 TLS 인증서가 없어 핸드셰이크 즉시 실패. system_prompt/llm-guide 가 "MCP 도구를 이름으로 호출, WebFetch 금지" 로 안내하지만 일부 클라이언트(특히 Claude Code)는 자체 판단으로 WebFetch 를 고를 수 있음 → 아래 클라이언트별 비고 참고. 부득이하면 `curl -s "http://<HOST_IP>:8001/api/..."` (LITERAL http://, https 금지). |
+| MCP URL 자체가 거부됨 ("insecure"/"https required") | 일부 클라이언트가 비-TLS(plain http) MCP URL 을 거부 → 아래 클라이언트별 비고의 plain-HTTP 항목 참고 (allow-insecure 플래그 / `mcp-remote` stdio 브리지). MCP config 의 `url` 은 그대로 `http://` 가 정상이며 바꾸지 말 것. |
 | 도구는 되는데 페르소나 안 먹음 | system_prompt 미주입 — 해당 클라이언트의 룰 파일/Instructions 확인 (수동 클라이언트는 직접 복사) |
 | 답변에 인용 없음 | system_prompt 의 인용 규약 미적용 — get_agent_session 결과를 세션 규칙으로 채택했는지 |
 

@@ -363,11 +363,13 @@ async def build_context_bundle(
             "max_records": max_records,
             "max_sections_per_record": max_sections_per_record,
         },
-        "endpoints": {
-            "record_detail": "/api/records/{id}",
-            "record_sections": "/api/records/{id}/sections",
-            "semantic_search": f"/api/search?mode=semantic&q={{q}}&agent={agent_type}",
-            "natural_language": "/api/ask",
+        # v0.13.x — URL 경로 대신 MCP 도구 이름으로 안내한다. (raw /api/ URL 을
+        # 노출하면 WebFetch 가 http→https 승격 후 무인증서 내부서버에서 실패.)
+        "next_steps": {
+            "record_detail": "MCP tool: get_record(record_id)",
+            "record_sections": "MCP tool: get_record_sections(record_id)",
+            "semantic_search": f'MCP tool: agent_search("{agent_type}", q, mode="semantic")',
+            "natural_language": f'MCP tool: agent_search("{agent_type}", q)',
         },
     }
 
@@ -439,8 +441,9 @@ def render_context_bundle_markdown(bundle: dict[str, Any]) -> str:
                 out.append(f"- `§{s.get('section_id')}` _{t}_ — {excerpt[:200]}...")
             out.append("")
 
-    eps = bundle.get("endpoints", {})
-    out.append("## How to query for more")
+    eps = bundle.get("next_steps", {})
+    out.append("## How to query for more — call these MCP tools by name")
+    out.append("(Do NOT WebFetch a URL — http→https 승격으로 무인증서 내부서버에서 실패.)")
     out.append("```")
     for k, v in eps.items():
         out.append(f"{k:20s} → {v}")
@@ -544,5 +547,5 @@ def build_system_prompt(
 - Lead with the answer in ≤3 sentences.
 - Cite source: `(source: DOC-HE-CAE-2026-0000000001 §4)` after each factual claim.
 - Quote section excerpts only when directly relevant.
-- If RAG returned 0 results, say so explicitly and suggest /api/recommend/agents.
+- If RAG returned 0 results, say so explicitly and call the MCP tool recommend_agents(q).
 """

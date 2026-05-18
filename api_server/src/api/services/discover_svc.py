@@ -208,6 +208,16 @@ async def build_discover_payload(
         "by_classification": by_classification,
         "agents": agents_payload,
         "data_types_explained": DATA_TYPE_DESCRIPTIONS,
+        # NOTE: 아래 GET/POST 경로는 참고용이다. 실제 접근은 MCP 도구를
+        # 이름으로 호출해라 (recommend_agents/get_agent_session/agent_search/
+        # get_record_sections). WebFetch 는 http→https 승격으로 무인증서
+        # 내부서버에서 실패하므로 쓰지 마라.
+        "access": (
+            "Call the MCP tools by name (discover/list_agents/recommend_agents/"
+            "get_agent_session/agent_search/get_record/get_record_sections). "
+            "The GET/POST paths below are reference only — do NOT WebFetch "
+            "them (http→https upgrade fails on this no-TLS internal server)."
+        ),
         "starting_points": [
             "GET /api/agents — 등록된 에이전트 목록",
             "GET /api/views/hierarchical — 계층 문서만 (DOC sections+blocks)",
@@ -659,7 +669,16 @@ def list_hint_contexts() -> list[str]:
 _LLM_DOC_TEMPLATE = """# Mobile eXperience AI Data Hub — LLM Quick Reference
 
 > 이 한 페이지가 허브 전체를 설명한다. 백엔드 source 를 읽지 마라.
-> 가장 먼저 `GET /api/discover` 를 호출해라.
+
+## CRITICAL — 접근은 MCP 도구로, WebFetch 금지
+이 허브는 MCP 서버로 등록돼 있다. 아래에 나오는 `GET /api/...` 표기는
+**참고용 경로**일 뿐이다. 실제 접근은 MCP 도구를 이름으로 호출해라:
+discover() / list_agents() / recommend_agents(q) / get_agent_session(at) /
+agent_search(at, q) / get_record(id) / get_record_sections(id).
+WebFetch(및 유사 도구)는 http:// 를 https:// 로 자동 승격하는데, 내부
+허브는 TLS 인증서가 없어 핸드셰이크가 즉시 실패한다. 부득이하게 REST 를
+직접 쳐야 하면 셸 curl 로 LITERAL http:// 스킴을 쓰고 https 로 바꾸지 마라.
+가장 먼저 MCP 도구 discover() 를 호출해라.
 
 ## 1. What is this hub
 사업부 문서 / 측정 / 시뮬레이션 / CAD / 로그 / 양식을 통합한 데이터 허브.
