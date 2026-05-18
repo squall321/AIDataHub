@@ -44,6 +44,27 @@ EMBEDDING_DIM = int(os.environ.get("EMBEDDING_DIM", "384"))
 """
 
 
+def _local_or_repo(repo_id: str) -> str:
+    """HF repo id 를 받아, 로컬에 받아둔 모델 폴더가 있으면 그 경로를,
+    없으면 repo_id 를 그대로 반환한다 (폐쇄망 우선 — HF 접근 회피).
+
+    탐색 위치: ``AIDH_MODELS_DIR`` (기본 ``/opt/models``) 아래
+        - ``<basename>``                 예: multilingual-e5-base
+        - ``<basename: 'multilingual-' 제거>``  예: e5-base
+    유효 모델 폴더 판정 = ``config.json`` 존재.
+    예) intfloat/multilingual-e5-base → /opt/models/e5-base 가 있으면 그것.
+    """
+    base = repo_id.split("/")[-1]               # multilingual-e5-base
+    short = base.replace("multilingual-", "")   # e5-base
+    root = os.environ.get("AIDH_MODELS_DIR", "/opt/models")
+    for name in (short, base):
+        cand = os.path.join(root, name)
+        if os.path.isfile(os.path.join(cand, "config.json")):
+            logger.info("embedding model: local %s (repo %s 대신)", cand, repo_id)
+            return cand
+    return repo_id
+
+
 # ---------------------------------------------------------------------------
 # Base
 # ---------------------------------------------------------------------------
@@ -281,11 +302,11 @@ def get_embedder() -> Embedder:
     if provider == "openai":
         return OpenAIEmbedder()
     if provider == "e5_small":
-        return SentenceTransformerEmbedder("intfloat/multilingual-e5-small")
+        return SentenceTransformerEmbedder(_local_or_repo("intfloat/multilingual-e5-small"))
     if provider == "e5_base":
-        return SentenceTransformerEmbedder("intfloat/multilingual-e5-base")
+        return SentenceTransformerEmbedder(_local_or_repo("intfloat/multilingual-e5-base"))
     if provider == "e5_large":
-        return SentenceTransformerEmbedder("intfloat/multilingual-e5-large")
+        return SentenceTransformerEmbedder(_local_or_repo("intfloat/multilingual-e5-large"))
     if provider in ("sentence_transformers", "st", "sbert"):
         return SentenceTransformerEmbedder()
     if provider not in ("hash", ""):
