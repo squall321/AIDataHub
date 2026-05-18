@@ -96,3 +96,6 @@ ai_data_strategy_deck copy.html
 # /downloads 는 빌드 산출물 — setup.sh 가 생성, 커밋 금지
 # (메타만 커밋되고 vsix 는 *.vsix 로 무시되면 fresh 서버에서 깨진 Download 버튼이 뜸)
 api_server/static/downloads/
+
+# Playwright MCP test artifacts
+.playwright-mcp/
