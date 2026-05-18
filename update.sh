@@ -215,6 +215,21 @@ else
   cd "$ROOT_DIR"
 fi
 
+# [4b] extension 재빌드 + /downloads 게시 (best-effort).
+# update.sh 가 안 하던 부분 — 대시보드 다운로드가 stale 로 남던 원인.
+# node 없거나 실패해도 서버 업데이트는 계속 (extension 만 옛 버전 유지).
+if [[ $PULL_ONLY -ne 1 ]]; then
+  echo
+  echo "[4b] extension 게시 (/downloads)"
+  if command -v node >/dev/null 2>&1; then
+    if bash "$APPT_DIR/publish-ext.sh" 2>&1 | sed 's/^/    /'; then :; else
+      warn "extension 게시 실패 — 서버 업데이트는 계속 (수동: bash publish-ext.sh)"
+    fi
+  else
+    info "node 없음 — extension 게시 skip (sudo bash bootstrap.sh 후 bash publish-ext.sh)"
+  fi
+fi
+
 # [5] 서비스 기동
 echo
 echo "[5/6] 서비스 기동 (mode=$SYSMODE)"
