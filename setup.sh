@@ -149,15 +149,10 @@ EOF
   if [[ -n "$VSIX" ]]; then
     echo "  ✓ $(basename "$VSIX") ($(du -h "$VSIX" | cut -f1))"
 
-    # 대시보드 다운로드 페이지용 — static/downloads/ 에 복사 + 메타 JSON 갱신
-    DOWNLOADS_DIR="$ROOT_DIR/api_server/static/downloads"
-    mkdir -p "$DOWNLOADS_DIR"
-    cp "$VSIX" "$DOWNLOADS_DIR/ai-data-hub-uploader-latest.vsix"
-    VSIX_VER="$(basename "$VSIX" | grep -oP '[\d]+\.[\d]+\.[\d]+')"
-    printf '{"version":"%s","filename":"ai-data-hub-uploader-latest.vsix","built_at":"%s"}\n' \
-      "$VSIX_VER" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-      > "$DOWNLOADS_DIR/extension-meta.json"
-    echo "  ✓ /downloads/ai-data-hub-uploader-latest.vsix 갱신 (v${VSIX_VER})"
+    # 대시보드 게시 — publish-ext.sh 로 일원화 (버전+latest+meta, DRY).
+    # vsix 는 위에서 이미 빌드됐으니 --skip-build.
+    bash "$APPT_DIR/publish-ext.sh" --skip-build 2>&1 | sed 's/^/  /' || \
+      echo "  [WARN] /downloads 게시 실패 — 수동: bash publish-ext.sh --skip-build"
   else
     echo "[ERROR] .vsix 생성 실패 — tail $APPT_DIR/logs/npm-package.log" >&2
     exit 1

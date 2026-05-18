@@ -281,15 +281,22 @@ async function loadStatus() {
     extCard.appendChild(el("div", { class: "label" }, "VSCode Extension"));
     apiFetch("/downloads/extension-meta.json")
       .then((meta) => {
-        const fname = meta.filename || "ai-data-hub-uploader-latest.vsix";
-        const fullUrl = location.origin + "/downloads/" + fname;
+        // 버전 박힌 파일 우선 (고유 URL → 브라우저 캐시 무관). 없으면 latest.
+        const vfile = meta.versioned_filename || meta.filename || "ai-data-hub-uploader-latest.vsix";
+        const latest = meta.filename || "ai-data-hub-uploader-latest.vsix";
+        const fullUrl = location.origin + "/downloads/" + vfile;
         extCard.appendChild(el("div", { class: "value small" }, "v" + (meta.version || "?")));
-        extCard.appendChild(el("div", { style: "margin-top:8px;" }, [
+        extCard.appendChild(el("div", { style: "margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;" }, [
           el("a", {
-            href: "/downloads/" + fname,
+            href: "/downloads/" + vfile,
             class: "btn",
             style: "display:inline-block; padding:5px 12px; font-size:12px; text-decoration:none;",
-          }, "Download .vsix"),
+          }, "Download v" + (meta.version || "?")),
+          el("a", {
+            href: "/downloads/" + latest,
+            class: "btn ghost",
+            style: "display:inline-block; padding:5px 12px; font-size:12px; text-decoration:none;",
+          }, "latest"),
         ]));
         // 직접 링크 — 다른 사람에게 공유/복사용 (현재 접속 origin 기준).
         const linkRow = el("div", { style: "margin-top:8px; display:flex; gap:6px; align-items:center;" });

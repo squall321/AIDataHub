@@ -39,10 +39,27 @@ VSIX="$(ls -t "$EXT_DIR"/ai-data-hub-uploader-*.vsix 2>/dev/null | head -1)"
 # 진짜 버전 = 빌드된 파일명에서 추출 (meta 가 코드와 절대 어긋나지 않게).
 VER="$(basename "$VSIX" | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 mkdir -p "$DL_DIR"
+VFILE="ai-data-hub-uploader-${VER}.vsix"
+# 둘 다 게시: (1) 버전 박힌 파일 = 고유 URL, 브라우저 캐시 무관, 릴리스별 보존
+#            (2) latest = 항상 최신 (안정 링크 원하는 경우)
+cp -f "$VSIX" "$DL_DIR/$VFILE"
 cp -f "$VSIX" "$DL_DIR/ai-data-hub-uploader-latest.vsix"
-printf '{"version":"%s","filename":"ai-data-hub-uploader-latest.vsix","built_at":"%s"}\n' \
-  "$VER" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$DL_DIR/extension-meta.json"
 
-SZ="$(du -h "$DL_DIR/ai-data-hub-uploader-latest.vsix" | cut -f1)"
-echo "✓ 게시 완료 — v${VER} (${SZ}) → /downloads/ai-data-hub-uploader-latest.vsix"
+# 옛 버전 vsix 정리 — 최신 KEEP(기본 5) 개만 보존 (/downloads 무한 증가 방지).
+KEEP="${AIDH_VSIX_KEEP:-5}"
+if [[ "$KEEP" -gt 0 ]]; then
+  mapfile -t _vs < <(ls -1t "$DL_DIR"/ai-data-hub-uploader-[0-9]*.vsix 2>/dev/null)
+  if [[ "${#_vs[@]}" -gt "$KEEP" ]]; then
+    for f in "${_vs[@]:$KEEP}"; do rm -f "$f" && echo "  - 정리: $(basename "$f")"; done
+  fi
+fi
+
+# meta — 대시보드가 버전 링크(versioned)와 안정 링크(filename) 둘 다 알 수 있게.
+printf '{"version":"%s","filename":"ai-data-hub-uploader-latest.vsix","versioned_filename":"%s","built_at":"%s"}\n' \
+  "$VER" "$VFILE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$DL_DIR/extension-meta.json"
+
+SZ="$(du -h "$DL_DIR/$VFILE" | cut -f1)"
+echo "✓ 게시 완료 — v${VER} (${SZ})"
+echo "  버전 링크 : /downloads/$VFILE   (캐시 무관, 권장)"
+echo "  최신 링크 : /downloads/ai-data-hub-uploader-latest.vsix"
 echo "  확인: curl -s http://127.0.0.1:${API_PORT}/downloads/extension-meta.json"
