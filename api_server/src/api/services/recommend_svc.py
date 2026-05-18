@@ -463,21 +463,39 @@ def _tool_guide_block(agent_meta: Agent, base_url: str) -> str:
     명시한다. ``out-of-domain`` fallback 문구도 포함.
     """
     common_tags = ", ".join(agent_meta.common_tags or []) or "(none)"
-    return f"""## Available tools (REST)
-- GET  {base_url}/api/agents/{agent_meta.agent_type}/context-bundle  — your knowledge payload (call this first)
-- GET  {base_url}/api/discover                  — system catalog (one-shot)
-- GET  {base_url}/api/agents                    — list all agents
-- GET  {base_url}/api/records/{{id}}              — full record
-- GET  {base_url}/api/records/{{id}}/sections     — RAG section chunks
-- GET  {base_url}/api/search?mode=semantic&q=&agent={agent_meta.agent_type}  — semantic search scoped to this agent
-- POST {base_url}/api/ask                       — natural language → filter → records
+    at = agent_meta.agent_type
+    return f"""## How to access this hub — use the MCP tools (NOT web fetch)
+
+This hub is registered as an MCP server. Call these MCP tools BY NAME via
+your MCP client. They already work over the (possibly plain-HTTP) MCP
+transport — do not turn them into URL fetches.
+
+- get_agent_session("{at}")  — call FIRST: persona + retrieval/response config
+- agent_search("{at}", q, mode="semantic"|"fts"|"tag")  — primary search,
+  auto-applies this agent's retrieval_config
+- get_record_sections(record_id)  — full RAG chunks of a hit
+- get_record(record_id)           — full record
+- discover() / list_agents()      — catalog / agents
+- recommend_agents(q)             — re-route when out of this agent's domain
+
+## CRITICAL — do NOT use WebFetch / browser fetch on this hub
+WebFetch (and similar) auto-upgrade http:// to https://. Internal hub
+servers often have NO TLS certificate, so the TLS handshake fails and the
+call drops. Always use the MCP tools above instead.
+
+If — and only if — you must hit the REST API directly, use a shell
+command (curl) with the LITERAL http:// scheme and do not let it switch
+to https:
+  curl -s "{base_url}/api/discover"
+  curl -s "{base_url}/api/records/<id>/sections"
+(Use `--http1.1` if needed; never add https://.)
 
 ## Conventions
 - Record ID format: `{{DATA_TYPE}}-{{TEAM}}-{{GROUP}}-{{YEAR}}-{{SEQ:010d}}` (e.g. `DOC-HE-CAE-2026-0000000001`).
 - Cite the source after every factual claim: `(source: <record_id> §<section_id>)`.
 - Korean and English are both supported in queries.
-- The hub is read-mostly: avoid POST/PATCH/DELETE unless the user explicitly authorizes data changes.
-- If a question is outside this agent's domain ({common_tags}), say so and suggest the user re-run agent recommendation via POST {base_url}/api/recommend/agents."""
+- The hub is read-mostly: avoid writes unless the user explicitly authorizes them.
+- Out of this agent's domain ({common_tags})? Say so and call recommend_agents()."""
 
 
 def build_system_prompt(
@@ -514,13 +532,11 @@ def build_system_prompt(
 - All factual answers MUST cite the source record id from this hub.
 
 ## First step on every conversation
-1. GET {base_url}/api/agents/{agent_meta.agent_type}/context-bundle
-   (Accept: application/json or text/markdown)
-   This loads your knowledge — agent metadata + records + key sections.
-2. If the user asks something specific, use:
-   - GET {base_url}/api/search?mode=semantic&q=<term>&agent={agent_meta.agent_type}
-   - GET {base_url}/api/records/{{id}}/sections   (full RAG chunks)
-   - POST {base_url}/api/ask   (natural-language structured filter)
+1. Call the MCP tool  get_agent_session("{agent_meta.agent_type}")  — loads
+   your persona + retrieval/response config.
+2. For the user's question, call  agent_search("{agent_meta.agent_type}", q)
+   then  get_record_sections(record_id)  on the hits.
+   (These are MCP tools — call them by name, do NOT fetch URLs.)
 
 {guide}
 
