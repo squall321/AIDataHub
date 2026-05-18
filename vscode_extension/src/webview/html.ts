@@ -3336,7 +3336,7 @@ function clientScript(): string {
     if (client === 'codex') {
       return {
         location: '~/.codex/config.toml (자동설치가 [mcp_servers.aidatahub] 블록 작성)',
-        body: '[mcp_servers.aidatahub]\nurl = "' + url + '"',
+        body: '[mcp_servers.aidatahub]\\nurl = "' + url + '"',
         note: 'Codex CLI 재시작 후 새 세션부터 도구 인식. system_prompt 는 AGENTS.md 에 주입됨.',
       };
     }
