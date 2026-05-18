@@ -11,6 +11,7 @@
 #   bash setup.sh                  # 전부 실행
 #   bash setup.sh --skip-server    # extension 만
 #   bash setup.sh --skip-extension # 서버 만
+#   bash setup.sh --skip-model     # 임베딩 모델 다운로드 생략 (나중에 fetch-model.sh)
 #   bash setup.sh --force          # SIF + npm 재설치
 #
 # 사전 요구:
@@ -35,6 +36,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-server)    SKIP_SERVER=1; shift ;;
     --skip-extension) SKIP_EXTENSION=1; shift ;;
+    --skip-model)     export AIDH_SKIP_MODEL=1; shift ;;
     --force)          FORCE=1; shift ;;
     --embedder)       EMBEDDER_OVERRIDE="$2"; shift 2 ;;
     --embedder=*)     EMBEDDER_OVERRIDE="${1#*=}"; shift ;;
@@ -93,7 +95,13 @@ if [[ "$SKIP_SERVER" -eq 0 ]]; then
     bash "$APPT_DIR/build.sh" --force
     bash "$APPT_DIR/start_postgres.sh"
     bash "$APPT_DIR/start_api.sh"
+    # FORCE 분기는 install_all 을 안 거치므로 여기서 모델 셋업.
+    echo
+    echo "[A2] 임베딩 모델 셋업 (fetch-model)"
+    bash "$APPT_DIR/fetch-model.sh" 2>&1 | sed 's/^/  /' || \
+      echo "  [WARN] 모델 셋업 실패 — bundle --with-model 로 반입 가능"
   else
+    # install_all.sh 가 내부에서 fetch-model 호출 (이중 실행 방지: 여기선 안 함).
     bash "$APPT_DIR/install_all.sh"
   fi
 else

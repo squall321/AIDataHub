@@ -49,6 +49,11 @@ echo "[3/3] API 기동"
 bash "$APPT_DIR/start_api.sh"
 
 echo
+echo "[+] 임베딩 모델 셋업 (fetch-model — 인터넷 되면 다운로드, 캐시면 검증)"
+bash "$APPT_DIR/fetch-model.sh" 2>&1 | sed 's/^/  /' || \
+  echo "  [WARN] 모델 셋업 실패 — 오프라인이면 bundle --with-model 로 반입"
+
+echo
 echo "✓ 셋업 완료"
 echo " Dashboard : http://${HOST_IP_VAL}:${API_PORT}/dashboard"
 echo " Extension : http://${HOST_IP_VAL}:${API_PORT}/downloads/ai-data-hub-uploader-latest.vsix"
