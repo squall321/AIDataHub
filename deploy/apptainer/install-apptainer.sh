@@ -104,13 +104,19 @@ mkdir -p "$PREFIX/usr/etc" "$PREFIX/usr/var/lib"
 ln -sfn ../../etc/apptainer        "$PREFIX/usr/etc/apptainer"
 ln -sfn ../../../var/lib/apptainer "$PREFIX/usr/var/lib/apptainer"
 
-# 3) 검증
+# 3) 검증 — 실패 시 반드시 $PREFIX 를 통째로 제거한다.
+#  (깨진 .tools 를 남기면 _common.sh resolver 가 그걸 골라 instance start
+#   가 죽고 서버가 안 뜬다 = ERR_CONNECTION_REFUSED. 차라리 없는 게 낫다 →
+#   resolver 가 시스템 apptainer 로 폴백해 기존 동작 유지.)
+_fail_clean() { echo "[ERROR] $1" >&2; rm -rf "$PREFIX"; exit 1; }
 if [[ ! -x "$BIN" ]]; then
   ALT="$(find "$PREFIX" -name apptainer -type f -perm -u+x 2>/dev/null | head -1 || true)"
   [[ -n "$ALT" ]] && BIN="$ALT"
 fi
-[[ -x "$BIN" ]] || { echo "[ERROR] 추출 후 apptainer 실행파일을 찾지 못함: $PREFIX" >&2; exit 1; }
-VOUT="$("$BIN" --version 2>&1 || true)"
+[[ -x "$BIN" ]] || _fail_clean "추출 후 apptainer 실행파일 없음 → $PREFIX 제거(시스템 폴백)."
+if ! VOUT="$("$BIN" --version 2>&1)"; then
+  _fail_clean "핀 apptainer 실행 불가(libexec/arch 등) → $PREFIX 제거(시스템 폴백). 상세: $VOUT"
+fi
 echo "[OK] $VOUT"
 case "$VOUT" in
   *"$VER"*) : ;;

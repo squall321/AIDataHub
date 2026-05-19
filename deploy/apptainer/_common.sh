@@ -24,13 +24,20 @@ APPTAINER_VERSION="${APPTAINER_VERSION:-1.3.6}"
 _PINNED_APPT="$APPT_DIR/.tools/apptainer-${APPTAINER_VERSION}/usr/bin/apptainer"
 
 resolve_apptainer() {
-  if [[ -n "${AIDH_APPTAINER_BIN:-}" && -x "${AIDH_APPTAINER_BIN}" ]]; then
+  # 단순 -x 가 아니라 실제 실행(--version) 되는지까지 본다. 깨진 .tools
+  # (부분추출/arch불일치)를 고르면 instance start 가 죽어 서버가 안 뜬다
+  # → 그 경우 무시하고 시스템 apptainer 로 폴백(기존 동작 유지·자가복구).
+  if [[ -n "${AIDH_APPTAINER_BIN:-}" ]] && command "${AIDH_APPTAINER_BIN}" --version >/dev/null 2>&1; then
     _AIDH_APPT="$AIDH_APPTAINER_BIN"; _AIDH_APPT_SRC="env(AIDH_APPTAINER_BIN)"
-  elif [[ -x "$_PINNED_APPT" ]]; then
+  elif [[ -x "$_PINNED_APPT" ]] && command "$_PINNED_APPT" --version >/dev/null 2>&1; then
     _AIDH_APPT="$_PINNED_APPT"; _AIDH_APPT_SRC="pinned .tools v${APPTAINER_VERSION}"
   else
     _AIDH_APPT="$(command -v apptainer 2>/dev/null || echo apptainer)"
-    _AIDH_APPT_SRC="system PATH (핀버전 미설치)"
+    if [[ -x "$_PINNED_APPT" ]]; then
+      _AIDH_APPT_SRC="system PATH (핀 .tools 깨짐 — 폴백)"
+    else
+      _AIDH_APPT_SRC="system PATH (핀버전 미설치)"
+    fi
   fi
   export _AIDH_APPT _AIDH_APPT_SRC APPTAINER_VERSION
 }
