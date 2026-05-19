@@ -101,14 +101,26 @@ else
   if [[ -d "$_PGD" && "${AIDH_SKIP_PGDATA_OWNER_CHECK:-0}" != "1" ]]; then
     _own="$(stat -c '%u' "$_PGD" 2>/dev/null || echo '?')"
     if [[ "$_own" != "$(id -u)" ]]; then
-      echo "[WARN] pgdata owner uid=$_own (실행 uid=$(id -u)) — 권한모델 불일치 가능." >&2
-      echo "       기동 실패하면 아래 중 하나:" >&2
-      echo "        (B·권장) 시스템 setuid apptainer 로:" >&2
-      echo "          AIDH_APPTAINER_BIN=\$(command -v apptainer) bash deploy/apptainer/restart.sh" >&2
-      echo "        (A) 소유권 정리(데이터 보존, 1회 sudo):" >&2
-      echo "          sudo chown -R \"\$(id -u):\$(id -g)\" $DATA_DIR/postgres $DATA_DIR/postgres-run" >&2
-      echo "        (C) 데이터 불필요: mv $_PGD ${_PGD}.old && bash deploy/apptainer/restart.sh" >&2
+      # owner 가 subuid 범위(>=100000)면 rootless+subuid 정상 상태 →
+      # 알람 안 함. 그 외(다른 uid/root)면 안내만.
+      if [[ "$_own" -lt 100000 ]] 2>/dev/null; then
+        echo "[WARN] pgdata owner uid=$_own — rootless subuid 범위 밖." >&2
+        echo "       정상 복구 후보:" >&2
+        echo "        (A) 소유권 정리: sudo chown -R \"\$(id -u):\$(id -g)\" $DATA_DIR/postgres $DATA_DIR/postgres-run" >&2
+        echo "        (C) 데이터 불필요: mv $_PGD ${_PGD}.old && bash deploy/apptainer/restart.sh" >&2
+      fi
     fi
+  fi
+
+  # /etc/subuid·subgid (MXWhitePaper rootless 핵심 — postgres 가 fakeroot
+  # 없이도 PGDATA 를 관리할 수 있게 하는 user-namespace 매핑). 없으면
+  # rootless apptainer 가 컨테이너 uid 매핑을 못 해 chmod/chown 실패.
+  _U="$(id -un)"
+  if ! grep -q "^${_U}:" /etc/subuid 2>/dev/null || ! grep -q "^${_U}:" /etc/subgid 2>/dev/null; then
+    echo "[WARN] /etc/subuid|subgid 에 ${_U} 항목 없음 — rootless apptainer 핵심 누락." >&2
+    echo "       1회 설정 후 재실행:" >&2
+    echo "         sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 ${_U}" >&2
+    echo "         bash deploy/apptainer/restart.sh" >&2
   fi
 
   require_port_free "$POSTGRES_PORT" "POSTGRES"
@@ -124,22 +136,16 @@ else
     echo "  (AIDH_APPT_HOST_NET=1 — --net --network=host 적용)"
   fi
 
-  # rootless apptainer (특히 setuid 없는 핀버전 = dpkg-deb 추출본)에서는
-  # 공식 postgres 이미지 entrypoint 가 바인드된 PGDATA / /var/run/postgresql
-  # 를 chmod 하려다 "Operation not permitted" 로 죽는다 → postgres 미기동.
-  # --fakeroot 는 user namespace 에서 컨테이너를 root 로 매핑해 바인드
-  # 마운트 chmod/chown 을 허용한다(= 이 문제 해결). 기본 ON.
-  #   AIDH_APPT_FAKEROOT=0  → 비활성 (setuid 시스템 apptainer 등 불필요 시)
-  # 기본값 자동: 핀버전(setuid 없는 .tools 추출본)이면 ON, 시스템 suid
-  # apptainer 면 OFF(기존 동작 무회귀). 명시 AIDH_APPT_FAKEROOT 가 우선.
-  # 핀(.tools, setuid 없음)일 때만 기본 ON. 시스템/env 지정 apptainer 는
-  # setuid(실제 root)일 수 있어 기본 OFF (필요시 AIDH_APPT_FAKEROOT=1).
-  _fr_default=0
-  [[ "${_AIDH_APPT_SRC:-}" == pinned* ]] && _fr_default=1
+  # --fakeroot 는 기본 OFF. (MXWhitePaper 검증 레시피: 공식 postgres
+  # 이미지는 plain rootless + /etc/subuid 매핑으로 띄운다. postgres 에
+  # --fakeroot 를 쓰면 uid 매핑 base 가 바뀌어 기존 subuid 소유 pgdata
+  # (예: 100998 = 100000+998)와 어긋나 chmod/chown "Operation not
+  # permitted" 가 난다. 그래서 postgres 는 fakeroot 를 쓰지 않는다.)
+  # 특수 환경에서만 AIDH_APPT_FAKEROOT=1 로 강제.
   FAKEROOT_OPTS=()
-  if [[ "${AIDH_APPT_FAKEROOT:-$_fr_default}" = "1" ]]; then
+  if [[ "${AIDH_APPT_FAKEROOT:-0}" = "1" ]]; then
     FAKEROOT_OPTS=(--fakeroot)
-    echo "  (--fakeroot — rootless 바인드 chmod 허용; AIDH_APPT_FAKEROOT=0 로 해제)"
+    echo "  (--fakeroot 강제 — AIDH_APPT_FAKEROOT=1)"
   fi
 
   apptainer instance start \
