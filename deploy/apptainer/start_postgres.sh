@@ -93,21 +93,21 @@ else
   # rootless/--fakeroot 컨테이너가 chmod/chown/traverse 못 해 postgres 가
   # 기동 실패한다 (로그: 'Operation not permitted' / 'Permission denied').
   # 멈추기 전에 정확한 1회 조치를 알려준다.
+  # 경고만 — 하드 실패시키지 않는다. 시스템 setuid apptainer 는 실제 root
+  # 라 어떤 소유든 entrypoint 가 chown 가능하고, --fakeroot 로 만들어진
+  # subuid(예: 100000+998) 소유 데이터는 --fakeroot 재실행 시 정상이다.
+  # 실제 기동 실패는 instance start 직후 fast-fail 이 로그째 잡아준다.
   _PGD="$DATA_DIR/postgres/pgdata"
-  if [[ -d "$_PGD" ]]; then
+  if [[ -d "$_PGD" && "${AIDH_SKIP_PGDATA_OWNER_CHECK:-0}" != "1" ]]; then
     _own="$(stat -c '%u' "$_PGD" 2>/dev/null || echo '?')"
-    if [[ "$_own" != "$(id -u)" ]] || ! ls "$_PGD" >/dev/null 2>&1; then
-      echo "[ERROR] pgdata 소유권 불일치 — 현재 owner uid=$_own, 실행 uid=$(id -u)" >&2
-      echo "        rootless/--fakeroot apptainer 가 이 디렉터리를 관리 못 합니다." >&2
-      echo "        1회 조치 (데이터 보존):" >&2
-      echo "          sudo chown -R \"\$(id -u):\$(id -g)\" \\" >&2
-      echo "            $DATA_DIR/postgres $DATA_DIR/postgres-run" >&2
-      echo "          bash deploy/apptainer/restart.sh" >&2
-      echo "        또는 데이터 불필요 시:" >&2
-      echo "          mv $_PGD ${_PGD}.old && bash deploy/apptainer/restart.sh" >&2
-      echo "        (시스템 setuid apptainer 로 되돌리려면:" >&2
-      echo "          AIDH_APPTAINER_BIN=\$(command -v apptainer) bash deploy/apptainer/restart.sh)" >&2
-      exit 1
+    if [[ "$_own" != "$(id -u)" ]]; then
+      echo "[WARN] pgdata owner uid=$_own (실행 uid=$(id -u)) — 권한모델 불일치 가능." >&2
+      echo "       기동 실패하면 아래 중 하나:" >&2
+      echo "        (B·권장) 시스템 setuid apptainer 로:" >&2
+      echo "          AIDH_APPTAINER_BIN=\$(command -v apptainer) bash deploy/apptainer/restart.sh" >&2
+      echo "        (A) 소유권 정리(데이터 보존, 1회 sudo):" >&2
+      echo "          sudo chown -R \"\$(id -u):\$(id -g)\" $DATA_DIR/postgres $DATA_DIR/postgres-run" >&2
+      echo "        (C) 데이터 불필요: mv $_PGD ${_PGD}.old && bash deploy/apptainer/restart.sh" >&2
     fi
   fi
 
@@ -132,8 +132,10 @@ else
   #   AIDH_APPT_FAKEROOT=0  → 비활성 (setuid 시스템 apptainer 등 불필요 시)
   # 기본값 자동: 핀버전(setuid 없는 .tools 추출본)이면 ON, 시스템 suid
   # apptainer 면 OFF(기존 동작 무회귀). 명시 AIDH_APPT_FAKEROOT 가 우선.
+  # 핀(.tools, setuid 없음)일 때만 기본 ON. 시스템/env 지정 apptainer 는
+  # setuid(실제 root)일 수 있어 기본 OFF (필요시 AIDH_APPT_FAKEROOT=1).
   _fr_default=0
-  [[ "${_AIDH_APPT_SRC:-}" == pinned* || "${_AIDH_APPT_SRC:-}" == env* ]] && _fr_default=1
+  [[ "${_AIDH_APPT_SRC:-}" == pinned* ]] && _fr_default=1
   FAKEROOT_OPTS=()
   if [[ "${AIDH_APPT_FAKEROOT:-$_fr_default}" = "1" ]]; then
     FAKEROOT_OPTS=(--fakeroot)
