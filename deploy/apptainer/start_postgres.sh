@@ -101,8 +101,25 @@ else
     echo "  (AIDH_APPT_HOST_NET=1 — --net --network=host 적용)"
   fi
 
+  # rootless apptainer (특히 setuid 없는 핀버전 = dpkg-deb 추출본)에서는
+  # 공식 postgres 이미지 entrypoint 가 바인드된 PGDATA / /var/run/postgresql
+  # 를 chmod 하려다 "Operation not permitted" 로 죽는다 → postgres 미기동.
+  # --fakeroot 는 user namespace 에서 컨테이너를 root 로 매핑해 바인드
+  # 마운트 chmod/chown 을 허용한다(= 이 문제 해결). 기본 ON.
+  #   AIDH_APPT_FAKEROOT=0  → 비활성 (setuid 시스템 apptainer 등 불필요 시)
+  # 기본값 자동: 핀버전(setuid 없는 .tools 추출본)이면 ON, 시스템 suid
+  # apptainer 면 OFF(기존 동작 무회귀). 명시 AIDH_APPT_FAKEROOT 가 우선.
+  _fr_default=0
+  [[ "${_AIDH_APPT_SRC:-}" == pinned* || "${_AIDH_APPT_SRC:-}" == env* ]] && _fr_default=1
+  FAKEROOT_OPTS=()
+  if [[ "${AIDH_APPT_FAKEROOT:-$_fr_default}" = "1" ]]; then
+    FAKEROOT_OPTS=(--fakeroot)
+    echo "  (--fakeroot — rootless 바인드 chmod 허용; AIDH_APPT_FAKEROOT=0 로 해제)"
+  fi
+
   apptainer instance start \
     "${HOST_NET_OPTS[@]}" \
+    "${FAKEROOT_OPTS[@]}" \
     --bind "$DATA_DIR/postgres:/var/lib/postgresql/data" \
     --bind "$DATA_DIR/postgres-run:/var/run/postgresql" \
     --env "POSTGRES_USER=${POSTGRES_USER}" \
