@@ -52,6 +52,10 @@ source "$APPT_DIR/_common.sh"
 load_env
 export_proxy
 
+# 시스템에 무엇이 깔려 있건 무관 — 프로젝트 내부 핀버전을 보장한다.
+# (없으면 _common.sh 의 ensure_apptainer 가 알아서 .tools 로 설치.)
+ensure_apptainer
+
 # --embedder 플래그 처리 — .env 의 EMBEDDING_PROVIDER 를 덮어쓰고 필요 패키지 자동 설치.
 if [[ -n "$EMBEDDER_OVERRIDE" ]]; then
   case "$EMBEDDER_OVERRIDE" in

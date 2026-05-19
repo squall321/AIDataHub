@@ -193,33 +193,37 @@ else
   run apt-get install -y -f
 fi
 
-# ── Step 2: Apptainer ≥ 1.3 ─────────────────────────────────────────
-step "Step 2 — Apptainer (≥ 1.3)"
-if have_version apptainer 1; then
-  ok "이미 설치됨: $(apptainer --version 2>&1 | head -1)"
-else
-  if [ "$MODE" = "online" ]; then
-    arch="$(dpkg --print-architecture)"; ver="1.3.6"
+# ── Step 2: Apptainer (프로젝트 내부 핀버전) ─────────────────────────
+# 시스템 apptainer 는 건드리지 않는다(있어도 무손상). 핀버전 1.3.6 을
+# .deb 에서 프로젝트 .tools/ 로 추출(apt 아님) → 모든 배포 스크립트는
+# _common.sh 의 apptainer() 함수로 이 핀버전을 자동 사용한다.
+step "Step 2 — Apptainer (프로젝트 내부 핀버전 v1.3.6, 시스템 무손상)"
+arch="$(dpkg --print-architecture)"; ver="1.3.6"
+PIN_CACHE="$REPO_ROOT/deploy/apptainer/cache"
+mkdir -p "$PIN_CACHE"
+deb="$PIN_CACHE/apptainer_${ver}_${arch}.deb"
+if [ ! -f "$deb" ]; then
+  staged="$(find_cached_deb apptainer 2>/dev/null || true)"
+  if [ -n "$staged" ]; then
+    cp -f "$staged" "$deb"; ok "staged .deb → $deb"
+  elif [ "$MODE" = "online" ]; then
     url="https://github.com/apptainer/apptainer/releases/download/v${ver}/apptainer_${ver}_${arch}.deb"
-    mkdir -p "$DEB_DIR"; target="$DEB_DIR/apptainer_${ver}_${arch}.deb"
-    cached="$(find_cached_deb apptainer)"
-    if [ -n "$cached" ]; then
-      ok "cached .deb 사용: $cached"
-      run apt-get install -y --no-install-recommends "$cached"
-    else
-      note "PPA 경로 회피 (사내 프록시 뒤에서 launchpad/keyserver hang) → GitHub release .deb"
-      ok "다운로드 $url"
-      curl_with_proxy_fallback "$target" "$url" || fail "apptainer .deb 다운로드 실패 (직접/fallback 모두).
-  인터넷 되는 PC 에서 받아 $DEB_DIR/ 에 두고 재실행:
+    note "PPA 회피 → GitHub release .deb (프로젝트 캐시로)"
+    curl_with_proxy_fallback "$deb" "$url" || fail "apptainer .deb 다운로드 실패.
+  인터넷 PC 에서 받아 $PIN_CACHE/ 에 두고 재실행:
     $url"
-      run apt-get install -y --no-install-recommends "$target"
-    fi
   else
-    ls "$DEB_DIR"/apptainer*.deb >/dev/null 2>&1 || fail "offline 모드인데 $DEB_DIR 에 apptainer*.deb 없음"
-    run apt-get install -y --no-install-recommends "$DEB_DIR"/apptainer*.deb
+    fail "offline 인데 $PIN_CACHE/apptainer_${ver}_${arch}.deb 없음 (인터넷 PC 에서 받아 두기)"
   fi
-  ok "$(apptainer --version 2>&1 | head -1)"
 fi
+# 추출은 원사용자 권한으로 (.tools 가 root 소유되지 않게).
+INSTALLER="$REPO_ROOT/deploy/apptainer/install-apptainer.sh"
+if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
+  run sudo -u "$SUDO_USER" bash "$INSTALLER" --deb "$deb"
+else
+  run bash "$INSTALLER" --deb "$deb"
+fi
+ok "핀 apptainer v${ver} 준비 (프로젝트 .tools — 시스템 apptainer 무손상)"
 
 # ── Step 3: Node.js 20 (+ npm) ──────────────────────────────────────
 step "Step 3 — Node.js 20 (+ npm)"

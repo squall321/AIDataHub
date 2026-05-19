@@ -13,6 +13,51 @@ API_DIR="$ROOT_DIR/api_server"
 DATA_DIR="$APPT_DIR/data"
 LOG_DIR="$APPT_DIR/logs"
 
+# ── 핀 apptainer 해석 + 자동 프로비저닝 ──────────────────────────────────
+# 정책: 시스템에 apptainer 가 어떤 버전이건(또는 없건) 무관하게, 항상
+#       프로젝트 로컬(.tools)의 핀버전을 쓴다. 처음 실행이면 알아서
+#       프로젝트 내부로 설치(install-apptainer.sh)한 뒤 그걸 사용한다.
+#       비대화형 스크립트는 alias 가 안 먹으므로 함수로 `apptainer` 를
+#       가로채 모든 호출을 핀버전으로 라우팅한다.
+# 우선순위: $AIDH_APPTAINER_BIN > .tools 핀버전 > (자동설치) > 시스템 PATH.
+APPTAINER_VERSION="${APPTAINER_VERSION:-1.3.6}"
+_PINNED_APPT="$APPT_DIR/.tools/apptainer-${APPTAINER_VERSION}/usr/bin/apptainer"
+
+resolve_apptainer() {
+  if [[ -n "${AIDH_APPTAINER_BIN:-}" && -x "${AIDH_APPTAINER_BIN}" ]]; then
+    _AIDH_APPT="$AIDH_APPTAINER_BIN"; _AIDH_APPT_SRC="env(AIDH_APPTAINER_BIN)"
+  elif [[ -x "$_PINNED_APPT" ]]; then
+    _AIDH_APPT="$_PINNED_APPT"; _AIDH_APPT_SRC="pinned .tools v${APPTAINER_VERSION}"
+  else
+    _AIDH_APPT="$(command -v apptainer 2>/dev/null || echo apptainer)"
+    _AIDH_APPT_SRC="system PATH (핀버전 미설치)"
+  fi
+  export _AIDH_APPT _AIDH_APPT_SRC APPTAINER_VERSION
+}
+
+# 핀버전이 없으면 프로젝트 내부로 자동 설치 후 재해석. (한 프로세스트리에서
+# 1회만 시도 — 무한루프/반복다운로드 방지. AIDH_APPTAINER_AUTOINSTALL=0 로 비활성.)
+ensure_apptainer() {
+  resolve_apptainer
+  [[ -x "$_PINNED_APPT" ]] && return 0
+  [[ "${AIDH_APPTAINER_AUTOINSTALL:-1}" == "1" ]] || { resolve_apptainer; return 0; }
+  [[ -n "${_AIDH_APPT_AUTOTRIED:-}" ]] && { resolve_apptainer; return 0; }
+  export _AIDH_APPT_AUTOTRIED=1
+  echo "[INFO] 핀 apptainer v${APPTAINER_VERSION} 미설치 — 프로젝트 내부로 자동 설치 시도" >&2
+  if bash "$APPT_DIR/install-apptainer.sh" >&2; then
+    resolve_apptainer
+  else
+    echo "[WARN] 핀 apptainer 자동설치 실패 — 시스템 apptainer 로 폴백 시도." >&2
+    echo "       오프라인이면 deploy/apptainer/cache/ 에 apptainer_${APPTAINER_VERSION}_*.deb 두고 재실행." >&2
+    resolve_apptainer
+  fi
+}
+
+resolve_apptainer
+# 모든 소싱 스크립트의 `apptainer ...` 호출을 핀버전으로 라우팅.
+apptainer() { command "$_AIDH_APPT" "$@"; }
+export -f apptainer 2>/dev/null || true
+
 # ── 호스트 IP 자동 감지 ──────────────────────────────────────────────────
 # HOST_IP placeholder 치환에 사용 (install.sh 또는 .env 수정 시).
 # 1순위: ifconfig.me (인터넷 가능 시 — public IP)
@@ -117,14 +162,22 @@ export_proxy() {
 
 # ── 사전 검증 ────────────────────────────────────────────────────────────
 require_apptainer() {
-  if ! command -v apptainer >/dev/null 2>&1; then
-    echo "[ERROR] apptainer 미설치. Ubuntu 24.04 기준:" >&2
-    echo "        sudo add-apt-repository -y ppa:apptainer/ppa && sudo apt update && sudo apt install -y apptainer" >&2
+  # 핀버전이 없으면 프로젝트 내부로 자동 설치 후 그걸 쓴다 (알아서 됨).
+  ensure_apptainer
+  if ! command "$_AIDH_APPT" --version >/dev/null 2>&1; then
+    echo "[ERROR] apptainer 실행 불가 ($_AIDH_APPT — $_AIDH_APPT_SRC)." >&2
+    echo "        자동설치도 실패 — 오프라인이면 .deb 반입 후 재실행:" >&2
+    echo "          deploy/apptainer/cache/apptainer_${APPTAINER_VERSION}_<arch>.deb" >&2
+    echo "          bash deploy/apptainer/install-apptainer.sh" >&2
     exit 1
   fi
   local ver
-  ver="$(apptainer --version 2>&1 | awk '{print $NF}')"
-  echo "[OK] apptainer $ver"
+  ver="$(command "$_AIDH_APPT" --version 2>&1 | awk '{print $NF}')"
+  echo "[OK] apptainer $ver  ($_AIDH_APPT_SRC)"
+  if [[ "$_AIDH_APPT_SRC" == system* ]]; then
+    echo "[WARN] 핀버전(v${APPTAINER_VERSION}) 자동설치 실패 → 시스템 apptainer 폴백." >&2
+    echo "       권장: 네트워크/프록시 확인 후 또는 .deb 반입 후 재실행." >&2
+  fi
 }
 
 require_node() {

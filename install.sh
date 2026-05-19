@@ -43,17 +43,24 @@ echo "================================================================"
 # ── 1. 사전 요구 ──────────────────────────────────────────────────
 echo "[1/5] 사전 요구 검사"
 MISSING=()
-command -v apptainer >/dev/null 2>&1 || MISSING+=("apptainer")
 command -v python3   >/dev/null 2>&1 || MISSING+=("python3")
 command -v curl      >/dev/null 2>&1 || MISSING+=("curl")
+command -v dpkg-deb  >/dev/null 2>&1 || MISSING+=("dpkg(dpkg-deb)")
 if [[ ${#MISSING[@]} -gt 0 ]]; then
   echo "[ERROR] 누락 패키지: ${MISSING[*]}"
-  echo "        Ubuntu 24.04:"
-  echo "          sudo add-apt-repository -y ppa:apptainer/ppa"
-  echo "          sudo apt update && sudo apt install -y apptainer python3.12 python3.12-venv curl"
+  echo "        Ubuntu 24.04: sudo apt update && sudo apt install -y python3.12 python3.12-venv curl dpkg"
   exit 1
 fi
-echo "  ✓ apptainer $(apptainer --version 2>&1 | awk '{print $NF}')"
+# apptainer 는 시스템 설치를 요구하지 않는다 — 프로젝트 내부 핀버전(.tools)을
+# 보장하고, 이후 모든 호출은 _common.sh 의 apptainer() 함수가 라우팅한다.
+# (번들 target 은 deploy/apptainer/cache/ 에 staged .deb 동봉 → offline OK.)
+bash "$APPT_DIR/install-apptainer.sh" || {
+  echo "[ERROR] 핀 apptainer 설치 실패 — deploy/apptainer/cache/ 에 .deb 동봉 확인" >&2
+  exit 1
+}
+# shellcheck source=/dev/null
+source "$APPT_DIR/_common.sh"
+echo "  ✓ apptainer $(apptainer --version 2>&1 | awk '{print $NF}')  (${_AIDH_APPT_SRC})"
 echo "  ✓ $(python3 --version)"
 
 # ── 2. .env 생성 + placeholder 치환 ─────────────────────────────────

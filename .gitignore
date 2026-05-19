@@ -99,3 +99,7 @@ api_server/static/downloads/
 
 # Playwright MCP test artifacts
 .playwright-mcp/
+
+# pinned apptainer (별도 설치 — 시스템 무손상)
+deploy/apptainer/.tools/
+deploy/apptainer/cache/
