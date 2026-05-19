@@ -557,6 +557,20 @@ function clientScript(): string {
     });
   }
 
+  // 콜백형 _pendingReq(rpc 가 아닌 doRecommend/loadConsoleText 등) 안전망.
+  // 호스트 응답이 유실되면 callback 이 영영 안 불려 버튼이 영구 disabled
+  // 로 멈춘다 → rpc() 와 동일하게 타임아웃 시 동일 callback 을 실패 형태로
+  // 호출(기존 핸들러가 loading/busy 해제 + error 표시 + render 수행).
+  function _pendTimeout(rid, ms){
+    setTimeout(function(){
+      var cb = _pendingReq.get(rid);
+      if (typeof cb === 'function'){
+        _pendingReq.delete(rid);
+        try { cb({ ok:false, error:'요청 시간 초과 (호스트 응답 없음)' }); } catch(_){}
+      }
+    }, (typeof ms === 'number' && ms > 0) ? ms : 30000);
+  }
+
   // ------------------------------------------------------------ Renderer
   function render(){
     root.innerHTML = '';
@@ -3380,6 +3394,7 @@ function clientScript(): string {
       }
       render();
     });
+    _pendTimeout(rid);
     send({ type: 'recommendAgentsRequest', reqId: rid, q: q, topK: 5 });
   }
 
@@ -3403,6 +3418,7 @@ function clientScript(): string {
         render();
         if (typeof onDone === 'function') onDone();
       });
+      _pendTimeout(rid);
       send({ type: 'getSystemPromptRequest', reqId: rid, agentType: state.console.selectedAgent, baseUrlOverride: state.config.baseUrl });
       try { console.log('[aidh] system-prompt sent rid=', rid); } catch(_){}
     } else {
@@ -3418,6 +3434,7 @@ function clientScript(): string {
         render();
         if (typeof onDone === 'function') onDone();
       });
+      _pendTimeout(rid);
       send({ type: 'getContextBundleRequest', reqId: rid, agentType: state.console.selectedAgent, format: (kind === 'md' ? 'markdown' : 'json') });
       try { console.log('[aidh] context-bundle sent rid=', rid, 'kind=', kind); } catch(_){}
     }
@@ -3427,6 +3444,7 @@ function clientScript(): string {
     if (!text) return;
     const rid = _reqIdSeq++;
     _pendingReq.set(rid, function(){ /* status bar shows confirmation */ });
+    _pendTimeout(rid);
     send({ type: 'copyToClipboardRequest', reqId: rid, text: text, label: label });
   }
 
