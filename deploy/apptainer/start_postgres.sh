@@ -88,6 +88,29 @@ else
     fi
   done
 
+  # ── 소유권 사전점검 ──────────────────────────────────────────────────
+  # 기존 pgdata 가 다른 uid(예: 옛 setuid apptainer = 실제 root) 소유면
+  # rootless/--fakeroot 컨테이너가 chmod/chown/traverse 못 해 postgres 가
+  # 기동 실패한다 (로그: 'Operation not permitted' / 'Permission denied').
+  # 멈추기 전에 정확한 1회 조치를 알려준다.
+  _PGD="$DATA_DIR/postgres/pgdata"
+  if [[ -d "$_PGD" ]]; then
+    _own="$(stat -c '%u' "$_PGD" 2>/dev/null || echo '?')"
+    if [[ "$_own" != "$(id -u)" ]] || ! ls "$_PGD" >/dev/null 2>&1; then
+      echo "[ERROR] pgdata 소유권 불일치 — 현재 owner uid=$_own, 실행 uid=$(id -u)" >&2
+      echo "        rootless/--fakeroot apptainer 가 이 디렉터리를 관리 못 합니다." >&2
+      echo "        1회 조치 (데이터 보존):" >&2
+      echo "          sudo chown -R \"\$(id -u):\$(id -g)\" \\" >&2
+      echo "            $DATA_DIR/postgres $DATA_DIR/postgres-run" >&2
+      echo "          bash deploy/apptainer/restart.sh" >&2
+      echo "        또는 데이터 불필요 시:" >&2
+      echo "          mv $_PGD ${_PGD}.old && bash deploy/apptainer/restart.sh" >&2
+      echo "        (시스템 setuid apptainer 로 되돌리려면:" >&2
+      echo "          AIDH_APPTAINER_BIN=\$(command -v apptainer) bash deploy/apptainer/restart.sh)" >&2
+      exit 1
+    fi
+  fi
+
   require_port_free "$POSTGRES_PORT" "POSTGRES"
   echo "→ start $INST_POSTGRES"
 
