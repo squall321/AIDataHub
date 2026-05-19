@@ -220,6 +220,16 @@ tr:hover td{background:var(--light);}
   <div class="card accent"><h4>노출</h4><p>REST + MCP 11 도구 동시 제공</p></div>
  </div>
 
+ <h3 class="sec">임베딩 provider (의미검색·에이전트 라우팅 엔진)</h3>
+ <table>
+  <tr><th>Provider</th><th>벡터</th><th>의미 이해</th><th>속도(실측)</th></tr>
+  <tr><td><strong>e5_base</strong> <span class="tag tag-green">현 적용</span></td><td>intfloat/multilingual-e5-base · 768d</td><td>동의어·패러프레이즈·다국어 (스웰링↔팽창)</td><td>recommend ~3.2s · semantic ~1.6s (저사양 서버 더 큼)</td></tr>
+  <tr><td>e5_small</td><td>multilingual-e5-small · 384d (118MB)</td><td>의미 유지, 품질 소폭↓</td><td>e5_base 대비 ~3–4배 빠름</td></tr>
+  <tr><td>hash</td><td>sha256 시드 난수 (의존성 0)</td><td>없음 — 거의 동일 문자열만 (테스트용 스텁)</td><td>즉시</td></tr>
+  <tr><td>openai / sentence_transformers</td><td>외부 API / 임의 ST 모델 · 384d</td><td>모델 의존</td><td>네트워크/모델 의존</td></tr>
+ </table>
+ <div class="insight-box"><p>현 셋업 — <code>EMBEDDING_PROVIDER=e5_base</code> · 768d · Alembic 0013 <code>vector(768)</code> · HF 로컬 캐시(폐쇄망 구동). FTS(tsvector)·tag 는 provider 무관. <strong>주의: provider 변경 시 기존 색인 벡터와 비교 불가 → 전체 재임베딩 필수</strong>(현 14건이라 저비용). 속도 최적화는 hash 아닌 e5_small 재색인.</p></div>
+
  <div class="slide-footer">실서버(127.0.0.1:8001) health/discover 정상 · 라이브 14 레코드 / 8 에이전트 검증</div>
 </section>
 

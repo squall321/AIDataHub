@@ -300,6 +300,18 @@ tr:hover td{background:var(--light);}
  </table>
 
  <div class="insight-box"><p>요지 — 사내 자료를 근거로 즉답하는 데이터 활용 인프라. 과거 사례·측정·시뮬레이션 결과를 인적 의존 없이 확보.</p></div>
+ <h3 class="sec">임베딩 엔진 (현 셋업)</h3>
+ <p><span class="term" tabindex="0">임베딩 provider<sup>?</sup><span class="tip"><b>임베딩 Provider</b> — 문장을 의미 벡터로 바꾸는 모델 선택지. semantic 검색·에이전트 라우팅의 품질과 속도를 좌우한다. 키워드성 FTS·tag 검색은 이 선택과 무관하게 동작한다.<span class="ex">예: provider 를 바꾸면 의미검색 동작 방식이 통째로 달라진다</span></span></span>
+ 가 의미검색·에이전트 라우팅의 엔진이다. 현재 <code>e5_base</code>(다국어 768차원) 적용 — 동의어·다국어를 이해하나 CPU 추론이 무겁다(저사양 서버에서 호출당 수 초).</p>
+ <table>
+  <tr><th>Provider</th><th>의미 이해</th><th>속도</th></tr>
+  <tr><td><strong>e5_base</strong> (현 적용)</td><td>동의어·패러프레이즈·다국어</td><td>느림 (저사양 서버 수 초/콜)</td></tr>
+  <tr><td>e5_small</td><td>의미 유지 (품질 소폭↓)</td><td>~3–4배 빠름</td></tr>
+  <tr><td>hash</td><td>없음 (거의 동일 문자열만)</td><td>즉시 · 테스트용</td></tr>
+ </table>
+ <div class="insight-box"><p>트레이드오프 — 속도 개선은 의미를 잃는 hash 가 아니라 <strong>e5_small 재색인</strong>이 정답.
+ provider 변경 시 기존 색인과 호환되지 않아 전체 재임베딩이 필요하다(현 소규모라 저비용).</p></div>
+
  <div class="slide-footer">기반 기술: pgvector(벡터 DB) · 다국어 임베딩 768차원 · MCP Streamable HTTP</div>
 </section>
 
