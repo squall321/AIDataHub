@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>AI Data Hub — 개발 보고</title>
+<style>
+:root{
+ --blue:#1e40af; --blue2:#3b82f6; --blue-dark:#1e3a8a;
+ --light:#eff6ff; --dark:#0f172a; --darker:#020617;
+ --gray:#64748b; --gray-light:#94a3b8; --border:#e2e8f0;
+ --green:#16a34a; --green-light:#dcfce7;
+ --orange:#ea580c; --orange-light:#ffedd5;
+ --red:#dc2626; --red-light:#fee2e2;
+ --purple:#7c3aed; --purple-light:#ede9fe;
+ --teal:#0d9488; --teal-light:#ccfbf1;
+ --yellow:#eab308; --yellow-light:#fef9c3;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+html,body{font-family:'Segoe UI','Apple SD Gothic Neo','Noto Sans KR',sans-serif;
+ background:#f8fafc;color:var(--dark);line-height:1.6;}
+
+.nav{position:fixed;top:0;left:0;right:0;z-index:200;background:var(--darker);color:#fff;
+ display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;
+ font-size:.85rem;box-shadow:0 2px 8px rgba(0,0,0,.2);}
+.nav-title{font-weight:700;letter-spacing:.03em;display:flex;align-items:center;gap:.6rem;}
+.nav-title .nav-cat{color:#93c5fd;font-size:.78rem;font-weight:600;}
+.nav-controls{display:flex;gap:.35rem;align-items:center;flex-wrap:wrap;}
+.nav-controls button{background:#1e293b;color:#cbd5e1;border:none;
+ padding:.35rem .7rem;border-radius:5px;cursor:pointer;font-size:.72rem;
+ font-weight:600;transition:all .15s;}
+.nav-controls button:hover{background:var(--blue2);color:#fff;}
+
+.slide{min-height:calc(100vh - 52px);display:flex;flex-direction:column;justify-content:flex-start;
+ padding:3rem 4rem;border-bottom:1px solid var(--border);scroll-margin-top:52px;position:relative;}
+.slide:not(.cover):nth-child(odd){background:#ffffff;}
+.slide:not(.cover):nth-child(even){background:#f8fafc;}
+.slides-wrapper{padding-top:52px;}
+
+.slide-num{font-size:.72rem;font-weight:800;letter-spacing:.18em;
+ color:var(--blue2);text-transform:uppercase;margin-bottom:.6rem;}
+h2.slide-title{font-size:2rem;font-weight:900;color:var(--dark);margin-bottom:.4rem;line-height:1.15;}
+h2.slide-title span{color:var(--blue2);}
+.slide-sub{font-size:.95rem;color:var(--gray);margin-bottom:1.5rem;max-width:900px;}
+h3.sec{font-size:1.05rem;font-weight:800;color:var(--blue);margin:1.3rem 0 .6rem;
+ padding-left:.7rem;border-left:4px solid var(--blue2);}
+p,li{font-size:.9rem;line-height:1.7;color:#334155;}
+ul{padding-left:1.3rem;}
+code{background:#f1f5f9;border-radius:4px;padding:.13em .42em;font-size:.85em;
+ color:var(--blue);font-family:'Consolas','Menlo',monospace;font-weight:600;}
+
+.cover{min-height:calc(100vh - 52px);display:flex;flex-direction:column;justify-content:center;
+ padding:3rem 5rem;color:#fff;position:relative;overflow:hidden;
+ background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#0d4a6b 100%);}
+.cover::before{content:'';position:absolute;top:0;left:0;right:0;bottom:0;
+ background-image:radial-gradient(circle at 20% 20%,rgba(255,255,255,.12) 0%,transparent 50%),
+ radial-gradient(circle at 80% 80%,rgba(255,255,255,.08) 0%,transparent 50%);pointer-events:none;}
+.cover-wrap{position:relative;z-index:2;max-width:1200px;}
+.cover-tagline{font-size:.82rem;font-weight:800;letter-spacing:.22em;
+ text-transform:uppercase;margin-bottom:1rem;opacity:.85;display:flex;align-items:center;gap:.8rem;}
+.cover-tagline .dot{width:8px;height:8px;border-radius:50%;background:currentColor;}
+.cover-title-block{margin-bottom:2rem;}
+.cover-title-block h1{font-size:3.6rem;font-weight:900;color:#fff;line-height:1.05;margin-bottom:.4rem;
+ text-shadow:0 2px 20px rgba(0,0,0,.3);}
+.cover-title-block .subtitle{font-size:1.1rem;color:rgba(255,255,255,.85);font-weight:500;}
+.cover-desc{font-size:1.05rem;color:rgba(255,255,255,.9);max-width:860px;line-height:1.75;
+ margin-bottom:1.6rem;}
+.cover-badges{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.6rem;}
+.cover-badge{background:rgba(255,255,255,.15);backdrop-filter:blur(10px);
+ border:1px solid rgba(255,255,255,.25);color:#fff;padding:.5rem 1.05rem;border-radius:100px;
+ font-size:.82rem;font-weight:700;}
+.cover-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:.9rem;margin-top:1.4rem;max-width:900px;}
+.cover-stat{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);
+ border-radius:12px;padding:1rem 1.1rem;}
+.cover-stat .n{font-size:1.7rem;font-weight:900;color:#fff;line-height:1;}
+.cover-stat .l{font-size:.68rem;color:rgba(255,255,255,.7);text-transform:uppercase;
+ letter-spacing:.1em;margin-top:.4rem;font-weight:700;}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:1.4rem;align-items:start;}
+.three-col{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;}
+.four-col{display:grid;grid-template-columns:repeat(4,1fr);gap:.8rem;}
+
+.card{background:#fff;border:1.5px solid var(--border);border-radius:12px;
+ padding:1rem 1.2rem;box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:.7rem;}
+.card h4{font-size:.95rem;font-weight:800;color:var(--blue);margin-bottom:.4rem;}
+.card p,.card li{font-size:.82rem;color:#475569;}
+.card ul{margin:.2rem 0;padding-left:1.1rem;}
+.card ul li{margin-bottom:.18rem;}
+.card.green{border-color:#86efac;background:linear-gradient(135deg,#fff,#f0fdf4);}
+.card.green h4{color:var(--green);}
+.card.orange{border-color:#fed7aa;background:linear-gradient(135deg,#fff,#fff7ed);}
+.card.orange h4{color:var(--orange);}
+.card.purple{border-color:#c4b5fd;background:linear-gradient(135deg,#fff,#faf5ff);}
+.card.purple h4{color:var(--purple);}
+.card.teal{border-color:#5eead4;background:linear-gradient(135deg,#fff,#f0fdfa);}
+.card.teal h4{color:var(--teal);}
+.card.red{border-color:#fca5a5;background:linear-gradient(135deg,#fff,#fff1f2);}
+.card.red h4{color:var(--red);}
+.card.dark{background:var(--darker);color:#cbd5e1;border-color:#1e293b;}
+.card.dark h4{color:#60a5fa;}
+.card.dark p,.card.dark li{color:#94a3b8;}
+.card.accent{border-color:var(--blue2);background:linear-gradient(135deg,#fff,var(--light));}
+.card.accent h4{color:var(--blue);}
+
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin-bottom:1rem;
+ background:#fff;border-radius:10px;overflow:hidden;border:1px solid var(--border);}
+th{background:var(--darker);color:#e2e8f0;padding:.55rem .85rem;text-align:left;
+ font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;}
+td{padding:.5rem .85rem;border-bottom:1px solid var(--border);vertical-align:top;font-size:.82rem;color:#334155;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:var(--light);}
+
+.tag{display:inline-flex;align-items:center;font-size:.7rem;font-weight:700;
+ padding:.22em .65em;border-radius:100px;margin:.12rem .08rem;}
+.tag-blue{background:#dbeafe;color:var(--blue);}
+.tag-green{background:#dcfce7;color:var(--green);}
+.tag-orange{background:#ffedd5;color:var(--orange);}
+.tag-teal{background:#ccfbf1;color:var(--teal);}
+.tag-purple{background:#ede9fe;color:var(--purple);}
+
+.insight-box{background:linear-gradient(135deg,#eff6ff,#dbeafe);border:2px solid var(--blue2);
+ border-radius:12px;padding:1rem 1.4rem;margin:1rem 0;}
+.insight-box p{font-size:.93rem;color:var(--blue-dark);font-weight:600;line-height:1.7;}
+
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.9rem;margin-bottom:1.3rem;}
+.stat-box{background:#fff;border:1.5px solid var(--border);border-radius:12px;
+ padding:1rem .8rem;text-align:center;position:relative;overflow:hidden;}
+.stat-box::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--blue2);}
+.stat-box.green::before{background:var(--green);}
+.stat-box.orange::before{background:var(--orange);}
+.stat-box.purple::before{background:var(--purple);}
+.stat-box.teal::before{background:var(--teal);}
+.stat-box .stat-num{font-size:1.65rem;font-weight:900;color:var(--dark);line-height:1;}
+.stat-box .stat-label{font-size:.68rem;color:var(--gray);margin-top:.35rem;
+ text-transform:uppercase;letter-spacing:.08em;font-weight:700;}
+
+.slide-footer{margin-top:auto;padding-top:1.5rem;font-size:.72rem;color:var(--gray);
+ border-top:1px dashed var(--border);text-align:right;}
+
+@media(max-width:1100px){
+ .slide{padding:2rem 1.5rem;} .cover{padding:2rem 1.5rem;}
+ .two-col,.three-col,.four-col,.stat-grid{grid-template-columns:1fr;}
+ .cover-title-block h1{font-size:2.4rem;}
+ .cover-stats{grid-template-columns:repeat(2,1fr);}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+ <div class="nav-title">
+  <span>사업부 AI 데이터 시스템</span>
+  <span class="nav-cat">통합 개발 현황 (합본·고밀도) · 2026-05</span>
+ </div>
+ <div class="nav-controls">
+  <button onclick="location.href='#cover'">Cover</button>
+  <button onclick="location.href='#s1'">01 한눈 비교</button>
+  <button onclick="location.href='#s2'">02 Hub 스택</button>
+  <button onclick="location.href='#s3'">03 Hub 기능</button>
+  <button onclick="location.href='#s4'">04 WP 스택</button>
+  <button onclick="location.href='#s5'">05 WP 기능</button>
+  <button onclick="location.href='#s6'">06 완료·다음</button>
+ </div>
+</nav>
+
+<div class="slides-wrapper">
+
+<!-- ========== COVER ========== -->
+<section class="cover slide" id="cover">
+ <div class="cover-wrap">
+  <div class="cover-tagline">
+   <span class="dot"></span> 통합 개발 현황 <span class="dot"></span> AI Data Hub + MX White Paper
+  </div>
+  <div class="cover-title-block">
+   <h1>사업부 AI 데이터 시스템<br/>통합 개발 현황</h1>
+   <div class="subtitle">두 시스템 모두 구축·실서버 검증 완료 · 동일 사내 폐쇄망 · Apptainer 기반</div>
+  </div>
+  <div class="cover-desc">
+   AI Data Hub(FastAPI + PostgreSQL/pgvector + MCP) 와
+   MX White Paper(React + FastAPI + PostgreSQL + Meilisearch + MinIO) 의
+   채택 기술·구현 기능·완료 현황을 한 자료로 정리. 비전이 아닌 현재 진행 상태 중심.
+  </div>
+  <div class="cover-badges">
+   <span class="cover-badge">Hub: MCP 11 tools · pgvector 768</span>
+   <span class="cover-badge">WP: 18/18 FR · 189 tests green</span>
+   <span class="cover-badge">둘 다 실서버 검증 완료</span>
+   <span class="cover-badge">Apptainer 폐쇄망</span>
+  </div>
+  <div class="cover-stats">
+   <div class="cover-stat"><div class="n">17</div><div class="l">Hub Alembic 마이그레이션</div></div>
+   <div class="cover-stat"><div class="n">11</div><div class="l">Hub MCP 도구</div></div>
+   <div class="cover-stat"><div class="n">33</div><div class="l">WP REST 엔드포인트</div></div>
+   <div class="cover-stat"><div class="n">189</div><div class="l">WP 테스트 green</div></div>
+  </div>
+ </div>
+</section>
+
+<!-- ========== PAGE 01 — 두 시스템 한눈 비교 ========== -->
+<section class="slide" id="s1">
+ <div class="slide-num">PAGE 01 / 06</div>
+ <h2 class="slide-title">두 시스템 <span>한눈 비교</span></h2>
+ <div class="slide-sub">동일 사내 폐쇄망·Apptainer 기반. 역할 분담: Hub=데이터 활용(AI 소비) · White Paper=지식 정리(생산).</div>
+
+ <table>
+  <tr><th>항목</th><th>AI Data Hub</th><th>MX White Paper</th></tr>
+  <tr><td><strong>목적</strong></td><td>사내 데이터를 AI가 직접 활용 (검색·RAG)</td><td>지식을 조직 체계로 정리·연결·보존</td></tr>
+  <tr><td><strong>핵심 스택</strong></td><td>FastAPI · SQLAlchemy 2.0 async · PostgreSQL 16 + pgvector · MCP(FastMCP)</td><td>React 18 + Vite · FastAPI · PostgreSQL 15(JSONB) · Meilisearch · MinIO</td></tr>
+  <tr><td><strong>데이터</strong></td><td>5종 문서 → 표준 JSON · e5-base 768d 임베딩</td><td>DocumentJSON v1.0 SSOT · 위키 그래프 · 버전 트리</td></tr>
+  <tr><td><strong>검색</strong></td><td>vector cosine + tsvector FTS + tag</td><td>Meilisearch 한국어 전문검색</td></tr>
+  <tr><td><strong>규모</strong></td><td>21 라우트 / 21 서비스 · 17 마이그레이션 · MCP 11 도구</td><td>33 REST endpoint · 26 블록 · 18/18 FR</td></tr>
+  <tr><td><strong>검증</strong></td><td>실서버 health/discover 정상 · 라이브 14 rec/8 agent</td><td>pytest 72 + vitest 117 green · 5 SIF 가동</td></tr>
+  <tr><td><strong>상태</strong></td><td><span class="tag tag-green">기능 구축·검증 완료</span></td><td><span class="tag tag-green">프로덕션 준비 MVP 완성</span></td></tr>
+ </table>
+
+ <div class="stat-grid">
+  <div class="stat-box green"><div class="stat-num">2</div><div class="stat-label">구축 완료 시스템</div></div>
+  <div class="stat-box"><div class="stat-num">11 / 33</div><div class="stat-label">Hub MCP / WP REST</div></div>
+  <div class="stat-box teal"><div class="stat-num">7 + 5</div><div class="stat-label">Hub 클라 / WP SIF</div></div>
+  <div class="stat-box purple"><div class="stat-num">폐쇄망</div><div class="stat-label">외부 반출 없음</div></div>
+ </div>
+
+ <div class="slide-footer">Hub(소비) + White Paper(생산) — 정리된 지식이 Hub 활용 품질을 결정</div>
+</section>
+
+<!-- ========== PAGE 02 — Hub 아키텍처·스택 ========== -->
+<section class="slide" id="s2">
+ <div class="slide-num">PAGE 02 / 06 · AI DATA HUB</div>
+ <h2 class="slide-title">Hub — 아키텍처 &amp; <span>기술 스택</span></h2>
+ <div class="slide-sub">3-layer 단일 백엔드. 같은 데이터·권한을 REST(사람·외부연동)와 MCP(AI)로 동시 노출.</div>
+
+ <h3 class="sec">레이어별 채택 기술</h3>
+ <table>
+  <tr><th>레이어</th><th>채택 기술</th><th>핵심 사양</th></tr>
+  <tr><td><strong>API</strong></td><td>FastAPI · Pydantic · OpenAPI 자동생성</td><td>REST 21 라우트 · self-describing(discover/hints) · 비동기</td></tr>
+  <tr><td><strong>AI 채널</strong></td><td>MCP — FastMCP · Streamable HTTP <code>/mcp/</code></td><td>stateless · 11 도구 · Anthropic 표준 (도구 종속 없음)</td></tr>
+  <tr><td><strong>Service</strong></td><td>SQLAlchemy 2.0 async + asyncpg</td><td>21 서비스 (agent / recommend / search / preview / embedding / cluster)</td></tr>
+  <tr><td><strong>DB</strong></td><td>PostgreSQL 16 + pgvector</td><td>768차원 벡터 · record_sections + agent_sample_embeddings</td></tr>
+  <tr><td><strong>임베딩</strong></td><td>intfloat/multilingual-e5-base</td><td>768d · 다국어(한/영) · 로컬 캐시 폐쇄망 구동</td></tr>
+  <tr><td><strong>스키마</strong></td><td>Alembic 마이그레이션</td><td>17 누적 (→0017 계층 depth) · 업/다운 보장</td></tr>
+  <tr><td><strong>Frontend</strong></td><td>TypeScript VSCode 확장 · 웹 대시보드</td><td>확장 v0.15.4 · 대시보드 8탭</td></tr>
+  <tr><td><strong>배포</strong></td><td>Apptainer (root-less SIF)</td><td>postgres SIF + 네이티브 venv API · 폐쇄망 오프라인 번들</td></tr>
+ </table>
+
+ <h3 class="sec">데이터 경로</h3>
+ <div class="four-col">
+  <div class="card accent"><h4>적재</h4><p>Word·Excel·PPT·MD·PDF → 표준 JSON 스키마 변환·저장</p></div>
+  <div class="card accent"><h4>색인</h4><p>e5-base 임베딩 768d → pgvector 자동 인덱싱</p></div>
+  <div class="card accent"><h4>검색</h4><p>vector cosine · tsvector FTS · tag 정확매칭</p></div>
+  <div class="card accent"><h4>노출</h4><p>REST + MCP 11 도구 동시 제공</p></div>
+ </div>
+
+ <div class="slide-footer">실서버(127.0.0.1:8001) health/discover 정상 · 라이브 14 레코드 / 8 에이전트 검증</div>
+</section>
+
+<!-- ========== PAGE 03 — Hub 기능·역량 ========== -->
+<section class="slide" id="s3">
+ <div class="slide-num">PAGE 03 / 06 · AI DATA HUB</div>
+ <h2 class="slide-title">Hub — 구현 기능 &amp; <span>역량</span></h2>
+ <div class="slide-sub">전 기능 구현·실서버 동작 검증 완료. 외부(웹/Enterprise) 노출만 인프라 전제 대기.</div>
+
+ <div class="two-col">
+  <div class="card green"><h4>데이터 적재 파이프라인</h4>
+   <ul>
+    <li>입력: <code>.docx</code> <code>.xlsx</code> <code>.pptx</code> <code>.md</code> <code>.pdf</code> 5종</li>
+    <li>출력: 단일 표준 JSON 스키마 (섹션·블록 단위)</li>
+    <li>적재 즉시 e5-base 768d 임베딩 자동 인덱싱</li>
+    <li>10자리 시퀀스 채번 · doc_type 분류 체계</li>
+   </ul></div>
+  <div class="card green"><h4>검색 (3종 결합)</h4>
+   <ul>
+    <li><strong>semantic</strong> — pgvector cosine 유사도</li>
+    <li><strong>FTS</strong> — PostgreSQL tsvector 전문검색</li>
+    <li><strong>tag</strong> — 정확 매칭 + 태그 부스트</li>
+    <li>score_threshold / max_depth 로 정밀도 제어</li>
+   </ul></div>
+  <div class="card green"><h4>에이전트형 RAG (차별점)</h4>
+   <ul>
+    <li><code>recommend_agents(q)</code> — 질문→적합 에이전트 자동 라우팅</li>
+    <li>retrieval_config: top_k · score_threshold · data_type_filter · tag_boost · max_depth</li>
+    <li>response_config: refuse_below_score (근거 부족 시 거절)</li>
+    <li>출처(record id §section) 인용 강제 → 환각 억제</li>
+   </ul></div>
+  <div class="card green"><h4>계층 · 샘플 학습</h4>
+   <ul>
+    <li>parent_record_id + depth (campaign 0 / specimen 1)</li>
+    <li>suggest-parent 자동 추천</li>
+    <li>sample_queries 임베딩으로 라우팅 정확도 보강</li>
+    <li>에이전트 변경 이력(history) 추적</li>
+   </ul></div>
+ </div>
+
+ <h3 class="sec">MCP 11 도구 + 클라이언트 7종 1-click 연동</h3>
+ <table>
+  <tr><th>분류</th><th>도구 / 연동</th></tr>
+  <tr><td>발견</td><td><code>discover</code> · <code>list_agents</code> · <code>recommend_agents</code></td></tr>
+  <tr><td>세션·검색</td><td><code>get_agent_session</code> · <code>agent_search</code> · <code>semantic_search</code> · <code>fts_search</code> · <code>tag_search</code></td></tr>
+  <tr><td>레코드</td><td><code>get_record</code> · <code>get_record_sections</code> · <code>get_context_bundle</code></td></tr>
+  <tr><td>자동연동</td><td>MCP+프롬프트 자동 5종(Cline·Copilot·Cursor·Claude Code·Codex) · MCP만 2종(Claude Desktop·Gemini)</td></tr>
+ </table>
+
+ <div class="slide-footer">REST(사람·외부) + MCP(AI) 동일 데이터 · 핵심 차별점 = 자동 라우팅 + 출처 인용</div>
+</section>
+
+<!-- ========== PAGE 04 — WP 아키텍처·스택 ========== -->
+<section class="slide" id="s4">
+ <div class="slide-num">PAGE 04 / 06 · MX WHITE PAPER</div>
+ <h2 class="slide-title">White Paper — 아키텍처 &amp; <span>기술 스택</span></h2>
+ <div class="slide-sub">JSON-First 설계 — DocumentJSON v1.0 스키마를 SSOT 로 두고 TS/Python 타입 자동 코드젠. 모노레포 <code>apps/{web,api}</code> + <code>packages/shared</code>.</div>
+
+ <h3 class="sec">레이어별 채택 기술</h3>
+ <table>
+  <tr><th>레이어</th><th>채택 기술</th><th>핵심 사양</th></tr>
+  <tr><td><strong>Frontend</strong></td><td>React 18 · TypeScript · Vite</td><td>BlockNote 에디터 · Recharts · KaTeX · Mermaid · PWA(오프라인)</td></tr>
+  <tr><td><strong>Backend</strong></td><td>FastAPI · Pydantic v2 · SQLAlchemy 2.0 · Alembic</td><td>REST 33 endpoint · 비동기 · OpenAPI 자동 export</td></tr>
+  <tr><td><strong>DB</strong></td><td>PostgreSQL 15 (JSONB + pgvector)</td><td>문서·버전·권한·감사로그</td></tr>
+  <tr><td><strong>검색</strong></td><td>Meilisearch 1.x</td><td>한국어 토크나이즈 · 제목/본문/태그 인덱싱</td></tr>
+  <tr><td><strong>파일</strong></td><td>MinIO (S3 호환)</td><td>presigned 업로드 · WebP 3-size · EXIF strip · SHA-256 dedup</td></tr>
+  <tr><td><strong>스키마 SSOT</strong></td><td>JSON Schema → 코드젠</td><td>TS + Python 타입 자동생성 · drift 탐지 CI</td></tr>
+  <tr><td><strong>인프라</strong></td><td>Apptainer (root-less, 5 SIF)</td><td>api·web·postgres·meili·minio 전 인스턴스 가동</td></tr>
+ </table>
+
+ <h3 class="sec">데이터 모델 핵심</h3>
+ <div class="three-col">
+  <div class="card accent"><h4>구조화 저장</h4><p>화면표현 아닌 DocumentJSON. 화면·검색·export·LLM 이 같은 데이터 재사용</p></div>
+  <div class="card accent"><h4>위키 그래프</h4><p><code>[[slug]]</code> 파서 → 백링크 · 의존성 그래프 · 미작성 빨간링크</p></div>
+  <div class="card accent"><h4>버전 트리</h4><p>저장마다 신규 버전 · 복원 · 3-way diff 충돌 UI</p></div>
+ </div>
+
+ <div class="slide-footer">버전 0.1.0 (릴리스 태그 v1.0.0~v1.0.3) · 5 SIF 전부 가동 검증</div>
+</section>
+
+<!-- ========== PAGE 05 — WP 기능·역량 ========== -->
+<section class="slide" id="s5">
+ <div class="slide-num">PAGE 05 / 06 · MX WHITE PAPER</div>
+ <h2 class="slide-title">White Paper — 구현 기능 &amp; <span>역량</span></h2>
+ <div class="slide-sub">Sprint 0~6(MVP) + 폴리시 A~D + 사이클 7~11 완료. 18개 FR 전부 구현, 테스트 green.</div>
+
+ <div class="two-col">
+  <div class="card green"><h4>지식 구조화·연결</h4>
+   <ul>
+    <li>조직 계층: 부문→팀→그룹→파트 CRUD + 트리 내비</li>
+    <li>위키링크 <code>[[slug]]</code> + 백링크 + 의존성 그래프</li>
+    <li>자동 번호(1 / 1.1 / 1.1.1) · TOC · infobox</li>
+   </ul></div>
+  <div class="card green"><h4>문서 편집 (26 블록)</h4>
+   <ul>
+    <li>BlockNote 에디터 · 슬래시 메뉴 · ⌘K 팔레트 · 아웃라인 드래그</li>
+    <li>표 · 차트(Recharts) · 수식(KaTeX) · 다이어그램(Mermaid)</li>
+    <li>풀에디터: data-source · dashboard-embed · calculator · org-chart</li>
+   </ul></div>
+  <div class="card green"><h4>협업·이력</h4>
+   <ul>
+    <li>JWT 인증 1h/7d · httpOnly refresh · 4단계 RBAC</li>
+    <li>모든 쓰기 감사로그 · 버전 복원 · 3-way diff</li>
+    <li>5초 idle 자동저장 + 명시 저장</li>
+   </ul></div>
+  <div class="card green"><h4>검색·접근성</h4>
+   <ul>
+    <li>Meilisearch 한국어 전문검색 (제목/본문/태그)</li>
+    <li>반응형(모바일/태블릿/PC) + PWA 오프라인 폴백</li>
+    <li>i18n 한/영 토글</li>
+   </ul></div>
+ </div>
+
+ <div class="card teal"><h4>운영 자산화 — 가져오기·내보내기·자동 정리</h4>
+  <ul>
+   <li>대량 임포트: CSV·docx → 18-위젯 라운드트립 (export 마커 + LLM 규칙 검증)</li>
+   <li>아웃고잉 웹훅: doc_created/edited/published 등 · HMAC-SHA256 서명 + 재시도</li>
+   <li>백그라운드 잡: 만료 업로드 정리 · 버전 컴팩션(보존정책) · 감사로그 정리 (cron 친화)</li>
+  </ul></div>
+
+ <div class="slide-footer">18/18 FR · 33/33 endpoint · pytest 72 + vitest 117 전부 green</div>
+</section>
+
+<!-- ========== PAGE 06 — 통합 완료 현황 & 다음 ========== -->
+<section class="slide" id="s6">
+ <div class="slide-num">PAGE 06 / 06</div>
+ <h2 class="slide-title">통합 완료 현황 &amp; <span>다음 단계</span></h2>
+ <div class="slide-sub">두 시스템 모두 구축·검증 완료. 잔여는 신규 기능이 아니라 콘텐츠 확충·확장/도입 결정.</div>
+
+ <div class="two-col">
+  <div class="card accent"><h4>AI Data Hub — 완료 항목</h4>
+   <ul>
+    <li>적재: 5종 변환기 → 표준 JSON → e5-base 색인</li>
+    <li>검색: pgvector + tsvector + tag 3종 결합</li>
+    <li>에이전트 RAG: 자동 라우팅 + config + 출처 인용</li>
+    <li>MCP: FastMCP Streamable HTTP 11 도구 검증</li>
+    <li>채널: 대시보드 8탭 + 확장 v0.15.4 + REST</li>
+    <li>연동: 클라이언트 7종 1-click 자동설치</li>
+    <li>배포: Apptainer SIF + 오프라인 번들 + 무중단 재기동</li>
+   </ul></div>
+  <div class="card accent"><h4>MX White Paper — 완료 항목</h4>
+   <ul>
+    <li>지식 통합: 조직 계층 + 위키 그래프 + 대량 임포트</li>
+    <li>편집: BlockNote 26 블록(차트/수식/다이어그램/계산기)</li>
+    <li>협업: JWT + 4단계 RBAC + 감사로그 + 버전 복원</li>
+    <li>검색·접근성: Meili 한국어 + 반응형 + PWA + i18n</li>
+    <li>운영 자산화: import/export + HMAC 웹훅 + 정리 잡</li>
+    <li>인프라·품질: 5 SIF + codegen drift CI + 189 테스트 green</li>
+   </ul></div>
+ </div>
+
+ <h3 class="sec">다음 단계 (현황 기준)</h3>
+ <table>
+  <tr><th>시스템</th><th>다음 단계</th><th>구분</th></tr>
+  <tr><td><strong>AI Data Hub</strong></td><td>콘텐츠 확충(14→대량) · 전사 노출(공인 HTTPS+OAuth) · 도메인 retrieval_config 튜닝</td><td><span class="tag tag-purple">확산·확장</span></td></tr>
+  <tr><td><strong>MX White Paper</strong></td><td>콘텐츠 마이그레이션(시드 5→대량) · 실사용 파일럿 · Phase 4 LLM 도입 결정</td><td><span class="tag tag-purple">확산·결정</span></td></tr>
+ </table>
+
+ <div class="insight-box">
+  <p>결론 — 두 시스템 모두 <strong>기능·아키텍처 구축 및 실서버 검증 완료</strong>.
+  잔여는 신규 개발이 아니라 <strong>① 콘텐츠 적재 ② 전사 노출/도입 결정 ③ 도메인 튜닝</strong>.</p>
+ </div>
+
+ <div class="slide-footer">두 시스템 구축·검증 완료 → 콘텐츠 확충 · 확장/도입 결정</div>
+</section>
+
+</div>
+</body>
+</html>

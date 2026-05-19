@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MX White Paper — 개발 보고</title>
+<style>
+:root{
+ --blue:#1e40af; --blue2:#3b82f6; --blue-dark:#1e3a8a;
+ --light:#eff6ff; --dark:#0f172a; --darker:#020617;
+ --gray:#64748b; --gray-light:#94a3b8; --border:#e2e8f0;
+ --green:#16a34a; --green-light:#dcfce7;
+ --orange:#ea580c; --orange-light:#ffedd5;
+ --red:#dc2626; --red-light:#fee2e2;
+ --purple:#7c3aed; --purple-light:#ede9fe;
+ --teal:#0d9488; --teal-light:#ccfbf1;
+ --yellow:#eab308; --yellow-light:#fef9c3;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+html,body{font-family:'Segoe UI','Apple SD Gothic Neo','Noto Sans KR',sans-serif;
+ background:#f8fafc;color:var(--dark);line-height:1.6;}
+
+.nav{position:fixed;top:0;left:0;right:0;z-index:200;background:var(--darker);color:#fff;
+ display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;
+ font-size:.85rem;box-shadow:0 2px 8px rgba(0,0,0,.2);}
+.nav-title{font-weight:700;letter-spacing:.03em;display:flex;align-items:center;gap:.6rem;}
+.nav-title .nav-cat{color:#93c5fd;font-size:.78rem;font-weight:600;}
+.nav-controls{display:flex;gap:.35rem;align-items:center;flex-wrap:wrap;}
+.nav-controls button{background:#1e293b;color:#cbd5e1;border:none;
+ padding:.35rem .7rem;border-radius:5px;cursor:pointer;font-size:.72rem;
+ font-weight:600;transition:all .15s;}
+.nav-controls button:hover{background:var(--blue2);color:#fff;}
+
+.slide{min-height:calc(100vh - 52px);display:flex;flex-direction:column;justify-content:flex-start;
+ padding:3rem 4rem;border-bottom:1px solid var(--border);scroll-margin-top:52px;position:relative;}
+.slide:not(.cover):nth-child(odd){background:#ffffff;}
+.slide:not(.cover):nth-child(even){background:#f8fafc;}
+.slides-wrapper{padding-top:52px;}
+
+.slide-num{font-size:.72rem;font-weight:800;letter-spacing:.18em;
+ color:var(--blue2);text-transform:uppercase;margin-bottom:.6rem;}
+h2.slide-title{font-size:2rem;font-weight:900;color:var(--dark);margin-bottom:.4rem;line-height:1.15;}
+h2.slide-title span{color:var(--blue2);}
+.slide-sub{font-size:.95rem;color:var(--gray);margin-bottom:1.5rem;max-width:900px;}
+h3.sec{font-size:1.05rem;font-weight:800;color:var(--blue);margin:1.3rem 0 .6rem;
+ padding-left:.7rem;border-left:4px solid var(--blue2);}
+p,li{font-size:.9rem;line-height:1.7;color:#334155;}
+ul{padding-left:1.3rem;}
+code{background:#f1f5f9;border-radius:4px;padding:.13em .42em;font-size:.85em;
+ color:var(--blue);font-family:'Consolas','Menlo',monospace;font-weight:600;}
+
+.cover{min-height:calc(100vh - 52px);display:flex;flex-direction:column;justify-content:center;
+ padding:3rem 5rem;color:#fff;position:relative;overflow:hidden;
+ background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#0d4a6b 100%);}
+.cover::before{content:'';position:absolute;top:0;left:0;right:0;bottom:0;
+ background-image:radial-gradient(circle at 20% 20%,rgba(255,255,255,.12) 0%,transparent 50%),
+ radial-gradient(circle at 80% 80%,rgba(255,255,255,.08) 0%,transparent 50%);pointer-events:none;}
+.cover-wrap{position:relative;z-index:2;max-width:1200px;}
+.cover-tagline{font-size:.82rem;font-weight:800;letter-spacing:.22em;
+ text-transform:uppercase;margin-bottom:1rem;opacity:.85;display:flex;align-items:center;gap:.8rem;}
+.cover-tagline .dot{width:8px;height:8px;border-radius:50%;background:currentColor;}
+.cover-title-block{margin-bottom:2rem;}
+.cover-title-block h1{font-size:3.6rem;font-weight:900;color:#fff;line-height:1.05;margin-bottom:.4rem;
+ text-shadow:0 2px 20px rgba(0,0,0,.3);}
+.cover-title-block .subtitle{font-size:1.1rem;color:rgba(255,255,255,.85);font-weight:500;}
+.cover-desc{font-size:1.05rem;color:rgba(255,255,255,.9);max-width:860px;line-height:1.75;
+ margin-bottom:1.6rem;}
+.cover-badges{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.6rem;}
+.cover-badge{background:rgba(255,255,255,.15);backdrop-filter:blur(10px);
+ border:1px solid rgba(255,255,255,.25);color:#fff;padding:.5rem 1.05rem;border-radius:100px;
+ font-size:.82rem;font-weight:700;}
+.cover-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:.9rem;margin-top:1.4rem;max-width:900px;}
+.cover-stat{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);
+ border-radius:12px;padding:1rem 1.1rem;}
+.cover-stat .n{font-size:1.7rem;font-weight:900;color:#fff;line-height:1;}
+.cover-stat .l{font-size:.68rem;color:rgba(255,255,255,.7);text-transform:uppercase;
+ letter-spacing:.1em;margin-top:.4rem;font-weight:700;}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:1.4rem;align-items:start;}
+.three-col{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;}
+.four-col{display:grid;grid-template-columns:repeat(4,1fr);gap:.8rem;}
+
+.card{background:#fff;border:1.5px solid var(--border);border-radius:12px;
+ padding:1rem 1.2rem;box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:.7rem;}
+.card h4{font-size:.95rem;font-weight:800;color:var(--blue);margin-bottom:.4rem;}
+.card p,.card li{font-size:.82rem;color:#475569;}
+.card ul{margin:.2rem 0;padding-left:1.1rem;}
+.card ul li{margin-bottom:.18rem;}
+.card.green{border-color:#86efac;background:linear-gradient(135deg,#fff,#f0fdf4);}
+.card.green h4{color:var(--green);}
+.card.orange{border-color:#fed7aa;background:linear-gradient(135deg,#fff,#fff7ed);}
+.card.orange h4{color:var(--orange);}
+.card.purple{border-color:#c4b5fd;background:linear-gradient(135deg,#fff,#faf5ff);}
+.card.purple h4{color:var(--purple);}
+.card.teal{border-color:#5eead4;background:linear-gradient(135deg,#fff,#f0fdfa);}
+.card.teal h4{color:var(--teal);}
+.card.red{border-color:#fca5a5;background:linear-gradient(135deg,#fff,#fff1f2);}
+.card.red h4{color:var(--red);}
+.card.dark{background:var(--darker);color:#cbd5e1;border-color:#1e293b;}
+.card.dark h4{color:#60a5fa;}
+.card.dark p,.card.dark li{color:#94a3b8;}
+.card.accent{border-color:var(--blue2);background:linear-gradient(135deg,#fff,var(--light));}
+.card.accent h4{color:var(--blue);}
+
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin-bottom:1rem;
+ background:#fff;border-radius:10px;overflow:hidden;border:1px solid var(--border);}
+th{background:var(--darker);color:#e2e8f0;padding:.55rem .85rem;text-align:left;
+ font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;}
+td{padding:.5rem .85rem;border-bottom:1px solid var(--border);vertical-align:top;font-size:.82rem;color:#334155;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:var(--light);}
+
+.tag{display:inline-flex;align-items:center;font-size:.7rem;font-weight:700;
+ padding:.22em .65em;border-radius:100px;margin:.12rem .08rem;}
+.tag-blue{background:#dbeafe;color:var(--blue);}
+.tag-green{background:#dcfce7;color:var(--green);}
+.tag-orange{background:#ffedd5;color:var(--orange);}
+.tag-teal{background:#ccfbf1;color:var(--teal);}
+.tag-purple{background:#ede9fe;color:var(--purple);}
+
+.insight-box{background:linear-gradient(135deg,#eff6ff,#dbeafe);border:2px solid var(--blue2);
+ border-radius:12px;padding:1rem 1.4rem;margin:1rem 0;}
+.insight-box p{font-size:.93rem;color:var(--blue-dark);font-weight:600;line-height:1.7;}
+
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.9rem;margin-bottom:1.3rem;}
+.stat-box{background:#fff;border:1.5px solid var(--border);border-radius:12px;
+ padding:1rem .8rem;text-align:center;position:relative;overflow:hidden;}
+.stat-box::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--blue2);}
+.stat-box.green::before{background:var(--green);}
+.stat-box.orange::before{background:var(--orange);}
+.stat-box.purple::before{background:var(--purple);}
+.stat-box.teal::before{background:var(--teal);}
+.stat-box .stat-num{font-size:1.65rem;font-weight:900;color:var(--dark);line-height:1;}
+.stat-box .stat-label{font-size:.68rem;color:var(--gray);margin-top:.35rem;
+ text-transform:uppercase;letter-spacing:.08em;font-weight:700;}
+
+.slide-footer{margin-top:auto;padding-top:1.5rem;font-size:.72rem;color:var(--gray);
+ border-top:1px dashed var(--border);text-align:right;}
+
+@media(max-width:1100px){
+ .slide{padding:2rem 1.5rem;} .cover{padding:2rem 1.5rem;}
+ .two-col,.three-col,.four-col,.stat-grid{grid-template-columns:1fr;}
+ .cover-title-block h1{font-size:2.4rem;}
+ .cover-stats{grid-template-columns:repeat(2,1fr);}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+ <div class="nav-title">
+  <span>MX White Paper</span>
+  <span class="nav-cat">개발 보고 · 2026-05</span>
+ </div>
+ <div class="nav-controls">
+  <button onclick="location.href='#cover'">Cover</button>
+  <button onclick="location.href='#s1'">01 아키텍처·스택</button>
+  <button onclick="location.href='#s2'">02 기능·역량</button>
+  <button onclick="location.href='#s3'">03 성과·다음</button>
+ </div>
+</nav>
+
+<div class="slides-wrapper">
+
+<!-- ========== COVER ========== -->
+<section class="cover slide" id="cover">
+ <div class="cover-wrap">
+  <div class="cover-tagline">
+   <span class="dot"></span> 개발 보고 <span class="dot"></span> 사업부 지식 저장소
+  </div>
+  <div class="cover-title-block">
+   <h1>MX White Paper</h1>
+   <div class="subtitle">React + FastAPI + PostgreSQL + Meilisearch + MinIO · JSON-First 위키형 지식 플랫폼</div>
+  </div>
+  <div class="cover-desc">
+   목적: PPT·Word·메일 분산 지식을 위키링크로 연결된 단일 저장소로 통합 ·
+   조직 계층 정리 · 버전·권한·감사 · JSON-First 로 향후 LLM 자동화 토대 선확보.
+  </div>
+  <div class="cover-badges">
+   <span class="cover-badge">React 18 + TypeScript + Vite</span>
+   <span class="cover-badge">FastAPI + SQLAlchemy 2.0</span>
+   <span class="cover-badge">PostgreSQL 15 (JSONB)</span>
+   <span class="cover-badge">Meilisearch · MinIO</span>
+   <span class="cover-badge">Apptainer 5-서비스</span>
+  </div>
+  <div class="cover-stats">
+   <div class="cover-stat"><div class="n">18 / 18</div><div class="l">기능요구사항(FR)</div></div>
+   <div class="cover-stat"><div class="n">33</div><div class="l">REST 엔드포인트</div></div>
+   <div class="cover-stat"><div class="n">189</div><div class="l">테스트 (72 py + 117 vitest)</div></div>
+   <div class="cover-stat"><div class="n">26</div><div class="l">블록(위젯) 타입</div></div>
+  </div>
+ </div>
+</section>
+
+<!-- ========== PAGE 01 — 아키텍처 & 스택 ========== -->
+<section class="slide" id="s1">
+ <div class="slide-num">PAGE 01 / 03</div>
+ <h2 class="slide-title">아키텍처 &amp; <span>기술 스택</span></h2>
+ <div class="slide-sub">JSON-First 설계 — DocumentJSON v1.0 스키마를 SSOT 로 두고 TS/Python 타입 자동 코드젠. 모노레포 <code>apps/{web,api}</code> + <code>packages/shared</code>.</div>
+
+ <h3 class="sec">레이어별 채택 기술</h3>
+ <table>
+  <tr><th>레이어</th><th>채택 기술</th><th>핵심 사양</th></tr>
+  <tr><td><strong>Frontend</strong></td><td>React 18 · TypeScript · Vite</td><td>BlockNote 에디터 · Recharts · KaTeX · Mermaid · PWA(오프라인)</td></tr>
+  <tr><td><strong>Backend</strong></td><td>FastAPI · Pydantic v2 · SQLAlchemy 2.0 · Alembic</td><td>REST 33 endpoint · 비동기 · OpenAPI 자동 export</td></tr>
+  <tr><td><strong>DB</strong></td><td>PostgreSQL 15 (JSONB + pgvector)</td><td>문서·버전·권한·감사로그</td></tr>
+  <tr><td><strong>검색</strong></td><td>Meilisearch 1.x</td><td>한국어 토크나이즈 · 제목/본문/태그 인덱싱</td></tr>
+  <tr><td><strong>파일</strong></td><td>MinIO (S3 호환)</td><td>presigned 업로드 · WebP 3-size · EXIF strip · SHA-256 dedup</td></tr>
+  <tr><td><strong>스키마 SSOT</strong></td><td>JSON Schema → 코드젠</td><td>TS + Python 타입 자동생성 · drift 탐지 CI</td></tr>
+  <tr><td><strong>인프라</strong></td><td>Apptainer (root-less, 5 SIF)</td><td>api·web·postgres·meili·minio 전 인스턴스 가동</td></tr>
+ </table>
+
+ <h3 class="sec">데이터 모델 핵심</h3>
+ <div class="three-col">
+  <div class="card accent"><h4>구조화 저장</h4><p>화면표현 아닌 DocumentJSON. 화면·검색·export·LLM 이 같은 데이터 재사용</p></div>
+  <div class="card accent"><h4>위키 그래프</h4><p><code>[[slug]]</code> 파서 → 백링크 · 의존성 그래프 · 미작성 빨간링크</p></div>
+  <div class="card accent"><h4>버전 트리</h4><p>저장마다 신규 버전 · 복원 · 3-way diff 충돌 UI</p></div>
+ </div>
+
+ <div class="slide-footer">버전 0.1.0 (릴리스 태그 v1.0.0~v1.0.3) · 5 SIF 전부 가동 검증</div>
+</section>
+
+<!-- ========== PAGE 02 — 기능 & 역량 ========== -->
+<section class="slide" id="s2">
+ <div class="slide-num">PAGE 02 / 03</div>
+ <h2 class="slide-title">구현 기능 &amp; <span>할 수 있는 것</span></h2>
+ <div class="slide-sub">Sprint 0~6(MVP) + 폴리시 A~D + 사이클 7~11 완료. 18개 FR 전부 구현, 테스트 green.</div>
+
+ <div class="two-col">
+  <div class="card green"><h4>지식 구조화·연결</h4>
+   <ul>
+    <li>조직 계층: 부문→팀→그룹→파트 CRUD + 트리 내비</li>
+    <li>위키링크 <code>[[slug]]</code> + 백링크 + 의존성 그래프</li>
+    <li>자동 번호(1 / 1.1 / 1.1.1) · TOC · infobox</li>
+   </ul></div>
+  <div class="card green"><h4>문서 편집 (26 블록)</h4>
+   <ul>
+    <li>BlockNote 에디터 · 슬래시 메뉴 · ⌘K 팔레트 · 아웃라인 드래그</li>
+    <li>표 · 차트(Recharts) · 수식(KaTeX) · 다이어그램(Mermaid)</li>
+    <li>풀에디터: data-source · dashboard-embed · calculator · org-chart</li>
+   </ul></div>
+  <div class="card green"><h4>협업·이력</h4>
+   <ul>
+    <li>JWT 인증 1h/7d · httpOnly refresh · 4단계 RBAC</li>
+    <li>모든 쓰기 감사로그 · 버전 복원 · 3-way diff</li>
+    <li>5초 idle 자동저장 + 명시 저장</li>
+   </ul></div>
+  <div class="card green"><h4>검색·접근성</h4>
+   <ul>
+    <li>Meilisearch 한국어 전문검색 (제목/본문/태그)</li>
+    <li>반응형(모바일/태블릿/PC) + PWA 오프라인 폴백</li>
+    <li>i18n 한/영 토글</li>
+   </ul></div>
+ </div>
+
+ <div class="card teal"><h4>운영 자산화 — 가져오기·내보내기·자동 정리</h4>
+  <ul>
+   <li>대량 임포트: CSV·docx → 18-위젯 라운드트립 (export 마커 + LLM 규칙 검증)</li>
+   <li>아웃고잉 웹훅: doc_created/edited/published 등 · HMAC-SHA256 서명 + 재시도</li>
+   <li>백그라운드 잡: 만료 업로드 정리 · 버전 컴팩션(보존정책) · 감사로그 정리 (cron 친화)</li>
+  </ul></div>
+
+ <div class="slide-footer">18/18 FR · 33/33 endpoint · pytest 72 + vitest 117 전부 green</div>
+</section>
+
+<!-- ========== PAGE 03 — 성과 & 다음 ========== -->
+<section class="slide" id="s3">
+ <div class="slide-num">PAGE 03 / 03</div>
+ <h2 class="slide-title">개발 성과 &amp; <span>다음 단계</span></h2>
+ <div class="slide-sub">사용 가능 제품(MVP) 완성 · Apptainer 5서비스 안정 가동. 잔여 핵심은 Phase 4 LLM 자동화 도입 결정.</div>
+
+ <div class="stat-grid">
+  <div class="stat-box green"><div class="stat-num">18/18</div><div class="stat-label">기능요구사항</div></div>
+  <div class="stat-box green"><div class="stat-num">33</div><div class="stat-label">REST 엔드포인트</div></div>
+  <div class="stat-box"><div class="stat-num">189</div><div class="stat-label">테스트 green</div></div>
+  <div class="stat-box teal"><div class="stat-num">5</div><div class="stat-label">Apptainer 서비스</div></div>
+ </div>
+
+ <h3 class="sec">완료 항목</h3>
+ <table>
+  <tr><th>영역</th><th>구현 · 검증 내용</th><th>상태</th></tr>
+  <tr><td>지식 통합</td><td>조직 계층 + 위키링크 그래프 + 대량 임포트(18위젯 라운드트립)</td><td><span class="tag tag-green">완료</span></td></tr>
+  <tr><td>편집·표현</td><td>BlockNote 26 블록 (차트/수식/다이어그램/계산기/org-chart)</td><td><span class="tag tag-green">완료</span></td></tr>
+  <tr><td>협업·이력</td><td>JWT+4단계 RBAC · 감사로그 · 버전 복원 · 3-way diff</td><td><span class="tag tag-green">완료</span></td></tr>
+  <tr><td>검색·접근성</td><td>Meilisearch 한국어 · 반응형 · PWA 오프라인 · i18n</td><td><span class="tag tag-green">완료</span></td></tr>
+  <tr><td>운영 자산화</td><td>import/export · HMAC 웹훅 · 백그라운드 정리 잡</td><td><span class="tag tag-green">완료</span></td></tr>
+  <tr><td>인프라·품질</td><td>Apptainer 5 SIF · 스키마 codegen drift CI · 189 테스트 green</td><td><span class="tag tag-green">완료</span></td></tr>
+ </table>
+
+ <h3 class="sec">다음 단계</h3>
+ <div class="three-col">
+  <div class="card purple"><h4>Phase 4 — LLM (핵심 결정)</h4><p>Word↔DocumentJSON 자동변환 · AI 초안. JSON-First 토대 완비 — 도입 시점만 사업검증 후 결정</p></div>
+  <div class="card purple"><h4>실사용 확산</h4><p>파일럿 운영으로 활용 패턴 검증 · 콘텐츠 본격 축적 (현재 시드 5건)</p></div>
+  <div class="card purple"><h4>콘텐츠 마이그레이션</h4><p>핵심 사업부 문서 이관 → "물어보면 답하는" 실사용 규모</p></div>
+ </div>
+
+ <div class="insight-box">
+  <p>결론 — 전 기능 구현·테스트 green·Apptainer 안정 가동으로 <strong>프로덕션 준비 MVP 완성</strong>(계획 대비 매치율 98/100).
+  잔여는 신규 개발이 아니라 <strong>① 콘텐츠 적재 ② Phase 4 LLM 도입 결정</strong>.</p>
+ </div>
+
+ <div class="slide-footer">MVP 완성 · 안정 가동 → 콘텐츠 축적 · Phase 4 LLM 결정</div>
+</section>
+
+</div>
+</body>
+</html>

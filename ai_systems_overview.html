@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>사업부 AI 데이터 시스템 — 개요 및 방향성</title>
+<style>
+:root{
+ --blue:#1e40af; --blue2:#3b82f6; --blue-dark:#1e3a8a;
+ --light:#eff6ff; --dark:#0f172a; --darker:#020617;
+ --gray:#64748b; --gray-light:#94a3b8; --border:#e2e8f0;
+ --green:#16a34a; --green-light:#dcfce7;
+ --orange:#ea580c; --orange-light:#ffedd5;
+ --red:#dc2626; --red-light:#fee2e2;
+ --purple:#7c3aed; --purple-light:#ede9fe;
+ --teal:#0d9488; --teal-light:#ccfbf1;
+ --yellow:#eab308; --yellow-light:#fef9c3;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+html,body{font-family:'Segoe UI','Apple SD Gothic Neo','Noto Sans KR',sans-serif;
+ background:#f8fafc;color:var(--dark);line-height:1.6;}
+
+.nav{position:fixed;top:0;left:0;right:0;z-index:200;background:var(--darker);color:#fff;
+ display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;
+ font-size:.85rem;box-shadow:0 2px 8px rgba(0,0,0,.2);}
+.nav-title{font-weight:700;letter-spacing:.03em;display:flex;align-items:center;gap:.6rem;}
+.nav-title .nav-cat{color:#93c5fd;font-size:.78rem;font-weight:600;}
+.nav-controls{display:flex;gap:.35rem;align-items:center;flex-wrap:wrap;}
+.nav-controls button{background:#1e293b;color:#cbd5e1;border:none;
+ padding:.35rem .7rem;border-radius:5px;cursor:pointer;font-size:.72rem;
+ font-weight:600;transition:all .15s;}
+.nav-controls button:hover{background:var(--blue2);color:#fff;}
+
+.slide{min-height:calc(100vh - 52px);display:flex;flex-direction:column;justify-content:flex-start;
+ padding:3rem 4rem;border-bottom:1px solid var(--border);scroll-margin-top:52px;position:relative;}
+.slide:not(.cover):nth-child(odd){background:#ffffff;}
+.slide:not(.cover):nth-child(even){background:#f8fafc;}
+.slides-wrapper{padding-top:52px;}
+
+.slide-num{font-size:.72rem;font-weight:800;letter-spacing:.18em;
+ color:var(--blue2);text-transform:uppercase;margin-bottom:.6rem;}
+h2.slide-title{font-size:2rem;font-weight:900;color:var(--dark);margin-bottom:.4rem;line-height:1.15;}
+h2.slide-title span{color:var(--blue2);}
+.slide-sub{font-size:.95rem;color:var(--gray);margin-bottom:1.5rem;max-width:920px;}
+h3.sec{font-size:1.05rem;font-weight:800;color:var(--blue);margin:1.3rem 0 .6rem;
+ padding-left:.7rem;border-left:4px solid var(--blue2);}
+p,li{font-size:.9rem;line-height:1.7;color:#334155;}
+ul{padding-left:1.3rem;}
+code{background:#f1f5f9;border-radius:4px;padding:.13em .42em;font-size:.85em;
+ color:var(--blue);font-family:'Consolas','Menlo',monospace;font-weight:600;}
+
+/* 용어 팝업 주석 */
+.term{border-bottom:1px dotted var(--blue2);cursor:help;position:relative;
+ font-weight:700;color:var(--blue);}
+.term sup{font-size:.6em;color:var(--blue2);font-weight:800;margin-left:1px;}
+.term .tip{visibility:hidden;opacity:0;position:absolute;left:0;bottom:140%;z-index:300;
+ width:340px;background:var(--darker);color:#e2e8f0;font-weight:400;font-size:.78rem;
+ line-height:1.55;padding:.75rem .9rem;border-radius:8px;box-shadow:0 8px 26px rgba(0,0,0,.3);
+ transition:opacity .14s;pointer-events:none;text-transform:none;letter-spacing:normal;
+ white-space:normal;}
+.term .tip::after{content:'';position:absolute;top:100%;left:20px;
+ border:7px solid transparent;border-top-color:var(--darker);}
+.term .tip b{color:#93c5fd;font-weight:700;}
+.term .tip .ex{display:block;margin-top:.4rem;color:#94a3b8;font-style:italic;}
+.term:hover .tip,.term:focus .tip,.term:focus-within .tip{visibility:visible;opacity:1;}
+
+.cover{min-height:calc(100vh - 52px);display:flex;flex-direction:column;justify-content:center;
+ padding:3rem 5rem;color:#fff;position:relative;overflow:hidden;
+ background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#0d4a6b 100%);}
+.cover::before{content:'';position:absolute;top:0;left:0;right:0;bottom:0;
+ background-image:radial-gradient(circle at 20% 20%,rgba(255,255,255,.12) 0%,transparent 50%),
+ radial-gradient(circle at 80% 80%,rgba(255,255,255,.08) 0%,transparent 50%);pointer-events:none;}
+.cover-wrap{position:relative;z-index:2;max-width:1200px;}
+.cover-tagline{font-size:.82rem;font-weight:800;letter-spacing:.22em;
+ text-transform:uppercase;margin-bottom:1rem;opacity:.85;display:flex;align-items:center;gap:.8rem;}
+.cover-tagline .dot{width:8px;height:8px;border-radius:50%;background:currentColor;}
+.cover-title-block{margin-bottom:2rem;}
+.cover-title-block h1{font-size:3.4rem;font-weight:900;color:#fff;line-height:1.05;margin-bottom:.4rem;
+ text-shadow:0 2px 20px rgba(0,0,0,.3);}
+.cover-title-block .subtitle{font-size:1.1rem;color:rgba(255,255,255,.85);font-weight:500;}
+.cover-desc{font-size:1.05rem;color:rgba(255,255,255,.9);max-width:880px;line-height:1.75;
+ margin-bottom:1.6rem;}
+.cover-badges{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.6rem;}
+.cover-badge{background:rgba(255,255,255,.15);backdrop-filter:blur(10px);
+ border:1px solid rgba(255,255,255,.25);color:#fff;padding:.5rem 1.05rem;border-radius:100px;
+ font-size:.82rem;font-weight:700;}
+.cover-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:.9rem;margin-top:1.4rem;max-width:920px;}
+.cover-stat{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);
+ border-radius:12px;padding:1rem 1.1rem;}
+.cover-stat .n{font-size:1.55rem;font-weight:900;color:#fff;line-height:1;}
+.cover-stat .l{font-size:.66rem;color:rgba(255,255,255,.7);text-transform:uppercase;
+ letter-spacing:.1em;margin-top:.4rem;font-weight:700;}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:1.4rem;align-items:start;}
+.three-col{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;}
+.four-col{display:grid;grid-template-columns:repeat(4,1fr);gap:.8rem;}
+
+.card{background:#fff;border:1.5px solid var(--border);border-radius:12px;
+ padding:1rem 1.2rem;box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:.7rem;}
+.card h4{font-size:.95rem;font-weight:800;color:var(--blue);margin-bottom:.4rem;}
+.card p,.card li{font-size:.82rem;color:#475569;}
+.card ul{margin:.2rem 0;padding-left:1.1rem;}
+.card ul li{margin-bottom:.18rem;}
+.card.green{border-color:#86efac;background:linear-gradient(135deg,#fff,#f0fdf4);}
+.card.green h4{color:var(--green);}
+.card.orange{border-color:#fed7aa;background:linear-gradient(135deg,#fff,#fff7ed);}
+.card.orange h4{color:var(--orange);}
+.card.purple{border-color:#c4b5fd;background:linear-gradient(135deg,#fff,#faf5ff);}
+.card.purple h4{color:var(--purple);}
+.card.teal{border-color:#5eead4;background:linear-gradient(135deg,#fff,#f0fdfa);}
+.card.teal h4{color:var(--teal);}
+.card.red{border-color:#fca5a5;background:linear-gradient(135deg,#fff,#fff1f2);}
+.card.red h4{color:var(--red);}
+.card.dark{background:var(--darker);color:#cbd5e1;border-color:#1e293b;}
+.card.dark h4{color:#60a5fa;}
+.card.dark p,.card.dark li{color:#94a3b8;}
+.card.accent{border-color:var(--blue2);background:linear-gradient(135deg,#fff,var(--light));}
+.card.accent h4{color:var(--blue);}
+
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin-bottom:1rem;
+ background:#fff;border-radius:10px;overflow:hidden;border:1px solid var(--border);}
+th{background:var(--darker);color:#e2e8f0;padding:.55rem .85rem;text-align:left;
+ font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;}
+td{padding:.5rem .85rem;border-bottom:1px solid var(--border);vertical-align:top;font-size:.82rem;color:#334155;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:var(--light);}
+
+.tag{display:inline-flex;align-items:center;font-size:.7rem;font-weight:700;
+ padding:.22em .65em;border-radius:100px;margin:.12rem .08rem;}
+.tag-blue{background:#dbeafe;color:var(--blue);}
+.tag-green{background:#dcfce7;color:var(--green);}
+.tag-orange{background:#ffedd5;color:var(--orange);}
+.tag-teal{background:#ccfbf1;color:var(--teal);}
+.tag-purple{background:#ede9fe;color:var(--purple);}
+
+.insight-box{background:linear-gradient(135deg,#eff6ff,#dbeafe);border:2px solid var(--blue2);
+ border-radius:12px;padding:1rem 1.4rem;margin:1rem 0;}
+.insight-box p{font-size:.93rem;color:var(--blue-dark);font-weight:600;line-height:1.7;}
+
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.9rem;margin-bottom:1.3rem;}
+.stat-box{background:#fff;border:1.5px solid var(--border);border-radius:12px;
+ padding:1rem .8rem;text-align:center;position:relative;overflow:hidden;}
+.stat-box::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--blue2);}
+.stat-box.green::before{background:var(--green);}
+.stat-box.orange::before{background:var(--orange);}
+.stat-box.purple::before{background:var(--purple);}
+.stat-box.teal::before{background:var(--teal);}
+.stat-box .stat-num{font-size:1.5rem;font-weight:900;color:var(--dark);line-height:1;}
+.stat-box .stat-label{font-size:.66rem;color:var(--gray);margin-top:.35rem;
+ text-transform:uppercase;letter-spacing:.07em;font-weight:700;}
+
+.slide-footer{margin-top:auto;padding-top:1.5rem;font-size:.72rem;color:var(--gray);
+ border-top:1px dashed var(--border);text-align:right;}
+
+.arch-flow{margin:1rem 0;padding:1.2rem;background:#fff;border-radius:14px;
+ border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.04);}
+.arch-row{display:grid;gap:.7rem;align-items:stretch;margin-bottom:.5rem;}
+.arch-row.r4{grid-template-columns:repeat(4,1fr);}
+.arch-node{background:#fff;border:2px solid var(--border);border-radius:10px;
+ padding:.7rem .8rem;text-align:center;display:flex;flex-direction:column;
+ justify-content:center;min-height:64px;}
+.arch-node .arch-label{font-size:.82rem;font-weight:800;color:var(--dark);line-height:1.3;}
+.arch-node .arch-desc{font-size:.7rem;color:var(--gray);margin-top:.2rem;line-height:1.4;}
+.arch-node.compute{border-color:var(--blue2);background:linear-gradient(135deg,#fff,var(--light));}
+.arch-node.compute .arch-label{color:var(--blue);}
+.arch-node.store{border-color:var(--orange);background:linear-gradient(135deg,#fff,#fff7ed);}
+.arch-node.store .arch-label{color:var(--orange);}
+.arch-node.agent{border-color:var(--green);background:linear-gradient(135deg,#fff,#f0fdf4);}
+.arch-node.agent .arch-label{color:var(--green);}
+.arch-arrow{display:flex;align-items:center;justify-content:center;color:var(--blue2);
+ font-size:1.3rem;font-weight:900;min-height:22px;letter-spacing:.4em;}
+
+@media(max-width:1100px){
+ .slide{padding:2rem 1.5rem;} .cover{padding:2rem 1.5rem;}
+ .two-col,.three-col,.four-col,.stat-grid,.arch-row.r4{grid-template-columns:1fr;}
+ .cover-title-block h1{font-size:2.2rem;}
+ .cover-stats{grid-template-columns:repeat(2,1fr);}
+ .term .tip{width:240px;}
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+ <div class="nav-title">
+  <span>사업부 AI 데이터 시스템</span>
+  <span class="nav-cat">개요 및 방향성 · 용어 hover 주석 · 2026-05</span>
+ </div>
+ <div class="nav-controls">
+  <button onclick="location.href='#cover'">Cover</button>
+  <button onclick="location.href='#s1'">01 배경</button>
+  <button onclick="location.href='#s2'">02 Data Hub</button>
+  <button onclick="location.href='#s3'">03 White Paper</button>
+  <button onclick="location.href='#s4'">04 연계</button>
+  <button onclick="location.href='#s5'">05 방향성①</button>
+  <button onclick="location.href='#s6'">06 방향성②</button>
+  <button onclick="location.href='#s7'">07 로드맵</button>
+ </div>
+</nav>
+
+<div class="slides-wrapper">
+
+<!-- ========== COVER ========== -->
+<section class="cover slide" id="cover">
+ <div class="cover-wrap">
+  <div class="cover-tagline">
+   <span class="dot"></span> 개요 및 추후 방향성 <span class="dot"></span> 어려운 용어는 hover 시 주석
+  </div>
+  <div class="cover-title-block">
+   <h1>사업부 지식의 자산화와<br/>설계 최적화 인프라</h1>
+   <div class="subtitle">AI Data Hub + MX White Paper — 현재 구축 현황과 시스템 엔지니어링 방향성</div>
+  </div>
+  <div class="cover-desc">
+   사업부에 분산된 설계·측정·시뮬레이션 지식을 단일 데이터 자산으로 통합하고(현재),
+   업무 프로세스와 산출물의 관계를 구조화하여 부서 간 trade-off 최적안 탐색의 기반을 마련한다(방향).
+   본 문서의 전문 용어에는 마우스를 올리면 주석이 표시된다.
+  </div>
+  <div class="cover-badges">
+   <span class="cover-badge">현재: 두 시스템 구축·검증 완료</span>
+   <span class="cover-badge">방향: 업무 관계 그래프</span>
+   <span class="cover-badge">목표: 전역 최적 설계 탐색</span>
+  </div>
+  <div class="cover-stats">
+   <div class="cover-stat"><div class="n">2</div><div class="l">구축 완료 시스템</div></div>
+   <div class="cover-stat"><div class="n">사람+AI</div><div class="l">동일 데이터 활용</div></div>
+   <div class="cover-stat"><div class="n">부서간</div><div class="l">입출력 관계 구조화</div></div>
+   <div class="cover-stat"><div class="n">전역최적</div><div class="l">설계 돌파구 지향</div></div>
+  </div>
+ </div>
+</section>
+
+<!-- ========== PAGE 01 — 배경 ========== -->
+<section class="slide" id="s1">
+ <div class="slide-num">PAGE 01 / 07</div>
+ <h2 class="slide-title">배경과 <span>문제 정의</span></h2>
+ <div class="slide-sub">사업부의 핵심 지식이 개인과 비정형 문서에 종속되어 조직 자산으로 축적되지 못하고 있다.</div>
+
+ <div class="two-col">
+  <div class="card red"><h4>현행 문제</h4>
+   <ul>
+    <li>설계 노하우·판단 근거가 개인 문서·구두 지식에 분산</li>
+    <li>담당자 이동 시 지식 단절, 동일 질의 반복</li>
+    <li>자료 탐색 비용 과다 — 본업(설계·검증) 시간 잠식</li>
+    <li>범용 AI 도구는 사내 지식에 접근 불가</li>
+   </ul></div>
+  <div class="card green"><h4>두 시스템의 해소 방향</h4>
+   <ul>
+    <li>지식을 구조화된 조직 자산으로 축적</li>
+    <li>질의 응답을 시스템화 — 출처 기반 답변 제공</li>
+    <li>사내 AI가 내부 자료를 근거로 응답</li>
+    <li>탐색 시간 단축, 지식 재사용성 확보</li>
+   </ul></div>
+ </div>
+
+ <h3 class="sec">두 시스템의 포지셔닝</h3>
+ <div class="two-col">
+  <div class="card accent"><h4>AI Data Hub — 활용(소비) 계층</h4>
+   <p>사내 데이터를 대상으로 한
+   <span class="term" tabindex="0">시맨틱 검색<sup>?</sup><span class="tip"><b>시맨틱 검색 (Semantic Search)</b> — 키워드 일치가 아니라 문장의 의미를 수치화한
+   <b>벡터 임베딩</b>으로 유사도를 계산해 "뜻이 가까운" 자료를 찾는 검색.<span class="ex">예: "강성 부족"과 "휨 과다"를 의미상 유사 자료로 연결</span></span></span>
+   과 <span class="term" tabindex="0">RAG<sup>?</sup><span class="tip"><b>RAG (Retrieval-Augmented Generation)</b> — AI가 답을 생성하기 전에 사내 자료를 먼저 검색해
+   그 근거에 기반해 답하도록 하는 방식. 출처 추적이 가능해 환각(허위 생성)을 억제한다.</span></span>
+   기반 응답을 제공하는 계층.</p></div>
+  <div class="card accent"><h4>MX White Paper — 정리(생산) 계층</h4>
+   <p>지식을 조직 체계로 정리·연결하고 버전·권한으로 관리하는 계층.
+   <span class="term" tabindex="0">구조화 데이터<sup>?</sup><span class="tip"><b>구조화 데이터 (Structured Data, JSON Schema)</b> — 문서를 화면 표현이 아닌
+   기계가 해석 가능한 정의된 데이터 형식으로 저장하는 것. 검색·내보내기·AI 자동화가 동일 데이터를 재사용할 수 있다.</span></span>
+   로 저장해 후속 자동화의 토대를 확보한다.</p></div>
+ </div>
+
+ <div class="slide-footer">핵심 — 지식을 개인 종속에서 분리하여 구조화된 조직 자산으로 전환</div>
+</section>
+
+<!-- ========== PAGE 02 — AI Data Hub ========== -->
+<section class="slide" id="s2">
+ <div class="slide-num">PAGE 02 / 07</div>
+ <h2 class="slide-title">시스템 1 — <span>AI Data Hub</span></h2>
+ <div class="slide-sub">사내 데이터를 AI가 직접 활용 가능한 형태로 통합한 데이터 인프라.</div>
+
+ <h3 class="sec">처리 흐름</h3>
+ <div class="three-col">
+  <div class="card accent"><h4>1. 적재 / 표준화</h4><p>Word·Excel·PPT·PDF를 표준 데이터 스키마로 자동 변환·저장.</p></div>
+  <div class="card accent"><h4>2. 의미 색인</h4><p>적재 즉시 <span class="term" tabindex="0">벡터 임베딩<sup>?</sup><span class="tip"><b>벡터 임베딩 (Vector Embedding)</b> — 문장의 의미를 수백 차원의 숫자 벡터로 변환한 표현.
+  벡터 간 거리가 가까울수록 의미가 유사하다. 본 시스템은 다국어 임베딩 모델로 768차원 벡터를 사용한다.</span></span>
+  생성 후 의미 색인 구축.</p></div>
+  <div class="card accent"><h4>3. 응답</h4><p>질의에 대해 적합 지식영역을 자동 선택, 근거를 인용해 답변.</p></div>
+ </div>
+
+ <h3 class="sec">시스템 강점</h3>
+ <table>
+  <tr><th>강점</th><th>현장 효과</th></tr>
+  <tr><td><strong>의미 기반 검색</strong></td><td>키워드를 모르더라도 유사 불량 사례·관련 측정 결과 탐색</td></tr>
+  <tr><td><strong>출처 인용 응답</strong></td><td>생성형 환각 억제 — 어느 문서 몇 번 항목인지 추적 가능</td></tr>
+  <tr><td><strong>지식영역 자동 라우팅</strong></td><td>질의만으로 참조 대상 데이터셋을 시스템이 선정</td></tr>
+  <tr><td><strong>표준 프로토콜 연동</strong></td><td><span class="term" tabindex="0">MCP<sup>?</sup><span class="tip"><b>MCP (Model Context Protocol)</b> — AI 클라이언트가 외부 데이터·도구를 표준 방식으로 연결하는 개방형 프로토콜.
+  특정 AI 제품에 종속되지 않고 Claude·Copilot 등 다수 클라이언트가 동일하게 연동된다.</span></span>
+  표준으로 사내 AI 도구 7종 연동</td></tr>
+  <tr><td><strong>폐쇄망 운용</strong></td><td>데이터 외부 반출 없음 — 보안 요건 충족</td></tr>
+ </table>
+
+ <div class="insight-box"><p>요지 — 사내 자료를 근거로 즉답하는 데이터 활용 인프라. 과거 사례·측정·시뮬레이션 결과를 인적 의존 없이 확보.</p></div>
+ <div class="slide-footer">기반 기술: pgvector(벡터 DB) · 다국어 임베딩 768차원 · MCP Streamable HTTP</div>
+</section>
+
+<!-- ========== PAGE 03 — MX White Paper ========== -->
+<section class="slide" id="s3">
+ <div class="slide-num">PAGE 03 / 07</div>
+ <h2 class="slide-title">시스템 2 — <span>MX White Paper</span></h2>
+ <div class="slide-sub">지식을 조직 체계로 정리·연결·보존하는 지식 관리 플랫폼.</div>
+
+ <h3 class="sec">핵심 기능</h3>
+ <div class="three-col">
+  <div class="card accent"><h4>정리</h4><p>부문→팀→그룹→파트 계층으로 정돈. 기존 자산 대량 반입.</p></div>
+  <div class="card accent"><h4>연결</h4><p><span class="term" tabindex="0">위키링크<sup>?</sup><span class="tip"><b>위키링크 / 백링크 (Wiki Link / Backlink)</b> — 문서에서 다른 문서를 참조하면 양방향 연결이 자동 생성되는 방식.
+  미작성 참조는 별도 표시되어 지식 공백이 가시화된다.</span></span>
+  로 문서 간 의존성 자동 형성·시각화.</p></div>
+  <div class="card accent"><h4>보존</h4><p>저장 단위 버전 관리·복원, 권한·감사 이력 기록.</p></div>
+ </div>
+
+ <h3 class="sec">시스템 강점</h3>
+ <table>
+  <tr><th>강점</th><th>현장 효과</th></tr>
+  <tr><td><strong>지식 연속성</strong></td><td>담당자 이동과 무관하게 백서 잔존 — 인수인계 리스크 저감</td></tr>
+  <tr><td><strong>표현력</strong></td><td>표·그래프·수식·다이어그램·계산 위젯을 단일 문서에 통합</td></tr>
+  <tr><td><strong>협업 안정성</strong></td><td>권한·변경이력·버전 복원으로 동시 편집 충돌 통제</td></tr>
+  <tr><td><strong>자동화 대비</strong></td><td>구조화 저장으로 후속 AI 자동화를 추가 개발 없이 수용</td></tr>
+ </table>
+
+ <div class="insight-box"><p>요지 — 조직이 소유하는 살아있는 기술 백서. 인적 이탈과 무관하게 지식이 조직에 귀속.</p></div>
+ <div class="slide-footer">기반 기술: 구조화 데이터(JSON Schema SSOT) · 버전·권한(RBAC) · 위키 의존성 그래프</div>
+</section>
+
+<!-- ========== PAGE 04 — 연계 ========== -->
+<section class="slide" id="s4">
+ <div class="slide-num">PAGE 04 / 07</div>
+ <h2 class="slide-title">두 시스템의 <span>연계 구조</span></h2>
+ <div class="slide-sub">생산(White Paper)과 소비(Data Hub)가 결합되어 지식 품질이 자기강화되는 순환을 형성한다.</div>
+
+ <div class="three-col">
+  <div class="card teal"><h4>1. 생산</h4><p>엔지니어가 White Paper에 노하우·결과를 구조화 정리.</p></div>
+  <div class="card teal"><h4>2. 통합</h4><p>백서·문서가 Data Hub로 수렴, 의미 색인.</p></div>
+  <div class="card teal"><h4>3. 소비</h4><p>질의 시 AI가 근거 기반 응답.</p></div>
+ </div>
+
+ <div class="insight-box">
+  <p>구조적 의미 — 정리된 지식의 품질이 활용 품질을 결정한다. 정리 노력이 전사 AI 응답 품질로 환원되는
+  <strong>자기강화 루프</strong>이며, 이 관계 자체를 구조화하는 것이 다음 장의 방향성이다.</p>
+ </div>
+
+ <div class="slide-footer">생산(사람) → 통합(허브) → 소비(AI) → 재생산 — 자기강화 순환</div>
+</section>
+
+<!-- ========== PAGE 05 — 방향성 ① 업무 온톨로지화 ========== -->
+<section class="slide" id="s5">
+ <div class="slide-num">PAGE 05 / 07 · 추후 방향성</div>
+ <h2 class="slide-title">방향성 ① — <span>업무 온톨로지화</span></h2>
+ <div class="slide-sub">문서 통합을 넘어, 문서가 담은 "업무 그 자체"를 관계 모델로 구조화한다.</div>
+
+ <h3 class="sec">1단계 — 업무를 정밀 기술</h3>
+ <div class="two-col">
+  <div class="card accent"><h4>업무 = 프로세스 + 산출물</h4>
+   <p>모든 설계 업무는 <strong>진행 프로세스(입력·방법·판단)</strong>와
+   <strong>산출물(설계값·성능값·판정 근거)</strong>로 분해된다. 이를 White Paper에 정형 기술한다.</p></div>
+  <div class="card accent"><h4>2단계 — 의미 단위 분할</h4>
+   <p>기술 내용을 <span class="term" tabindex="0">청킹<sup>?</sup><span class="tip"><b>청킹 (Chunking)</b> — 긴 문서를 의미가 완결되는 작은 단위로 분할하는 처리.
+  각 청크가 검색·관계 연결의 최소 단위가 된다.<span class="ex">예: 입력조건 / 해석방법 / 설계값 / 성능결과 / 판정근거 각각이 1개 청크</span></span></span>
+  으로 분할한다 — 입력조건·해석방법·설계값·성능값·판정근거 단위.</p></div>
+ </div>
+
+ <h3 class="sec">3단계 — 관계 모델로 저장</h3>
+ <div class="arch-flow">
+  <div class="arch-row r4">
+   <div class="arch-node store"><div class="arch-label">업무 정형 기술</div><div class="arch-desc">프로세스 + 산출물</div></div>
+   <div class="arch-node compute"><div class="arch-label">청킹</div><div class="arch-desc">입력·방법·값·근거 단위</div></div>
+   <div class="arch-node compute"><div class="arch-label">관계 정의</div><div class="arch-desc">영향·인과·종속 관계 부여</div></div>
+   <div class="arch-node agent"><div class="arch-label">관계 그래프 (Graph DB)</div><div class="arch-desc">노드=업무·데이터 / 엣지=관계</div></div>
+  </div>
+  <div class="arch-arrow">→ 엣지를 순회하여 연관 업무·데이터 자동 도출 →</div>
+ </div>
+
+ <div class="insight-box">
+  <p><span class="term" tabindex="0">온톨로지<sup>?</sup><span class="tip"><b>온톨로지 (Ontology)</b> — 개념(업무·데이터)과 그 사이 관계를 형식적으로 정의한 지식 모델.
+  단순 분류를 넘어 "무엇이 무엇에 영향을 주는가"를 기계가 추론 가능하게 표현한다.</span></span>
+  와 <span class="term" tabindex="0">Graph DB<sup>?</sup><span class="tip"><b>Graph DB (그래프 데이터베이스)</b> — 데이터를 노드(점)와 엣지(관계 선)로 저장하는 DB.
+  관계를 따라가는 다단계 탐색이 표(RDB) 대비 자연스럽고 빠르다.<span class="ex">예: A업무→(영향)→B설계값→(제약)→C성능지표 경로 추적</span></span></span>
+  의 역할 — 표가 값을 칸에 담는다면, 관계 그래프는 업무·데이터를 잇는 의존성 망을 표현해 다단계 연관 추적을 가능케 한다.</p>
+ </div>
+
+ <div class="slide-footer">목표 산출물 — 업무·데이터 간 관계가 질의 가능한 형태로 구조화</div>
+</section>
+
+<!-- ========== PAGE 06 — 방향성 ② 설계 최적화 ========== -->
+<section class="slide" id="s6">
+ <div class="slide-num">PAGE 06 / 07 · 추후 방향성</div>
+ <h2 class="slide-title">방향성 ② — <span>시스템 엔지니어링 최적화</span></h2>
+ <div class="slide-sub">관계 그래프가 확보되면 부서 간 입출력·trade-off를 연결한 전역 최적 탐색이 가능해진다.</div>
+
+ <h3 class="sec">두 시스템의 역할 분담</h3>
+ <div class="two-col">
+  <div class="card teal"><h4>AI Data Hub — 설계·성능 데이터 확보</h4>
+   <p>각 부서가 설계하는 부품·구조의 <strong>설계값·성능값</strong>(두께·강성·질량·원가·수명 등 실측/해석 수치)을 탐색·수집한다.</p></div>
+  <div class="card purple"><h4>MX White Paper — 의미 관계 정의</h4>
+   <p>그 데이터 간 <strong>의미 관계(인과·영향·제약)</strong>를 정의·축적한다.
+   예: 두께 증가 → 강성↑·질량↑·원가↑ 의 결합 관계.</p></div>
+ </div>
+
+ <h3 class="sec">왜 돌파구인가 — 국소 최적 문제</h3>
+ <div class="two-col">
+  <div class="card red"><h4>현행 — 부분 최적의 함정</h4>
+   <p>부서별 개별 최적화는 부서 단위로는 우수해도 전체 최적이 아닐 수 있다. 부서 간
+   <span class="term" tabindex="0">trade-off<sup>?</sup><span class="tip"><b>Trade-off (상충 관계)</b> — 한 지표를 개선하면 다른 지표가 악화되는 관계.
+  <span class="ex">예: 경량화 → 강성 저하 / 원가 절감 → 수명 단축</span> 다부서 설계에서는 이런 상충이 사슬처럼 얽힌다.</span></span>
+  관계가 문서·인적 지식에 분산되어 전체를 조망하지 못하고
+  <span class="term" tabindex="0">국소 최적<sup>?</sup><span class="tip"><b>Local Optima (국소 최적)</b> — 주변만 보면 최선이지만 전체로 보면 더 나은 해가 존재하는 지점.
+  부서별 개별 최적화의 합이 전체 최적과 일치하지 않을 때 발생한다.</span></span>
+  에 고착된다.</p></div>
+  <div class="card green"><h4>지향 — 전역 최적 탐색</h4>
+   <p>관계 그래프가 부서 간 <strong>입출력 데이터와 trade-off 사슬</strong>을 단일 망으로 연결.
+   <span class="term" tabindex="0">시스템 엔지니어링<sup>?</sup><span class="tip"><b>시스템 엔지니어링 (Systems Engineering)</b> — 개별 부품이 아니라 시스템 전체의 입출력·제약·목표를
+  통합적으로 다루어 최적해를 도출하는 공학 방법론.</span></span>
+  관점에서 연관 업무·데이터를 자동 도출, 부서를 횡단하는 최적안을 탐색하여 국소 최적을 탈출한다.</p></div>
+ </div>
+
+ <div class="insight-box">
+  <p>설계 관점 비유 — 부서별 최적화는 각 봉우리의 정점 도달이나 전역 최댓값(진정한 정상)은 다른 봉우리일 수 있다.
+  관계 그래프는 <strong>봉우리를 잇는 능선 정보</strong>를 제공하여 전역 최적해 경로를 가시화한다.</p>
+ </div>
+
+ <div class="slide-footer">목표 — 부서 횡단 trade-off 최적안 탐색으로 개발의 국소 최적 돌파</div>
+</section>
+
+<!-- ========== PAGE 07 — 로드맵 ========== -->
+<section class="slide" id="s7">
+ <div class="slide-num">PAGE 07 / 07</div>
+ <h2 class="slide-title">현황 &amp; <span>로드맵</span></h2>
+ <div class="slide-sub">구축·검증은 완료. 방향성은 그 위에 업무 관계 모델과 설계 최적화 계층을 적층하는 것이다.</div>
+
+ <div class="stat-grid">
+  <div class="stat-box green"><div class="stat-num">완료</div><div class="stat-label">AI Data Hub 구축</div></div>
+  <div class="stat-box green"><div class="stat-num">완료</div><div class="stat-label">MX White Paper(MVP)</div></div>
+  <div class="stat-box"><div class="stat-num">검증</div><div class="stat-label">실서버 동작 확인</div></div>
+  <div class="stat-box purple"><div class="stat-num">차기</div><div class="stat-label">관계 그래프 · 설계 최적화</div></div>
+ </div>
+
+ <h3 class="sec">로드맵</h3>
+ <table>
+  <tr><th>단계</th><th>내용</th><th>상태</th></tr>
+  <tr><td>1. 데이터 통합</td><td>지식 자산화 + 의미 검색 + AI 활용(MCP/RAG)</td><td><span class="tag tag-green">완료·검증</span></td></tr>
+  <tr><td>2. 콘텐츠 확충</td><td>사업부 표준 문서 본격 적재 · 실사용 확산</td><td><span class="tag tag-blue">예정</span></td></tr>
+  <tr><td>3. 업무 온톨로지화</td><td>업무 프로세스+산출물 청킹 → Graph DB 관계 모델 → 연관 업무 도출</td><td><span class="tag tag-purple">방향성</span></td></tr>
+  <tr><td>4. 설계 최적화</td><td>부서 간 입출력·trade-off 연결 → 전역 최적 탐색 → 국소 최적 돌파</td><td><span class="tag tag-purple">목표</span></td></tr>
+ </table>
+
+ <div class="insight-box">
+  <p>최종 취지 — <strong>분산 지식의 조직 자산화(현재) → 업무·데이터 관계의 온톨로지화(차기) →
+  시스템 엔지니어링 기반 부서 횡단 설계 최적화 돌파구(목표).</strong></p>
+ </div>
+
+ <div class="slide-footer">완료·검증 → 콘텐츠 확충 → 관계 온톨로지 → 설계 최적화 돌파구</div>
+</section>
+
+</div>
+</body>
+</html>
