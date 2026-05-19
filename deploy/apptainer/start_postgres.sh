@@ -130,7 +130,23 @@ else
     --env "LANG=C.UTF-8" \
     --env "LC_ALL=C.UTF-8" \
     "$APPT_DIR/postgres.sif" "$INST_POSTGRES" \
-    > "$LOG_DIR/postgres-start.log" 2>&1
+    > "$LOG_DIR/postgres-start.log" 2>&1 || true
+
+  # Fast-fail: 인스턴스가 안 떴으면 pg_isready 60s 헛대기 말고 즉시
+  # 진짜 원인(start 로그)을 그대로 보여준다.
+  sleep 2
+  if ! instance_running "$INST_POSTGRES"; then
+    echo "[ERROR] postgres instance start 실패 — apptainer=$_AIDH_APPT_SRC ($_AIDH_APPT)" >&2
+    echo "        fakeroot=$([[ ${#FAKEROOT_OPTS[@]} -gt 0 ]] && echo on || echo off)" >&2
+    echo "── postgres-start.log (전체) ─────────────────────────────────" >&2
+    cat "$LOG_DIR/postgres-start.log" >&2 2>/dev/null || true
+    echo "─────────────────────────────────────────────────────────────" >&2
+    echo "조치 후보:" >&2
+    echo "  · 'subuid'/'fakeroot' 거부 → AIDH_APPT_FAKEROOT=0 또는" >&2
+    echo "    AIDH_APPTAINER_BIN=\$(command -v apptainer) 로 시스템 apptainer 사용" >&2
+    echo "  · chmod Operation not permitted 지속 → 위 로그 그대로 공유" >&2
+    exit 1
+  fi
 fi
 
 echo "→ pg_isready 대기..."
