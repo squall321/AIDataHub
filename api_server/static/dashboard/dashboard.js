@@ -25,9 +25,16 @@ async function apiFetch(path, opts = {}) {
   }
   const resp = await fetch(BASE + path, Object.assign({}, opts, { headers }));
   const ct = resp.headers.get("content-type") || "";
-  let body;
-  if (ct.includes("application/json")) body = await resp.json();
-  else body = await resp.text();
+  let body = null;
+  // 204/205 또는 빈 본문(DELETE 등)을 resp.json() 하면
+  // "Unexpected end of JSON input" 가 난다 → 본문을 먼저 text 로 받고
+  // 비어있지 않을 때만 파싱한다.
+  if (resp.status !== 204 && resp.status !== 205) {
+    const txt = await resp.text();
+    if (txt) {
+      body = ct.includes("application/json") ? JSON.parse(txt) : txt;
+    }
+  }
   if (!resp.ok) {
     const detail = (body && body.detail) || body || `HTTP ${resp.status}`;
     const err = new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
