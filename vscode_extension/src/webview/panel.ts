@@ -5,6 +5,7 @@ import { OptionsCache } from '../state/optionsCache';
 import { ApiClient, ApiError } from '../client/apiClient';
 import type { HostToWebview, WebviewToHost } from './protocol';
 import { renderHtml } from './html';
+import { aidatahubSubagentMd } from './aidatahubSubagent';
 
 // v0.13.0 — agents_history.changed_by 채울 임시 식별자. 인증 미연동 단계라
 // OS 사용자명을 그대로 사용. 형식: "vscode:<username>" — 향후 SSO 토큰으로 교체.
@@ -774,9 +775,27 @@ async function installMcpConfig(
 
   const mcpUrl = baseUrl.replace(/\/+$/, '') + '/mcp/';
   const serverEntry = { url: mcpUrl };
-  const prompt = (systemPrompt || '').trim();
+  // 사내 폐쇄망에서 MCP 클라이언트 등록이 동작하지 않을 때를 위해, 모든 프롬프트
+  // 주입 대상(.cursorrules / AGENTS.md / customInstructions / CLAUDE.md 등)에
+  // REST 우회 절차를 함께 심는다. (Claude Code 는 별도로 .claude/agents/aidatahub
+  //  서브에이전트 파일도 받지만, 그 외 툴은 이 블록이 유일한 우회 안내다.)
+  const restBase = baseUrl.replace(/\/+$/, '');
+  const restFallback = [
+    'AIDataHub REST 우회 (MCP 미동작 시 필수):',
+    '- 절대 WebFetch 류 금지 — http→https 자동승격으로 무인증서 사내서버에서 즉시 실패.',
+    `- 셸 curl 로 LITERAL http:// 만 사용. Base: \${AIDATAHUB_BASE_URL:-${restBase}} (401 시 헤더 X-API-Key: \$AIDATAHUB_API_KEY).`,
+    '- 흐름: 1) GET /api/system/health 로 base 확정  2) GET /api/discover',
+    '  3) POST /api/recommend/agents {"q":"<질문>","top_k":5} 로 agent 선택',
+    '  4) GET /api/search?mode=semantic (한글은 curl -G --data-urlencode)',
+    '  5) GET /api/records/{id} 및 /api/records/{id}/sections 로 원문 확보.',
+    '- 모든 사실 뒤에 출처 인용: (source: <RECORD_ID> §<섹션>). 추측 수치 금지.',
+    '- Claude Code 는 동봉된 서브에이전트 `aidatahub` 를 우선 사용.',
+  ].join('\n');
+  const prompt = [(systemPrompt || '').trim(), restFallback]
+    .filter(Boolean).join('\n\n');
 
-  // 결과에 promptAction/promptPath 를 채워줄 헬퍼. systemPrompt 가 비어있으면 skipped.
+  // 결과에 promptAction/promptPath 를 채워줄 헬퍼. prompt 는 restFallback 을 항상
+  // 포함하므로 보통 비어있지 않다(= REST 우회 안내는 모든 툴에 주입된다).
   const attachPromptResult = async (
     base: McpInstallResult,
     fn: () => Promise<{ action: 'created' | 'updated' | 'manual' | 'skipped'; path?: string; error?: string }>,
@@ -812,6 +831,27 @@ async function installMcpConfig(
         const merged = mergePromptBlock(cur, prompt, agentType || 'aidatahub');
         await cfg.update('customInstructions', merged.text, vscode.ConfigurationTarget.Global);
         return { action: merged.action, path: 'VSCode setting: cline.customInstructions (User)' };
+      });
+    }
+    case 'cline_sr': {
+      // Cline SR — Cline 포크. globalStorage 확장 ID 가 cline-sr.cline-sr.
+      const home = os.homedir();
+      const candidates = [
+        path.join(home, '.config', 'Code', 'User', 'globalStorage', 'cline-sr.cline-sr', 'settings', 'cline_mcp_settings.json'),
+        path.join(home, 'Library', 'Application Support', 'Code', 'User', 'globalStorage', 'cline-sr.cline-sr', 'settings', 'cline_mcp_settings.json'),
+        path.join(home, 'AppData', 'Roaming', 'Code', 'User', 'globalStorage', 'cline-sr.cline-sr', 'settings', 'cline_mcp_settings.json'),
+      ];
+      const target = await pickExistingOrFirst(candidates, fs);
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      const action = await mergeMcpJson(target, 'aidatahub', serverEntry, fs);
+      const base: McpInstallResult = { client, configPath: target, action, hint: 'Cline SR 의 MCP Servers 에 자동 반영. Cline SR 패널을 한 번 열어 새 도구 일람을 확인하세요.' };
+      return attachPromptResult(base, async () => {
+        // 포크 전용 설정 네임스페이스 추정 — 미등록이면 throw → manual 로 처리.
+        const cfg = vscode.workspace.getConfiguration('cline-sr');
+        const cur = String(cfg.get('customInstructions') || '');
+        const merged = mergePromptBlock(cur, prompt, agentType || 'aidatahub');
+        await cfg.update('customInstructions', merged.text, vscode.ConfigurationTarget.Global);
+        return { action: merged.action, path: 'VSCode setting: cline-sr.customInstructions (User)' };
       });
     }
     case 'copilot': {
@@ -954,6 +994,34 @@ async function installMcpConfig(
           base = { client, action: 'shell', shellCommand: cmd,
                    hint: `프롬프트는 적용됨. claude 자동등록 실패(${cliErr}) — 터미널에서 1회 실행: ${cmd}` };
         }
+      }
+      // CLI/터미널과 별개로 Claude Code 의 실제 MCP 설정 파일에도 직접 기록한다.
+      // (Claude Code 의 user-scope MCP 서버는 ~/.claude.json 의 top-level
+      //  "mcpServers" 에 저장된다. ~/.claude/settings.json 이 아님 —
+      //  그쪽은 permissions/hooks 등 설정 전용이라 mcpServers 를 안 읽는다.)
+      // CLI 가 PATH 에 없어 실패하는 환경에서도 이 파일 머지로 등록이 보장된다.
+      try {
+        const claudeJson = path.join(os.homedir(), '.claude.json');
+        const jsonAction = await mergeMcpJson(claudeJson, 'aidatahub', serverEntry, fs);
+        base.configPath = claudeJson;
+        base.hint = `${base.hint} (~/.claude.json mcpServers ${jsonAction === 'created' ? '생성' : '갱신'}.)`;
+      } catch (e) {
+        base.hint = `${base.hint} (~/.claude.json 직접 기록 실패: ${clean(e instanceof Error ? e.message : String(e))} — CLI/터미널 등록에 의존.)`;
+      }
+      // 사내 폐쇄망에서 MCP 클라이언트 등록이 동작하지 않는 경우를 위해
+      // Claude Code 프로젝트 서브에이전트(aidatahub)를 배치한다. 이 에이전트는
+      // REST API 를 curl(LITERAL http://) 로 직접 호출해 동일한 agent-aware
+      // RAG 흐름을 수행하므로, MCP 가 막혀도 허브를 그대로 활용할 수 있다.
+      try {
+        const wsAg = vscode.workspace.workspaceFolders?.[0];
+        const agentPath = wsAg
+          ? path.join(wsAg.uri.fsPath, '.claude', 'agents', 'aidatahub.md')
+          : path.join(os.homedir(), '.claude', 'agents', 'aidatahub.md');
+        await fs.mkdir(path.dirname(agentPath), { recursive: true });
+        await fs.writeFile(agentPath, aidatahubSubagentMd(), 'utf-8');
+        base.hint = `${base.hint} (서브에이전트 배치: ${agentPath} — MCP 미동작 시 REST 우회 사용.)`;
+      } catch (e) {
+        base.hint = `${base.hint} (서브에이전트 배치 실패: ${clean(e instanceof Error ? e.message : String(e))})`;
       }
       return attachPromptResult(base, async () => {
         // Claude Code: workspace CLAUDE.md (없으면 ~/.claude/CLAUDE.md).

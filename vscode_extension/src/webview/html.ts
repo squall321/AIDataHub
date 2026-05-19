@@ -3164,6 +3164,7 @@ function clientScript(): string {
       html.push('      <select id="console-mcp-client" class="input" style="padding:4px 8px;">');
       [
         ['cline', 'Cline (VSCode)'],
+        ['cline_sr', 'Cline SR (VSCode)'],
         ['claude_desktop', 'Claude Desktop'],
         ['claude_code', 'Claude Code (CLI)'],
         ['cursor', 'Cursor'],

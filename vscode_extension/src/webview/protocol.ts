@@ -74,7 +74,7 @@ export type WebviewToHost =
   | {
       type: 'installMcpConfigRequest';
       reqId: number;
-      client: 'cline' | 'claude_desktop' | 'claude_code' | 'cursor' | 'copilot' | 'gemini' | 'codex';
+      client: 'cline' | 'cline_sr' | 'claude_desktop' | 'claude_code' | 'cursor' | 'copilot' | 'gemini' | 'codex';
       baseUrl: string;  // 'http://host:port' (no trailing slash, /mcp/ 추가는 host측)
       // v0.13.0 — admin system_prompt 도 같이 자동 주입 (가능한 클라이언트 한정).
       systemPrompt?: string | null;
