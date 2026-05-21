@@ -866,9 +866,10 @@ function clientScript(): string {
           <div id="e-year" class="field-error"></div>
         </div>
         <div>
-          <label>Seq <span style="font-weight:400;opacity:.7">(비우면 자동: MAX+1)</span></label>
+          <label>Seq <span style="font-weight:400;opacity:.7">(비우면 자동: MAX+1 — 권장)</span></label>
           <input id="i-seq" type="number" min="0" max="2147483647" placeholder="(자동)" />
           <div id="e-seq" class="field-error"></div>
+          <div id="seq-status" style="font-size:11px;margin-top:3px;opacity:.85;line-height:1.4;"></div>
         </div>
       </div>
 
@@ -972,6 +973,64 @@ function clientScript(): string {
       groupEl.innerHTML = '<option value="">—</option>' + list.map(t => '<option value="'+escapeHtml(t)+'">'+escapeHtml(t)+'</option>').join('');
     }
     teamEl.addEventListener('change', refillGroups);
+
+    // ── seq 충돌 라이브 체크 ──────────────────────────────────────────
+    // 사용자가 seq 를 직접 입력하면 (data_type, team, group, year, seq) 로
+    // 구성한 id 가 이미 있는지 즉시 조회 → 같은 seq 사용 시 기존 레코드를
+    // 덮어쓴다는 사실을 명확히 안내. 비우면 자동 안내만 표시.
+    var _seqLookupTimer = null;
+    var _seqLookupReqSeq = 0;
+    var seqStatusEl = document.getElementById('seq-status');
+    function _renderSeqStatus(html, color){
+      if (!seqStatusEl) return;
+      seqStatusEl.innerHTML = html;
+      seqStatusEl.style.color = color || '';
+    }
+    function _composeRecordId(team, group, year, seq){
+      var padded = String(seq); while (padded.length < 10) padded = '0' + padded;
+      return dt + '-' + team + '-' + group + '-' + year + '-' + padded;
+    }
+    function checkSeq(){
+      if (!seqStatusEl) return;
+      var seqRaw = val('i-seq');
+      var seq = parseInt(seqRaw || '0', 10);
+      if (!seq || seq <= 0) {
+        _renderSeqStatus('자동 채번 — 같은 (' + dt + ', team, group, year) 의 <b>MAX+1</b> 로 신규 레코드 생성.', '');
+        return;
+      }
+      var team = (val('i-team') || '').toUpperCase();
+      var group = (val('i-group') || '').toUpperCase();
+      var year = parseInt(val('i-year') || '0', 10);
+      if (!team || !group || !year) {
+        _renderSeqStatus('(team / group / year 채우면 충돌 체크)', '');
+        return;
+      }
+      var id = _composeRecordId(team, group, year, seq);
+      var myReq = ++_seqLookupReqSeq;
+      _renderSeqStatus('확인 중… <code>' + id + '</code>', '');
+      rpc('getRecordRequest', { id: id }).then(function(rec){
+        if (myReq !== _seqLookupReqSeq) return;  // 더 새 요청이 있으면 무시
+        var title = (rec && rec.title) ? rec.title : '(제목 없음)';
+        _renderSeqStatus(
+          '⚠ <b>이미 사용 중</b>: <code>' + id + '</code> — ' + escapeHtml(title) +
+          '<br/>같은 seq 로 업로드하면 <b>그 레코드를 덮어씁니다</b> ' +
+          '(audit/pre-snapshot 보존). 신규 레코드를 원하면 seq 를 비워두세요.',
+          '#e07700'
+        );
+      }).catch(function(){
+        if (myReq !== _seqLookupReqSeq) return;
+        _renderSeqStatus('✓ 사용 가능 — 신규 레코드 id: <code>' + id + '</code>', '#0c8a3c');
+      });
+    }
+    function _seqQueue(){
+      clearTimeout(_seqLookupTimer);
+      _seqLookupTimer = setTimeout(checkSeq, 350);
+    }
+    ['i-seq', 'i-team', 'i-group', 'i-year'].forEach(function(idn){
+      var e = document.getElementById(idn);
+      if (e) { e.addEventListener('input', _seqQueue); e.addEventListener('change', _seqQueue); }
+    });
+    checkSeq();  // 초기 1회
 
     on('btn-remove', 'click', () => { state.upload.file = null; goUpload('drop'); });
     on('btn-send', 'click', () => {
