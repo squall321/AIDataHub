@@ -866,8 +866,8 @@ function clientScript(): string {
           <div id="e-year" class="field-error"></div>
         </div>
         <div>
-          <label>Seq *</label>
-          <input id="i-seq" type="number" min="1" max="2147483647" value="1" />
+          <label>Seq <span style="font-weight:400;opacity:.7">(비우면 자동: MAX+1)</span></label>
+          <input id="i-seq" type="number" min="0" max="2147483647" placeholder="(자동)" />
           <div id="e-seq" class="field-error"></div>
         </div>
       </div>
@@ -1078,7 +1078,8 @@ function clientScript(): string {
     if (!v.team)  errors.set('team', 'Required');
     if (!v.group) errors.set('group', 'Required');
     if (!Number.isFinite(v.year) || v.year < 1990 || v.year > 2100) errors.set('year', '1990–2100');
-    if (!Number.isFinite(v.seq) || v.seq < 1 || v.seq > 2147483647) errors.set('seq', '1–2,147,483,647');
+    // seq: 비우거나 0 이면 백엔드 자동할당(MAX+1). 양의 정수만 직접 지정.
+    if (Number.isFinite(v.seq) && (v.seq < 0 || v.seq > 2147483647)) errors.set('seq', '0(자동) 또는 1–2,147,483,647');
     if (v.quality_score !== null && (v.quality_score < 0 || v.quality_score > 100)) errors.set('quality', '0–100');
     if (v.valid_from && v.valid_until && v.valid_from > v.valid_until) errors.set('valid', 'from > until');
     if (state.upload.file && opts.max_upload_mb && state.upload.file.file.size > opts.max_upload_mb * 1024 * 1024) {
