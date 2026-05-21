@@ -103,3 +103,6 @@ api_server/static/downloads/
 # pinned apptainer (별도 설치 — 시스템 무손상)
 deploy/apptainer/.tools/
 deploy/apptainer/cache/
+
+# DB backups (drive sync 로컬 캐시 — 재생성 가능)
+deploy/apptainer/backups/

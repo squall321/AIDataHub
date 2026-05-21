@@ -8,9 +8,19 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 load_env
 
-DUMP="${1:-}"
+YES=0
+DUMP=""
+for a in "$@"; do
+  case "$a" in
+    --yes|-y) YES=1 ;;
+    -h|--help) sed -n '1,8p' "$0"; exit 0 ;;
+    *) DUMP="$a" ;;
+  esac
+done
+[[ "${AIDH_CONFIRM:-}" = "yes" ]] && YES=1
+
 if [[ -z "$DUMP" || ! -f "$DUMP" ]]; then
-  echo "usage: $0 <dump.sql.gz>" >&2
+  echo "usage: $0 [--yes] <dump.sql.gz>" >&2
   echo
   echo "최근 백업 (참고):" >&2
   ls -lh /tmp/aidh-db-*.sql.gz 2>/dev/null | head -5 >&2 || true
@@ -24,8 +34,12 @@ fi
 
 echo "⚠ 이 작업은 $POSTGRES_DB DB 내용을 덮어씁니다."
 echo "  dump: $DUMP ($(ls -lh "$DUMP" | awk '{print $5}'))"
-read -r -p "계속하시겠습니까? [y/N] " REPLY
-[[ "$REPLY" =~ ^[Yy]$ ]] || { echo "취소됨."; exit 0; }
+if [[ "$YES" -ne 1 ]]; then
+  read -r -p "계속하시겠습니까? [y/N] " REPLY
+  [[ "$REPLY" =~ ^[Yy]$ ]] || { echo "취소됨."; exit 0; }
+else
+  echo "  (--yes/AIDH_CONFIRM=yes — 비대화형 진행)"
+fi
 
 # 자동 백업 먼저 (안전망)
 AUTO_BACKUP="/tmp/aidh-db-pre-restore-$(date +%Y%m%d-%H%M%S).sql.gz"
