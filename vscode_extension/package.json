@@ -2,7 +2,7 @@
   "name": "ai-data-hub-uploader",
   "displayName": "Mobile eXperience AI Data Hub Uploader",
   "description": "Mobile eXperience AI Data Hub — upload, bundle and search records in your Mobile eXperience AI Data Hub backend — drag-drop original files (.docx/.pdf/.pptx/.md/.xlsx), or pre-converted JSON+resources zip bundles, plus semantic / FTS / tag search, agent CRUD with downloadable Word templates.",
-  "version": "0.15.5",
+  "version": "0.15.6",
   "publisher": "squall321",
   "license": "UNLICENSED",
   "repository": {
