@@ -3355,18 +3355,21 @@ function clientScript(): string {
       };
       render();
     });
-    // 진단용 timeout fallback — prompt 주입 포함이라 LLM 호출 없어도 fs 작업 약간 더 → 20s.
+    // 진단용 timeout fallback — claude_code: cp.exec(최대 10s) + ~/.claude.json
+    // 머지 + 서브에이전트/CLAUDE.md 쓰기 누적이 환경(fs/PATH/proxy)에 따라
+    // 30s 가까이 갈 수 있다 → 60s 로 여유. 호스트는 항상 응답을 보장하므로
+    // 이 fallback 은 정말 멈춘 경우만 잡는다(상태바 메시지로 진행도 확인).
     setTimeout(function(){
       if (_pendingReq.has(rid)) {
         _pendingReq.delete(rid);
         state.console.mcpInstalling = false;
         state.console.mcpInstallResult = {
           ok: false,
-          error: 'host 응답 timeout (20s) — VSCode를 Reload Window 후 패널을 다시 여세요',
+          error: 'host 응답 timeout (60s) — 상태바 메시지로 어느 단계에서 멈췄는지 확인. 안 풀리면 VSCode 를 Reload Window 후 다시 시도.',
         };
         render();
       }
-    }, 20000);
+    }, 60000);
     send({
       type: 'installMcpConfigRequest',
       reqId: rid,

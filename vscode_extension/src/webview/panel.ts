@@ -904,8 +904,16 @@ async function installMcpConfig(
       ];
       const target = await pickExistingOrFirst(candidates, fs);
       await fs.mkdir(path.dirname(target), { recursive: true });
-      const action = await mergeMcpJson(target, 'aidatahub', serverEntry, fs);
-      const base: McpInstallResult = { client, configPath: target, action, hint: 'Claude Desktop 을 완전히 종료 후 재시작하세요.' };
+      // Claude Desktop 은 HTTP MCP url 직접 안 먹는다(=지원포맷 아님 오류).
+      // stdio 만 지원 → `mcp-remote` 로 HTTP 를 stdio 로 래핑한 entry 작성.
+      // (npx 필요. 첫 실행 시 자동 다운로드, 이후 캐시.)
+      const desktopEntry = {
+        command: 'npx',
+        args: ['-y', 'mcp-remote', mcpUrl],
+      };
+      const action = await mergeMcpJson(target, 'aidatahub', desktopEntry, fs);
+      const base: McpInstallResult = { client, configPath: target, action,
+        hint: 'Claude Desktop 을 완전히 종료 후 재시작. (npx 필요 — 첫 실행 시 mcp-remote 자동 다운로드)' };
       // Claude Desktop 은 prompt 저장 위치가 config 파일에 없음 (Project Instructions UI 만 존재).
       return {
         ...base,
@@ -1002,7 +1010,10 @@ async function installMcpConfig(
       // CLI 가 PATH 에 없어 실패하는 환경에서도 이 파일 머지로 등록이 보장된다.
       try {
         const claudeJson = path.join(os.homedir(), '.claude.json');
-        const jsonAction = await mergeMcpJson(claudeJson, 'aidatahub', serverEntry, fs);
+        // Claude Code 는 HTTP 전송 시 entry 에 `type:"http"` 명시 필요(없으면
+        // stdio 로 오인). `claude mcp add --transport http URL` 이 만드는 형태와 동일.
+        const claudeCodeEntry = { type: 'http', url: mcpUrl };
+        const jsonAction = await mergeMcpJson(claudeJson, 'aidatahub', claudeCodeEntry, fs);
         base.configPath = claudeJson;
         base.hint = `${base.hint} (~/.claude.json mcpServers ${jsonAction === 'created' ? '생성' : '갱신'}.)`;
       } catch (e) {
