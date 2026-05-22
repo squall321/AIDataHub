@@ -775,21 +775,20 @@ async function installMcpConfig(
 
   const mcpUrl = baseUrl.replace(/\/+$/, '') + '/mcp/';
   const serverEntry = { url: mcpUrl };
-  // 사내 폐쇄망에서 MCP 클라이언트 등록이 동작하지 않을 때를 위해, 모든 프롬프트
-  // 주입 대상(.cursorrules / AGENTS.md / customInstructions / CLAUDE.md 등)에
-  // REST 우회 절차를 함께 심는다. (Claude Code 는 별도로 .claude/agents/aidatahub
-  //  서브에이전트 파일도 받지만, 그 외 툴은 이 블록이 유일한 우회 안내다.)
+  // 정책: MCP 도구를 우선 사용 (정상 동작 확인됨, 서버 v1.27.1+).
+  // MCP 가 실제로 실패하는 환경(클라이언트 미설치/특수 환경)에서만 REST
+  // curl 로 폴백. 'MCP 안 됨' 을 전제로 깔지 않는다.
   const restBase = baseUrl.replace(/\/+$/, '');
   const restFallback = [
-    'AIDataHub REST 우회 (MCP 미동작 시 필수):',
-    '- 절대 WebFetch 류 금지 — http→https 자동승격으로 무인증서 사내서버에서 즉시 실패.',
-    `- 셸 curl 로 LITERAL http:// 만 사용. Base: \${AIDATAHUB_BASE_URL:-${restBase}} (401 시 헤더 X-API-Key: \$AIDATAHUB_API_KEY).`,
-    '- 흐름: 1) GET /api/system/health 로 base 확정  2) GET /api/discover',
-    '  3) POST /api/recommend/agents {"q":"<질문>","top_k":5} 로 agent 선택',
-    '  4) GET /api/search?mode=semantic (한글은 curl -G --data-urlencode)',
-    '  5) GET /api/records/{id} 및 /api/records/{id}/sections 로 원문 확보.',
+    'AIDataHub 사용 정책:',
+    '- 1순위: 등록된 MCP 도구를 직접 호출 (discover / list_agents / recommend_agents / agent_search / get_record / get_record_sections / get_context_bundle).',
     '- 모든 사실 뒤에 출처 인용: (source: <RECORD_ID> §<섹션>). 추측 수치 금지.',
-    '- Claude Code 는 동봉된 서브에이전트 `aidatahub` 를 우선 사용.',
+    '',
+    '폴백 (MCP 가 정말 실패할 때만):',
+    '- WebFetch 류는 금지 (http→https 자동승격으로 무인증서 사내서버 실패).',
+    `- 셸 curl 로 LITERAL http:// : Base \${AIDATAHUB_BASE_URL:-${restBase}} (401 시 X-API-Key: \$AIDATAHUB_API_KEY).`,
+    '- 흐름: 1) GET /api/system/health  2) GET /api/discover  3) POST /api/recommend/agents {"q":...}  4) GET /api/search?mode=semantic  5) GET /api/records/{id}(/sections).',
+    '- Claude Code 는 동봉 서브에이전트 `aidatahub` 가 이 폴백을 알아서 수행.',
   ].join('\n');
   const prompt = [(systemPrompt || '').trim(), restFallback]
     .filter(Boolean).join('\n\n');
@@ -942,7 +941,9 @@ async function installMcpConfig(
     }
     case 'claude_code': {
       const cp = await import('node:child_process');
-      const cmd = `claude mcp add aidatahub --transport http ${mcpUrl}`;
+      // --scope user: cwd/project 스코프는 경로 정확히 일치해야 적용됨
+      // (대소문자/구분자 민감) → 전역(user) 스코프가 안정적.
+      const cmd = `claude mcp add --scope user --transport http aidatahub ${mcpUrl}`;
       // 제어/비정상 바이트 제거 — 비UTF-8 로케일 stderr 가 토스트에서
       // 깨져 보이던 문제 방지.
       const clean = (s: string) =>
@@ -1030,7 +1031,7 @@ async function installMcpConfig(
           : path.join(os.homedir(), '.claude', 'agents', 'aidatahub.md');
         await fs.mkdir(path.dirname(agentPath), { recursive: true });
         await fs.writeFile(agentPath, aidatahubSubagentMd(), 'utf-8');
-        base.hint = `${base.hint} (서브에이전트 배치: ${agentPath} — MCP 미동작 시 REST 우회 사용.)`;
+        base.hint = `${base.hint} (서브에이전트 배치: ${agentPath} — MCP 실패 시 REST 폴백.)`;
       } catch (e) {
         base.hint = `${base.hint} (서브에이전트 배치 실패: ${clean(e instanceof Error ? e.message : String(e))})`;
       }
