@@ -1,0 +1,10 @@
+{
+  "_comment": "smoke run case — Al6061-T6 aluminum alloy",
+  "args": {
+    "material_name": "Al6061-T6",
+    "e_modulus": 69.0,
+    "yield_stress": 276.0
+  },
+  "expected_exit": 0,
+  "expected_stdout_contains": "Al6061-T6"
+}

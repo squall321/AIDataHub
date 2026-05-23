@@ -1,0 +1,11 @@
+{
+  "_comment": "negative case — ultimate_strain < yield strain → exit 2",
+  "args": {
+    "material_name": "BrokenInput",
+    "e_modulus": 200.0,
+    "yield_stress": 2000.0,
+    "ultimate_strain": 0.001
+  },
+  "expected_exit": 2,
+  "expected_stdout_contains": "error"
+}

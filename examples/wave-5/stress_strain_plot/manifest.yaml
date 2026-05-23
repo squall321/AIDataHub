@@ -1,0 +1,68 @@
+name: stress_strain_plot
+title: "응력-변형률 곡선 (bilinear hardening)"
+description: >-
+  재료의 탄성계수 E, 항복 응력, 최대 변형률을 받아 단순 elastic-plastic
+  bilinear hardening stress-strain 곡선을 PNG 로 그린다. 결과 PNG 경로와
+  주요 수치 (yield strain, max stress) 를 JSON 으로 반환.
+
+script: stress_strain_plot.py
+runtime: python
+python_version: "3.11"
+
+args:
+  - name: material_name
+    type: string
+    required: true
+    description: "표시할 재료 이름 (예: SUS304, Al6061-T6)"
+  - name: e_modulus
+    type: number
+    required: true
+    description: "탄성계수 (GPa). 강철 ≈ 200, 알루미늄 ≈ 70."
+  - name: yield_stress
+    type: number
+    required: true
+    description: "항복 응력 (MPa). SUS304 ≈ 215, Al6061-T6 ≈ 276."
+  - name: ultimate_strain
+    type: number
+    default: 0.20
+    description: "최대 변형률 (0~1, default 0.20 = 20%)."
+  - name: out_path
+    type: string
+    default: "/work/out.png"
+    description: "출력 PNG 경로. 컨테이너 내부 /work/ 만 쓰기 가능 — 호스트에 복귀."
+
+timeout_sec: 30
+args_style: long_flags
+env_allowlist:
+  - LANG
+  - LC_ALL
+
+return:
+  format: json
+
+platform_capability:
+  net: false
+  gpu: false
+
+resource_limits:
+  cpu_percent: 200
+  ram_gib: 1
+  disk_gib: 1
+
+# wave-5 의 매력 — 도구 출력을 자동으로 records 에 적재.
+# 이 도구는 시뮬레이션 결과이므로 data_type=SIM.
+# title_template 의 {args.X} placeholder 는 호출 인자, {parsed.Y} 는 stdout JSON 파싱 결과.
+persist_output:
+  enabled: true
+  data_type: SIM
+  team: HE
+  group: CAE
+  title_template: "Stress-Strain — {args.material_name} (E={args.e_modulus}GPa, σy={args.yield_stress}MPa)"
+  tags:
+    - stress-strain
+    - material
+    - plot
+    - bilinear-hardening
+  summary_template: >-
+    {args.material_name} 의 elastic-plastic 응력-변형률 곡선. yield strain
+    = {parsed.yield_strain}, max stress = {parsed.max_stress_mpa} MPa.

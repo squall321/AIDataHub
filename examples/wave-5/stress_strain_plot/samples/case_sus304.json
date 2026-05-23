@@ -1,0 +1,13 @@
+{
+  "_comment": "smoke run case — SUS304 austenitic stainless steel typical values",
+  "args": {
+    "material_name": "SUS304",
+    "e_modulus": 200.0,
+    "yield_stress": 215.0,
+    "ultimate_strain": 0.40,
+    "out_path": "/work/sus304.png"
+  },
+  "expected_exit": 0,
+  "expected_stdout_contains": "SUS304",
+  "expected_parsed_keys": ["out_path", "yield_strain", "max_stress_mpa"]
+}
