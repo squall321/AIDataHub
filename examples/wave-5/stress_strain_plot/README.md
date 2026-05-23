@@ -32,7 +32,8 @@ stress_strain_plot/
 ## 3. 로컬 테스트 (서버 업로드 전 확인)
 
 ```bash
-# venv 또는 conda 안에서
+# Python 3.12 venv (서버 default 동일)
+python3.12 -m venv /tmp/aidh-venv && source /tmp/aidh-venv/bin/activate
 pip install -r requirements.txt
 mkdir -p /tmp/work
 python stress_strain_plot.py \

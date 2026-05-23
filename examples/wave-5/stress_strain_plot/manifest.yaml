@@ -7,7 +7,7 @@ description: >-
 
 script: stress_strain_plot.py
 runtime: python
-python_version: "3.11"
+python_version: "3.12"
 
 args:
   - name: material_name
@@ -66,3 +66,30 @@ persist_output:
   summary_template: >-
     {args.material_name} 의 elastic-plastic 응력-변형률 곡선. yield strain
     = {parsed.yield_strain}, max stress = {parsed.max_stress_mpa} MPa.
+  # 같은 (재료/E/σy/ε_u) 조합의 호출은 새 record 만들지 않고 updated_at 만 갱신.
+  # 동일 곡선 100번 호출해도 records 1행만 유지 → 폭주 방지.
+  dedup_key: "{args.material_name}_{args.e_modulus}_{args.yield_stress}_{args.ultimate_strain}"
+
+# LLM 라우팅 보조 — recommend_agents 가 이 도구를 적합 후보로 떠올릴 단서.
+llm_hints:
+  when_to_use: >-
+    사용자가 재료의 stress-strain 곡선 / σ-ε 그래프 / 응력-변형률 곡선을
+    요청할 때. 단순 elastic-plastic bilinear hardening 가정 시.
+  not_for: >-
+    유한요소 해석 (FEM), 동적/충돌 하중, 다축 응력 상태, 점성·온도
+    의존 거동, 실험 데이터 fitting — 이 도구는 단순 분석적 모델만 그린다.
+  example_calls:
+    - natural_language: "SUS304 의 stress-strain 곡선 그려줘. yield 215."
+      args:
+        material_name: "SUS304"
+        e_modulus: 200.0
+        yield_stress: 215.0
+    - natural_language: "Al6061-T6 응력-변형률 그래프 만들어줘. E 69 GPa, σy 276 MPa, 30% strain 까지."
+      args:
+        material_name: "Al6061-T6"
+        e_modulus: 69.0
+        yield_stress: 276.0
+        ultimate_strain: 0.30
+  output_description: >-
+    PNG 파일 경로 (out_path) + JSON 메타 (yield_strain, max_stress_mpa).
+    persist_output 로 SIM 레코드에 자동 적재되어 추후 시맨틱 검색 노출.

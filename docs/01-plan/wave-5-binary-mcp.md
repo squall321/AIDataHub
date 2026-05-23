@@ -38,7 +38,8 @@
 ```
 1. unzip + sha256 → 캐시 hit 검사
 2. platform_detect — file/magic/shebang
-3. dep_analyze — ldd / requirements.txt / package.json
+3. dep_analyze — ldd / requirements.txt / package.json / .csproj — runtime 별
+   default 버전: Python 3.12, Node 20, JDK 17, .NET 8 (매니페스트 미지정 시)
 4. runtime_decide — python / node / jar / dotnet / linux_native / wine
 5. def_gen — Apptainer .def 자동 작성 (base image + apt + COPY)
 6. apptainer build — fakeroot 모드, /var/lib/aidatahub/sif/<sha>.sif
@@ -189,7 +190,189 @@ tool 호출 → stdout 캡쳐 → 매니페스트 persist_output.enabled?
 
 ---
 
-## 5. 완료 정의 (DoD)
+## 5. Pre-flight Validation (build 전 빠른 거절)
+
+비용 비싼 apptainer build 진입 전, 1~2초 안에 끝나는 정적 검사로 명백히
+잘못된 업로드를 차단한다. 모두 단일 트랜잭션 안에서 수행.
+
+| 검사 | 차단 조건 | 에러 코드 |
+|---|---|---|
+| 매니페스트 JSON Schema | required 필드 누락, type 불일치, name regex 위반 | `INVALID_MANIFEST` |
+| Name conflict | 이미 등록된 name + 동일 sha (idempotent re-upload OK / 다른 sha 면 version bump 의도로 통과) | `NAME_TAKEN` (sha 동일) |
+| Reserved name | wave-4 도구 (`echo_args`, `fetch_rerank_model`) 또는 built-in (`discover`, `agent_search` 등) 이름 | `RESERVED_NAME` |
+| Sample 형식 | `args` 키가 매니페스트 `args` 와 매핑 가능한지, `expected_exit` 가 정수인지 | `INVALID_SAMPLE` |
+| Architecture 일치 | 매니페스트 `runtime=binary` 인데 ELF 가 아님, `runtime=wine` 인데 PE32 아님 | `ARCH_MISMATCH` |
+| Sample 최소 1개 | smoke 검증 불가 | `NO_SAMPLES` |
+| Zip 크기 상한 | 100MB (sif 본체는 별도 — 이건 소스 zip) | `BUNDLE_TOO_LARGE` |
+| Uploader 식별 | metadata.uploader 누락 (감사 추적 불가) | `MISSING_UPLOADER` |
+
+거절 시 즉시 400 응답 + 에러 코드 + 사람이 읽을 진단 메시지. 빌드 큐에 안 들어감.
+
+## 6. persist_output 템플릿 엔진
+
+`title_template` / `summary_template` / `body_template` 에서 사용 가능한 placeholder:
+
+| 형식 | 의미 | 예시 |
+|---|---|---|
+| `{tool_name}` | 매니페스트 name | `stress_strain_plot` |
+| `{tool_version}` | 등록 버전 | `2` |
+| `{timestamp}` | 호출 UTC ISO | `2026-05-23T14:23:10Z` |
+| `{request_id}` | MCP 호출 트레이스 ID | `f4a8c2...` |
+| `{uploader}` | 도구 등록자 식별자 | `alice@example.com` |
+| `{args.X}` | 호출 인자 X 의 값 | `{args.material_name}` → `SUS304` |
+| `{parsed.Y}` | stdout JSON parse 후 Y 키 (return.format=json 일 때만) | `{parsed.yield_strain}` → `0.001075` |
+| `{exit_code}` | 자식 exit code | `0` |
+
+**Escaping**:
+- placeholder 가 아닌 `{` `}` 는 `{{` `}}` 로 escape
+- 평가 실패 (키 부재 등) 시 placeholder 를 빈 문자열로 치환하고 audit_log 에 warning
+
+**적재 실패 처리** (중요):
+- tool 호출 자체는 stdout 반환에 성공했지만 records INSERT 가 실패한 경우 (디스크 풀, embedder 다운 등) → **tool 호출 응답은 유지** (LLM 에게 정상 반환), 응답에 `persist_failed: true` + reason 만 추가
+- 다음 호출 시 자동 재시도 안 함 (멱등성 깨짐 방지)
+- 운영자는 `mcp_uploads_history` 의 `persist_failures` 카운터로 추적
+
+**Dedup (옵션)**:
+
+```yaml
+persist_output:
+  dedup_key: "{args.material_name}_{args.e_modulus}_{args.yield_stress}"
+```
+
+같은 dedup_key 의 호출은 신규 record 대신 기존 record 의 `updated_at` 만 갱신.
+같은 입력으로 100번 호출해도 records 1행만 — 폭주 방지.
+
+## 7. Tool lifecycle (deprecation / rollback)
+
+| API | 동작 |
+|---|---|
+| `POST /api/mcp_tools/{name}/deprecate` | FastMCP 에서 tool 제거 (list_tools 응답에서 사라짐). sif/manifest 보존. `mcp_uploads.deprecated_at` 갱신 |
+| `POST /api/mcp_tools/{name}/restore` | deprecated 도구 재활성 (FastMCP 재등록) |
+| `POST /api/mcp_tools/{name}/rollback?to_version=N` | 이전 version 의 sif 로 swap. archived_versions 에서 N 의 sha + sif 찾아 활성. 현재 버전은 archived 로 이동 |
+| `DELETE /api/mcp_tools/{name}` | 완전 삭제 — sif 파일 삭제 + history 행 보존 (감사). undo 불가. 관리자 토큰 + 확인 phrase 필수 |
+
+**자동 비활성 트리거** (Phase 1 끝나고 별 단계):
+- 24h 동안 호출 실패율 50% 초과 → 자동 deprecate + 운영자 알림
+- smoke 회귀 실패 (월간 정기 재실행) → 자동 deprecate
+
+## 8. Sample 합성 fallback (선택)
+
+사용자가 samples 미제공 OR 1개만 제공 시:
+
+- **옵션 A — 거절**: smoke 검증 불가 → upload 거부. default.
+- **옵션 B — LLM 합성**: 매니페스트 `auto_synth_samples: true` + 도구 description + args 스키마로 LLM 이 sample 3~5개 생성. 첫 호출 sample 은 일반적 케이스, 마지막은 edge case (null/0/큰값 등). 위험: LLM 환각 가능 → smoke 통과율 떨어짐. 옵션-인 only.
+- **옵션 C — 사용자 도구 호출**: 업로드 zip 에 `synth_samples.sh` 같이 포함 → 빌드 후 컨테이너 안에서 sample 생성 → smoke 검증. 도구가 self-test 가능한 경우만.
+
+기본은 옵션 A. wave-5 Phase 1 은 옵션 A 만 구현.
+
+## 9. Cold start 추정 (runtime 별)
+
+sif 캐시 hit + apptainer 컨테이너 cold-start 기준:
+
+| Runtime | Cold start (sif warm) | 첫 호출 latency 추가 요인 |
+|---|---|---|
+| Python 3.12 (no native deps) | 200~400ms | python interpreter 시작 |
+| Python (numpy/pandas/matplotlib) | 500~1000ms | C extension 로드 |
+| Python (torch/cuda 적재) | 2~5s | CUDA 컨텍스트 초기화 |
+| Node 20 | 150~300ms | V8 워밍 |
+| Java 17 (small jar) | 800ms~1.5s | JVM 시작 + JIT 워밍 |
+| .NET 8 self-contained | 200~500ms | runtime 동적 로드 |
+| Linux native ELF (static) | 50~150ms | apptainer 컨테이너 셋업만 |
+| Wine (vcrun2019 부착) | 800ms~2s | Wine prefix + DLL 로드 |
+
+LLM 호출 1회 (RAG + tool call) 가 보통 2~10s 이므로 위 추가 latency 는 5~20% 오버헤드. 운영상 허용 범위.
+
+## 10. Agent ↔ Tool 연결 정책
+
+업로드된 wave-5 도구의 노출 범위 결정:
+
+| 매니페스트 필드 | 동작 |
+|---|---|
+| (기본 — 미지정) | 모든 agent 에 노출. `recommend_agents` 가 도구 사용 가능성 평가 시 자동 포함 |
+| `restrict_agents: [agent_type, ...]` | 지정된 agent 만 호출 가능. 다른 agent context 에서는 list_tools 응답에서 숨김 |
+| `require_agent_tag: [tag, ...]` | agent 의 `common_tags` 가 모든 태그 포함 시만 노출 |
+
+**recommend_agents 의 tool-aware ranking** (Phase 1 추가):
+- 자연어 쿼리 임베딩과 도구 description 임베딩 cosine 유사도 계산
+- 상위 K 도구를 `recommend_agents` 응답의 `relevant_tools` 필드로 동봉
+- LLM 이 agent 선택 후 직접 도구 호출 가능
+
+## 11. Build worker 격리
+
+API 프로세스가 직접 `apptainer build` 를 호출하면 — 분 단위 IO/CPU 점유 → API 응답 지연. 별 worker 로 분리.
+
+| 컴포넌트 | 책임 |
+|---|---|
+| API 프로세스 (uvicorn) | upload 받기, pre-flight 검증, 큐에 job INSERT, job 조회 |
+| `aidh-builder.service` (systemd unit, 별 프로세스) | 큐 폴링, apptainer build 실행, smoke run, FastMCP 에 신호 (HUP 또는 SIGUSR1) → API 가 재등록 |
+| 큐 구현 | PostgreSQL `SELECT FOR UPDATE SKIP LOCKED` 패턴 (간단, 추가 의존성 없음). 또는 LISTEN/NOTIFY |
+| 동시성 | worker 인스턴스 N개 (default 2), 각각 1 빌드씩. `AIDH_BUILD_CONCURRENCY` env 로 조정 |
+
+apptainer build 자체가 `--fakeroot` (MXWhitePaper 패턴 — 운영 정책상 setuid 없음). build 디렉토리는 worker 의 `$XDG_RUNTIME_DIR/aidh-build-<sha>/`, 완료 후 cleanup.
+
+## 12. Migration / Coexistence — wave-4 vs wave-5
+
+| 카테고리 | 디렉토리 | 권한원 | 등록 방식 | 보안 |
+|---|---|---|---|---|
+| **wave-4 (운영자 작성)** | `mcp_scripts/` (git 관리) | git PR 머지 | 부팅 시 자동 scan | 6종 게이트 + 호스트 직접 실행 |
+| **wave-5 (외부 업로드)** | `mcp_uploads/_uploads/<sha>/` (runtime 생성) | HTTP 업로드 + uploader 식별 | upload 완료 후 동적 add_tool | 6종 + Apptainer 컨테이너 강제 + cgroup |
+
+**공존 규칙**:
+- list_tools 응답에 양쪽 다 노출, **name 충돌 시 wave-4 우선** (reserved name 검사로 사전 차단)
+- 운영자가 wave-5 업로드를 wave-4 로 승격하고 싶으면: sif 안의 스크립트 추출 → `mcp_scripts/` 에 .sh + .mcp.yaml 작성 → PR
+- 반대 방향 (wave-4 → wave-5) 은 의미 없음 (이미 git 관리되는 도구를 굳이 컨테이너화 X)
+
+## 13. 에러 메시지 카탈로그
+
+빌드/실행 실패 시 사용자가 받는 진단 메시지의 표준 양식. 한국어 + 액션 제안 한 줄.
+
+| 코드 | 의미 | 사용자 액션 |
+|---|---|---|
+| `LDD_MISSING_LIB` | 동적 의존 lib 검출 실패 (예: libcudnn8) | `dep_hint: [libcudnn8-dev]` 매니페스트에 추가, 또는 custom.def 업로드 |
+| `APT_INSTALL_FAIL` | def 의 apt-get install 실패 (패키지명 오류, repo 미설정) | 패키지명 확인 또는 폐쇄망 mirror 설정 점검 |
+| `WINE_MISSING_DLL` | Wine 실행 시 DLL 없음 | `winetricks: [vcrun2019]` 추가, 또는 .NET self-contained 로 재빌드 권장 |
+| `WINE_GUI_REQUIRED` | Wine 도구가 DirectX/GUI 사용 시도 | wave-5 비대상 — 콘솔 전용 도구로 리빌드 |
+| `SMOKE_EXIT_MISMATCH` | sample.expected_exit 와 실 exit 불일치 | sample 수정 또는 도구 로직 점검 |
+| `SMOKE_STDOUT_MISSING` | sample.expected_stdout_contains 가 stdout 에 없음 | 출력 형식 변경 여부 확인 |
+| `BUILD_TIMEOUT` | apptainer build 가 30분 초과 | 큰 의존성은 base image 재선정, 또는 custom.def 로 단순화 |
+| `BUILD_DISK_FULL` | sif 캐시 quota 초과 | 운영자 알림 — LRU evict 자동 실행되지만 대형 도구는 매뉴얼 정리 |
+| `OOM_KILL` | smoke 중 RAM 초과 | `resource_limits.ram_gib` 상향 또는 도구 메모리 최적화 |
+| `NETWORK_REQUIRED` | 도구가 외부 호출 시도 (--net=none) | `platform_capability.net: true` 명시 — 단 보안 감사 대상 |
+
+모든 에러 응답에 `code`, `message_ko`, `suggested_action`, `build_log_tail` (마지막 50줄) 포함.
+
+## 14. 수락 테스트 (목표 수치)
+
+Phase 1 통과 기준:
+
+| 항목 | 목표 |
+|---|---|
+| 업로드~등록 latency (Python 경량) | < 60s (cache miss) / < 2s (cache hit) |
+| 업로드~등록 latency (.NET self-contained) | < 90s |
+| 업로드~등록 latency (Wine + winetricks) | < 5분 |
+| Smoke 통과율 (등급 A 도구 = Python/.NET/Java/static ELF) | 90% 이상 |
+| Smoke 통과율 (등급 B = dynamic ELF, .NET Framework wine) | 70% 이상 |
+| 도구 호출 cold start (sif warm) | < 1s (Python/Node), < 2s (Java) |
+| sif 캐시 hit rate (동일 sha 재업로드) | 99%+ (cache 즉시 응답) |
+| 동시 빌드 처리량 | 2 builds parallel default, 큐 대기 |
+| persist_output INSERT 성공률 | 99%+ (디스크/embedder 정상 시) |
+
+## 15. 글로사리 (비전공 사용자용)
+
+| 용어 | 1줄 설명 |
+|---|---|
+| MCP (Model Context Protocol) | LLM 이 외부 도구를 표준 방식으로 호출하는 프로토콜 (Anthropic 표준) |
+| Apptainer | HPC 친화 컨테이너 런타임. Docker 와 유사하나 root 권한 없이도 동작 |
+| sif | Singularity/Apptainer 의 컨테이너 이미지 파일 (단일 파일) |
+| def | Apptainer 컨테이너 정의 파일 (base image + 설치 명령 등) |
+| Wine | Windows 응용 프로그램을 Linux 에서 실행하는 호환성 레이어 (LGPL) |
+| ldd | Linux 실행 파일이 의존하는 동적 라이브러리 목록을 출력 |
+| RRF (Reciprocal Rank Fusion) | 여러 랭킹 결과를 결합하는 알고리즘 (wave-2 의 하이브리드 검색) |
+| persist_output | wave-5 의 옵션. 도구 호출 결과를 자동으로 records 에 적재 |
+| smoke run | 등록 직전 실제 호출 가능 여부 빠르게 점검하는 단계 |
+| version bump | 같은 도구 name 의 새 빌드 업로드 시 version 자동 +1 |
+
+## 16. 완료 정의 (DoD)
 
 **Phase 1** 가 다음을 만족할 때 완료:
 

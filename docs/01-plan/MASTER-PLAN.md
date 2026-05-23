@@ -1,8 +1,19 @@
 # AI Data Hub — 검색·MCP 종합 보강 마스터 플랜
 
-작성일: 2026-05-23
-범위: 검색 품질 / MCP 완성도 / 운영 가시성 / 외부 도구 자동 MCP 등록 (wave-1 ~ wave-5)
+작성일: 2026-05-23 (rev 2 — wave-6 추가, Python 3.12 default 명시)
+범위: 검색 품질 / MCP 완성도 / 운영 가시성 / 외부 도구 자동 MCP 등록 (wave-5) / MCP federation (wave-6)
 가이드: 메모리 규칙 (dev PC install 금지, 드라이버 자동설치 금지) 준수. 모든 단계는 user-space 또는 타겟 서버 운영자 작업.
+
+**Runtime defaults (wave-5 컨테이너 base 선정 기준)**:
+
+| Runtime | Default 버전 | 비고 |
+|---|---|---|
+| Python | **3.12** | numpy/pandas/matplotlib 등 주요 라이브러리 모두 지원, 안정 |
+| Node | **20** (LTS) | npm 10+ |
+| JDK | **17** (LTS) | jar 실행 |
+| .NET | **8** (LTS) | self-contained 직접 실행 |
+
+사용자가 매니페스트에 명시하지 않으면 위 default 적용. 다른 버전이 필요하면 명시.
 
 ---
 
@@ -18,7 +29,8 @@
 | 4.1 | Extension 클라이언트 확장 (Continue / RooCode / Windsurf) | DONE | `b3ba3da` | ext 0.16.0 |
 | 4.2 | fetch_rerank_model wave-4 예제 도구 (HF prefetch) | DONE | `b3ba3da` | api 0.3.0 |
 | **5** | **CLI binary → MCP tool 자동 등록 (4 phase)** | **PLAN** | (미진행) | api 0.4.0 예정 |
-| (deferred) | C-4 인증/Origin 가드 | 보류 | — | — |
+| **6** | **MCP Federation / Proxy (외부 FastMCP 서버 통합 4 phase)** | **PLAN** | (미진행) | api 0.5.0 예정 |
+| (deferred) | C-4 인증/Origin 가드 (wave-6 P4 와 연계) | 보류 | — | — |
 
 ---
 
@@ -136,6 +148,27 @@ stress-strain 곡선 plot 도구를 예로:
 
 ---
 
+## 4.5. Wave-6 — MCP Federation / Proxy (요약)
+
+상세: `docs/01-plan/wave-6-mcp-federation.md`
+
+**한 줄 요약**: AIDataHub 가 다수의 외부 FastMCP 서버를 단일 진입점으로 프록시. 사용자는 AIDataHub 1개만 등록하면 사내 5~10개 MCP 서버의 모든 도구를 통합 사용.
+
+**4 Phase 분할**
+
+| Phase | 범위 |
+|---|---|
+| P1 핵심 proxy | HTTP transport / namespace (`alias__tool`) / `mcp_upstreams` + `mcp_proxy_calls` 테이블 / audit |
+| P2 stdio + 다중 + 헬스체크 | subprocess MCP / 자동 비활성 + 복구 / 5~10 upstream 안정 |
+| P3 Admin UI | dashboard 신규 탭 — upstream 추가/제거/모니터 |
+| P4 RBAC + Rate limit | per-client 도구 권한 + per-upstream 한도 + C-4 인증 연계 |
+
+**Wave-5 와 결합 시너지** — HQ AIDataHub 가 wave-5 로 등록한 도구를 지점 AIDataHub 가 wave-6 으로 자동 발견. 사실상 MCP-as-a-Service.
+
+**진행 순서 권장**: wave-5 P1 + wave-6 P1 **병행** (파일 충돌 없음, 둘 다 백엔드 트랙).
+
+---
+
 ## 5. 보류 항목 (C-4 인증/Origin 가드)
 
 | 사유 | 사용자 명시: "보안 게이트 빼고 다 만들자" |
@@ -163,11 +196,15 @@ stress-strain 곡선 plot 도구를 예로:
 | `AIDH_BUILD_TIMEOUT_SEC` | wave-5 P1 | 빌드 timeout (default 1800) |
 | `AIDH_SIF_CACHE_QUOTA_GB` | wave-5 P1 | sif 캐시 총량 상한 (default 100) |
 | `AIDH_WINE_CACHE_DIR` | wave-5 P1 | winetricks pre-cache 마운트 경로 |
+| `AIDH_UPSTREAM_CONFIG` | wave-6 P1 | upstream MCP 매니페스트 yaml 경로 (default `config/upstream_mcps.yaml`) |
+| `AIDH_UPSTREAM_PING_SEC` | wave-6 P1 | 헬스체크 주기 (default 60s) |
+| `AIDH_UPSTREAM_CONN_POOL` | wave-6 P1 | upstream 당 connection pool 상한 (default 4) |
+| `ANALYTICS_MCP_TOKEN` 등 | wave-6 운영 | upstream 별 인증 토큰 (env_var 명은 매니페스트가 지정) |
 
 ---
 
 ## 7. 다음 액션 (사용자 신호 대기)
 
-- [ ] `/pdca plan wave-5-binary-mcp` 진입 → `docs/01-plan/wave-5-binary-mcp.md` 정착
-- [ ] wave-5 P1 → P4 순차. P1 만 백엔드라 단독 가치 큼.
-- [ ] (선택) Wave-6 인증/Origin 게이트 — wave-5 P1 통과 후
+- [ ] wave-5 P1 (도구 업로드 백엔드) + wave-6 P1 (federation 백엔드) **병행** — 파일 충돌 없음
+- [ ] wave-5 / wave-6 의 P2~P4 는 P1 통과 후 순차
+- [ ] (보류) C-4 인증/Origin 가드 — wave-6 P4 의 RBAC 와 연계해서 처리
