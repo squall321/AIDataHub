@@ -1,0 +1,40 @@
+# Wave-6 P1 — MCP federation upstream 매니페스트 예시.
+#
+# 사용:
+#   export AIDH_UPSTREAM_CONFIG=/path/to/upstream_mcps.yaml
+# 또는 admin API (POST /api/mcp/upstreams) 로 DB 에 등록.
+#
+# alias 는 ^[a-z][a-z0-9_]{2,30}$ 를 따른다.
+# 실토큰은 DB 가 아닌 환경변수 (env_var) 로만 전달한다.
+
+upstreams:
+  # ─── HTTP + bearer 토큰 (사내 분석팀 MCP) ──────────────────────────
+  - alias: analytics
+    transport: http
+    url: http://analytics-mcp.internal:8002/mcp/
+    auth:
+      type: bearer
+      env_var: ANALYTICS_MCP_TOKEN          # 실토큰은 .env 에서 export
+    description_prefix: "[분석] "           # 노출 도구 설명 앞에 prefix
+    tls_verify: true
+    enabled: true
+    rate_limit_per_min: 100
+
+  # ─── stdio (npx 외부 MCP) — Phase 2 reserve, 현재는 register skip ─
+  # - alias: slack
+  #   transport: stdio
+  #   command: npx
+  #   command_args: ["-y", "@modelcontextprotocol/server-slack"]
+  #   env_passthrough: [SLACK_BOT_TOKEN]
+  #   enabled: true
+
+  # ─── HTTPS + TLS verify on (HQ AIDataHub 인스턴스 federation) ────
+  - alias: hq
+    transport: http
+    url: https://aidh-hq.example.com/mcp/
+    auth:
+      type: bearer
+      env_var: HQ_AIDH_TOKEN
+    tls_verify: true                        # 운영 모드는 강제 true 권장
+    enabled: false                          # 셋업 검증 후 enable
+    rate_limit_per_min: 60

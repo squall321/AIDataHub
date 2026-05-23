@@ -750,12 +750,115 @@ class OrgGroup(Base):
         return f"<OrgGroup team={self.team_code!r} code={self.code!r}>"
 
 
+# ---------------------------------------------------------------------------
+# Wave-5 — CLI binary 업로드 → MCP tool 동적 등록 (alembic 0021)
+# ---------------------------------------------------------------------------
+class MCPUpload(Base):
+    """업로드된 도구의 현재(최신) 상태."""
+
+    __tablename__ = "mcp_uploads"
+
+    name: Mapped[str] = mapped_column(Text, primary_key=True)
+    current_sha: Mapped[str] = mapped_column(String(64), nullable=False)
+    current_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    manifest: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    capabilities: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    archived_versions: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    registered_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    registered_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    deprecated_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+
+
+class MCPUploadHistory(Base):
+    """업로드 시도별 감사 기록 (성공/실패 모두)."""
+
+    __tablename__ = "mcp_uploads_history"
+    __table_args__ = (
+        Index("idx_mcp_uploads_history_name", "name", "version"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    sha: Mapped[str] = mapped_column(String(64), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    uploaded_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    uploaded_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    smoke_result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    build_log_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sif_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    registered: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    archived_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# Wave-6 — MCP federation / upstream proxy (alembic 0023)
+# ---------------------------------------------------------------------------
+class MCPUpstream(Base):
+    """외부 FastMCP 서버 등록 — wave-6 가 부팅 시 로드해서 namespace tool 등록."""
+
+    __tablename__ = "mcp_upstreams"
+
+    alias: Mapped[str] = mapped_column(Text, primary_key=True)
+    transport: Mapped[str] = mapped_column(String(20), nullable=False)  # http | stdio
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    command: Mapped[str | None] = mapped_column(Text, nullable=True)
+    command_args: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    auth: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # {type, env_var}
+    description_prefix: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    tls_verify: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    rate_limit_per_min: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("100"))
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_health_check_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    last_health_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    last_tool_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class MCPProxyCall(Base):
+    """federation dispatch 호출별 감사 로그."""
+
+    __tablename__ = "mcp_proxy_calls"
+    __table_args__ = (
+        Index("idx_proxy_calls_alias_ts", "upstream_alias", "ts"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    caller: Mapped[str | None] = mapped_column(Text, nullable=True)
+    upstream_alias: Mapped[str] = mapped_column(Text, nullable=False)
+    raw_tool_name: Mapped[str] = mapped_column(Text, nullable=False)
+    exposed_tool_name: Mapped[str] = mapped_column(Text, nullable=False)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    client_ip: Mapped[str | None] = mapped_column(Text, nullable=True)
+    request_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 __all__ = [
     "Agent",
     "AgentRecord",
     "ApiKey",
     "AuditLog",
     "DocType",
+    "MCPProxyCall",
+    "MCPUpload",
+    "MCPUploadHistory",
+    "MCPUpstream",
     "OrgGroup",
     "OrgTeam",
     "Record",

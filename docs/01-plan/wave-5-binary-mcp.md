@@ -205,6 +205,23 @@ tool 호출 → stdout 캡쳐 → 매니페스트 persist_output.enabled?
 | Sample 최소 1개 | smoke 검증 불가 | `NO_SAMPLES` |
 | Zip 크기 상한 | 100MB (sif 본체는 별도 — 이건 소스 zip) | `BUNDLE_TOO_LARGE` |
 | Uploader 식별 | metadata.uploader 누락 (감사 추적 불가) | `MISSING_UPLOADER` |
+| **GUI import 검출** | `tkinter`, `PyQt5/6`, `PySide2/6`, `wxPython`, `kivy` import 감지 | `RUNTIME_GUI_REQUIRED` |
+| **Interactive input 검출** | `input(`, `getpass.getpass`, `click.prompt` 호출 감지 | `INTERACTIVE_INPUT_FORBIDDEN` |
+| **외부 프로그램 호출** | `webbrowser.open`, `xdg-open`, `os.startfile` 패턴 | `EXTERNAL_OPEN_FORBIDDEN` |
+
+**GUI 자동 보정** (matplotlib 한정):
+- `matplotlib.use(` 미명시 + `plt.show()` 감지 시 → 빌드 시 `MPLBACKEND=Agg` env 자동 주입 + `env_allowlist` 에 자동 추가
+- `plt.show()` 패턴 → 경고만, 거절은 안 함 (헤드리스에선 no-op)
+
+**Xvfb opt-in** (자동화 GUI 만):
+```yaml
+platform_capability:
+  virtual_display: true     # xvfb-run 자동 wrap
+```
+- Apptainer def 에 `apt install xvfb` + `%runscript exec xvfb-run -a {script}`
+- selenium/PyAutoGUI 등 자동화 GUI 도구 한정. 일반 GUI 거절 유지.
+
+**LLM 친화 진단**: 거절 시 응답에 **해결 예시 코드 snippet** 포함 — "argparse + `matplotlib.use('Agg')` + `savefig` 로 리팩토링하세요. 예: `examples/wave-5/stress_strain_plot/`".
 
 거절 시 즉시 400 응답 + 에러 코드 + 사람이 읽을 진단 메시지. 빌드 큐에 안 들어감.
 

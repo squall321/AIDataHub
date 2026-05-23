@@ -140,13 +140,35 @@ persist_output:
 ### 나쁜 예 (LLM 이 자주 빠지는 함정)
 
 ```yaml
-name: stress-strain-plot        # ❌ dash 사용 — snake_case 위반
-description: "그래프"            # ❌ 너무 짧음 — LLM 라우팅 시 의미 못 잡음
-script: ./tool                  # ❌ 경로 모호 — 확장자 + 디렉토리 명확히
+name: stress-strain-plot        # 안 됨 — dash 사용, snake_case 위반
+description: "그래프"            # 안 됨 — 너무 짧음, LLM 라우팅 의미 못 잡음
+script: ./tool                  # 안 됨 — 경로 모호, 확장자 + 디렉토리 명확히
 args:
-  - {name: M, type: string}     # ❌ 단일 문자 이름, description 없음
+  - {name: M, type: string}     # 안 됨 — 단일 문자 이름, description 없음
 return:
-  format: json                  # ❌ 도구가 실제로는 text 반환 — 매니페스트 거짓 정보
+  format: json                  # 안 됨 — 도구가 실제로는 text 반환, 거짓 정보
+```
+
+### GUI 코드 거절 (자동 정적 분석)
+
+| 코드 패턴 | 동작 | 권장 대안 |
+|---|---|---|
+| `import tkinter` / `PyQt5/6` / `PySide2/6` / `wxPython` / `kivy` | 자동 거절 (`RUNTIME_GUI_REQUIRED`) | argparse 기반 CLI 로 리팩토링 |
+| `input(`, `getpass.getpass`, `click.prompt` | 자동 거절 (`INTERACTIVE_INPUT_FORBIDDEN`) | 모든 입력을 argv 로 받기 |
+| `webbrowser.open`, `os.startfile`, `xdg-open` | 자동 거절 (`EXTERNAL_OPEN_FORBIDDEN`) | 파일 경로만 반환, 열기는 caller 책임 |
+| `plt.show()` (matplotlib) | 경고 + 자동 보정 (`MPLBACKEND=Agg` 강제) | `matplotlib.use("Agg")` + `savefig()` 사용 |
+| 자동화 도구 (selenium 헤드리스 안 됨, PyAutoGUI 등) | opt-in 가능 — `platform_capability.virtual_display: true` | xvfb-run 자동 wrap |
+
+**좋은 패턴 (stress_strain_plot 표준)**:
+```python
+import argparse, matplotlib
+matplotlib.use("Agg")            # 헤드리스 필수
+import matplotlib.pyplot as plt
+p = argparse.ArgumentParser(); p.add_argument("--out", required=True)
+args = p.parse_args()
+fig, ax = plt.subplots(); ax.plot([1,2,3], [1,4,9])
+fig.savefig(args.out)            # show() 아닌 savefig
+plt.close(fig)
 ```
 
 ---

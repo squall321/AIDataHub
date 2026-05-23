@@ -43,6 +43,16 @@ from . import (
     taxonomy,
 )
 
+# Wave-5 P1 / Wave-6 P1 — 신규 라우터. 모듈이 아직 없으면 silent skip.
+try:
+    from . import mcp_tools as _mcp_tools  # type: ignore[attr-defined]
+except Exception:  # pragma: no cover
+    _mcp_tools = None  # type: ignore[assignment]
+try:
+    from . import mcp_upstreams as _mcp_upstreams  # type: ignore[attr-defined]
+except Exception:  # pragma: no cover
+    _mcp_upstreams = None  # type: ignore[assignment]
+
 
 def register_routers(app: FastAPI) -> None:
     """모든 API 라우터 / 미들웨어 / 핸들러를 FastAPI 앱에 등록.
@@ -106,6 +116,12 @@ def register_routers(app: FastAPI) -> None:
         app.include_router(metrics.router)
     # /api/metrics/mcp — JSONL tail 분석 (Prometheus 와 무관) — 항상 활성.
     app.include_router(metrics.mcp_router)
+    # Wave-5 P1 — /api/mcp_tools/* (도구 업로드)
+    if _mcp_tools is not None and hasattr(_mcp_tools, "router"):
+        app.include_router(_mcp_tools.router)
+    # Wave-6 P1 — /api/mcp/upstreams/* (federation 관리)
+    if _mcp_upstreams is not None and hasattr(_mcp_upstreams, "router"):
+        app.include_router(_mcp_upstreams.router)
 
     # 그림 바이너리 서빙: /figures/{doc_id}/F001.png
     settings.figures_dir.mkdir(parents=True, exist_ok=True)
