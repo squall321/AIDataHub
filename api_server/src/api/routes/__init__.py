@@ -104,6 +104,8 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(discover.router)
     if settings.enable_metrics:
         app.include_router(metrics.router)
+    # /api/metrics/mcp — JSONL tail 분석 (Prometheus 와 무관) — 항상 활성.
+    app.include_router(metrics.mcp_router)
 
     # 그림 바이너리 서빙: /figures/{doc_id}/F001.png
     settings.figures_dir.mkdir(parents=True, exist_ok=True)

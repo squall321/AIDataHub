@@ -62,34 +62,104 @@ def _flatten_sections(
 ) -> list[dict[str, Any]]:
     """중첩된 sections (children 트리) 를 평탄 리스트로 펼친다.
 
-    각 항목은 ``id``/``level``/``title``/``content_text``/``figure_refs``/``table_refs``
-    키를 가진다. 동일 ``section_id`` 가 여러 번 나오면 첫 등장만 보존(고유 제약).
+    각 항목 키: ``section_id``/``level``/``title``/``content_text``/
+    ``figure_refs``/``table_refs``/``section_path``. 동일 ``section_id`` 가
+    여러 번 나오면 첫 등장만 보존(고유 제약).
+
+    ``section_path`` 는 ``A > B > C`` 형식의 부모 제목 체인 (재귀 깊이 순).
+    인용 맥락 표시용 — search 응답에서 그대로 노출.
+
+    env ``AIDH_CHUNK_WINDOW=on`` 일 때 ``content_text`` 가 ``AIDH_CHUNK_MAX_CHARS``
+    (기본 2000) 를 넘으면 ``AIDH_CHUNK_WIN_CHARS`` (기본 1000) 윈도우 +
+    ``AIDH_CHUNK_OVERLAP`` (기본 256) overlap 로 sub-chunk 분할.
+    sub-chunk 의 ``section_id`` 는 ``{parent}#{idx:02d}`` (예: 4.2#00),
+    ``parent_section_id`` = 원본 sid, ``chunk_index`` = 0-based.
     """
+    import os as _os
+
+    chunk_on = (_os.environ.get("AIDH_CHUNK_WINDOW") or "").lower() in ("on", "1", "true", "yes")
+    try:
+        chunk_max = int(_os.environ.get("AIDH_CHUNK_MAX_CHARS", "2000"))
+        chunk_win = int(_os.environ.get("AIDH_CHUNK_WIN_CHARS", "1000"))
+        chunk_overlap = int(_os.environ.get("AIDH_CHUNK_OVERLAP", "256"))
+    except ValueError:
+        chunk_max, chunk_win, chunk_overlap = 2000, 1000, 256
+
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
 
-    def walk(node: dict[str, Any], depth: int) -> None:
+    def _split(text: str) -> list[str]:
+        """단순 char-window 분할. 토큰화 의존성 없이 안정 동작.
+
+        문장/단락 경계 우선이 이상적이지만, 의존성 단순화를 위해 char-window 로.
+        win=1000, overlap=256 = 보통 256~300 token / 64~80 token overlap 에 근사.
+        """
+        if len(text) <= chunk_max:
+            return [text]
+        if chunk_win <= chunk_overlap or chunk_win <= 0:
+            return [text]
+        step = chunk_win - chunk_overlap
+        windows: list[str] = []
+        i = 0
+        while i < len(text):
+            windows.append(text[i : i + chunk_win])
+            i += step
+        return windows
+
+    def walk(node: dict[str, Any], depth: int, path: list[str]) -> None:
         if not isinstance(node, dict):
             return
         level = int(node.get("level", depth) or depth)
         sid = str(node.get("id", ""))
+        title = str(node.get("title", ""))
+        next_path = path + [title] if title else path
         if level <= max_level and sid and sid not in seen:
             seen.add(sid)
-            out.append(
-                {
-                    "section_id": sid,
-                    "level": level,
-                    "title": str(node.get("title", "")),
-                    "content_text": _blocks_to_text(node.get("blocks") or []),
-                    "figure_refs": list(node.get("figure_refs") or []),
-                    "table_refs": list(node.get("table_refs") or []),
-                }
-            )
+            content = _blocks_to_text(node.get("blocks") or [])
+            section_path = " > ".join(p for p in path if p) or None
+            figs = list(node.get("figure_refs") or [])
+            tabs = list(node.get("table_refs") or [])
+
+            if chunk_on and content and len(content) > chunk_max:
+                # sub-chunk 분할. 부모 자체는 메타데이터만 (content_text 비움).
+                chunks = _split(content)
+                for idx, chunk in enumerate(chunks):
+                    sub_sid = f"{sid}#{idx:02d}"
+                    if sub_sid in seen:
+                        continue
+                    seen.add(sub_sid)
+                    out.append(
+                        {
+                            "section_id": sub_sid,
+                            "level": level,
+                            "title": title,
+                            "content_text": chunk,
+                            "figure_refs": figs if idx == 0 else [],
+                            "table_refs": tabs if idx == 0 else [],
+                            "section_path": section_path,
+                            "parent_section_id": sid,
+                            "chunk_index": idx,
+                        }
+                    )
+            else:
+                out.append(
+                    {
+                        "section_id": sid,
+                        "level": level,
+                        "title": title,
+                        "content_text": content,
+                        "figure_refs": figs,
+                        "table_refs": tabs,
+                        "section_path": section_path,
+                        "parent_section_id": None,
+                        "chunk_index": None,
+                    }
+                )
         for child in node.get("children") or []:
-            walk(child, depth + 1)
+            walk(child, depth + 1, next_path)
 
     for top in sections:
-        walk(top, 1)
+        walk(top, 1, [])
     return out
 
 
@@ -448,6 +518,9 @@ async def _resync_sections(
                 content_text=row["content_text"],
                 figure_refs=row["figure_refs"],
                 table_refs=row["table_refs"],
+                section_path=row.get("section_path"),
+                parent_section_id=row.get("parent_section_id"),
+                chunk_index=row.get("chunk_index"),
             )
         )
     await session.flush()

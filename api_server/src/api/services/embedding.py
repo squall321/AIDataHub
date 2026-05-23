@@ -268,14 +268,31 @@ class SentenceTransformerEmbedder(Embedder):
         return v.astype("float32").tolist()
 
     def encode_many(self, texts: Sequence[str]) -> list[list[float]]:
-        # 배치 처리로 추론 비용 대폭 감소 (CPU 8core, batch=32 시 ~6ms/record)
+        # 배치 처리로 추론 비용 대폭 감소.
+        # CPU 8core, batch=32 시 ~6ms/record. GPU(예: A4000) 면 batch=128~256 안전.
+        # ``AIDH_EMBED_BATCH`` env 로 동적 조정. 미지정 시 CUDA 가용 여부로 자동 선택.
         wrapped = [self._wrap(t, is_query=False) for t in texts]
         if not wrapped:
             return []
+        batch_env = os.environ.get("AIDH_EMBED_BATCH")
+        if batch_env:
+            try:
+                batch_size = max(1, int(batch_env))
+            except ValueError:
+                batch_size = 32
+        else:
+            # 자동 결정 — torch 가 import 되어 있고 CUDA available 이면 128.
+            batch_size = 32
+            try:
+                import torch  # type: ignore[import-not-found]
+                if torch.cuda.is_available():
+                    batch_size = 128
+            except Exception:
+                pass
         vecs = self._model.encode(
             wrapped,
             normalize_embeddings=True,
-            batch_size=32,
+            batch_size=batch_size,
             show_progress_bar=False,
         )
         return [v.astype("float32").tolist() for v in vecs]

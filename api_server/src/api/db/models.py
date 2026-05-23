@@ -300,6 +300,15 @@ class RecordSection(Base):
         ARRAY(Text), nullable=False, server_default="{}"
     )
 
+    # ---- Section path + Chunk window (Migration 0019/0020) --------------
+    # section_path: 인용 맥락용 부모 섹션 제목 체인 (예: "1. 개요 > 1.2 범위").
+    #   None 허용 — 기존 적재된 행은 NULL 로 남고, 재적재 시 채워진다.
+    # parent_section_id / chunk_index: 큰 섹션을 슬라이딩 윈도우로 sub-chunk
+    #   분할할 때 부모 section_id 와 0-based index. None = 분할되지 않은 원본.
+    section_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    parent_section_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    chunk_index: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+
     # ---- Embedding (Migration 0004) -------------------------------------
     # PG: vector(384). SQLite (test): TEXT (conftest 가 compile 오버라이드).
     # pgvector 미설치 환경: JSON 컬럼 폴백 (list[float] 직렬화).

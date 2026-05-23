@@ -105,6 +105,9 @@ async def fts_search(
             RecordSection.section_id.label("section_id"),
             RecordSection.title.label("section_title"),
             RecordSection.content_text.label("content_text"),
+            RecordSection.section_path.label("section_path"),
+            RecordSection.figure_refs.label("figure_refs"),
+            RecordSection.table_refs.label("table_refs"),
         )
         .join(RecordSection, RecordSection.record_id == Record.id)
         .where(fts_match(RecordSection.content_text, q, session))
@@ -127,17 +130,25 @@ async def fts_search(
         if key in seen:
             continue
         seen.add(key)
-        items.append(
-            {
-                "record_id": row.record_id,
-                "title": row.title,
-                "data_type": row.data_type,
-                "section_id": row.section_id,
-                "section_title": row.section_title,
-                "snippet": _make_snippet(row.content_text or "", q),
-                "tags": list(row.tags or []),
-            }
-        )
+        entry: dict = {
+            "record_id": row.record_id,
+            "title": row.title,
+            "data_type": row.data_type,
+            "section_id": row.section_id,
+            "section_title": row.section_title,
+            "snippet": _make_snippet(row.content_text or "", q),
+            "tags": list(row.tags or []),
+        }
+        sp = getattr(row, "section_path", None)
+        if sp:
+            entry["section_path"] = sp
+        figs = list(getattr(row, "figure_refs", None) or [])
+        if figs:
+            entry["figure_refs"] = figs
+        tabs = list(getattr(row, "table_refs", None) or [])
+        if tabs:
+            entry["table_refs"] = tabs
+        items.append(entry)
     for rec in record_rows:
         key = (rec.id, None)
         if key in seen:
@@ -257,6 +268,9 @@ async def semantic_search(
                 RecordSection.record_id.label("record_id"),
                 RecordSection.title.label("section_title"),
                 RecordSection.content_text.label("content_text"),
+                RecordSection.section_path.label("section_path"),
+                RecordSection.figure_refs.label("figure_refs"),
+                RecordSection.table_refs.label("table_refs"),
                 Record.title.label("title"),
                 Record.data_type.label("data_type"),
                 Record.tags.label("tags"),
@@ -275,18 +289,27 @@ async def semantic_search(
         for row in rows:
             d = float(row.distance) if row.distance is not None else 2.0
             sim = max(0.0, 1.0 - d / 2.0)
-            results.append(
-                {
-                    "record_id": row.record_id,
-                    "section_id": row.section_id,
-                    "title": row.title,
-                    "section_title": row.section_title,
-                    "data_type": row.data_type,
-                    "snippet": (row.content_text or "")[:200],
-                    "score": round(sim, 4),
-                    "tags": list(row.tags or []),
-                }
-            )
+            entry: dict = {
+                "record_id": row.record_id,
+                "section_id": row.section_id,
+                "title": row.title,
+                "section_title": row.section_title,
+                "data_type": row.data_type,
+                "snippet": (row.content_text or "")[:200],
+                "score": round(sim, 4),
+                "tags": list(row.tags or []),
+            }
+            # 선택적 필드 — 빈 값이면 키 생략해 payload 슬림 유지.
+            sp = getattr(row, "section_path", None)
+            if sp:
+                entry["section_path"] = sp
+            figs = list(getattr(row, "figure_refs", None) or [])
+            if figs:
+                entry["figure_refs"] = figs
+            tabs = list(getattr(row, "table_refs", None) or [])
+            if tabs:
+                entry["table_refs"] = tabs
+            results.append(entry)
         if rerank:
             results = _apply_rerank(results)
         return results
@@ -333,18 +356,26 @@ async def semantic_search(
     scored.sort(key=lambda t: t[0], reverse=True)
     out: list[dict] = []
     for score, sec, rec in scored[:fetch_k]:
-        out.append(
-            {
-                "record_id": rec.id,
-                "section_id": sec.section_id,
-                "title": rec.title,
-                "section_title": sec.title,
-                "data_type": rec.data_type,
-                "snippet": (sec.content_text or "")[:200],
-                "score": round(score, 4),
-                "tags": list(rec.tags or []),
-            }
-        )
+        entry: dict = {
+            "record_id": rec.id,
+            "section_id": sec.section_id,
+            "title": rec.title,
+            "section_title": sec.title,
+            "data_type": rec.data_type,
+            "snippet": (sec.content_text or "")[:200],
+            "score": round(score, 4),
+            "tags": list(rec.tags or []),
+        }
+        sp = getattr(sec, "section_path", None)
+        if sp:
+            entry["section_path"] = sp
+        figs = list(getattr(sec, "figure_refs", None) or [])
+        if figs:
+            entry["figure_refs"] = figs
+        tabs = list(getattr(sec, "table_refs", None) or [])
+        if tabs:
+            entry["table_refs"] = tabs
+        out.append(entry)
     if rerank:
         out = _apply_rerank(out)
     return out
@@ -479,11 +510,110 @@ def _score(priority: int, hits: int) -> float:
     return round(min(score, 1.0), 3)
 
 
+# ---------------------------------------------------------------------------
+# Hybrid search (Reciprocal Rank Fusion)
+# ---------------------------------------------------------------------------
+async def hybrid_search(
+    session: AsyncSession,
+    q: str,
+    *,
+    top_k: int = 10,
+    data_types: Sequence[str] | None = None,
+    record_ids: Sequence[str] | None = None,
+    rrf_k: int = 60,
+    fetch_multiplier: int = 3,
+) -> list[dict]:
+    """semantic + fts 결과를 Reciprocal Rank Fusion 으로 결합.
+
+    동작:
+        1. ``semantic_search`` 와 ``fts_search`` 를 각각 ``top_k * fetch_multiplier``
+           만큼 호출.
+        2. 각 결과의 rank 로 RRF score 계산: ``score = sum(1 / (rrf_k + rank_i))``.
+           rrf_k 기본 60 (TREC 권장 default — Cormack et al., 2009).
+        3. 합산 score 내림차순으로 정렬 후 top_k 반환.
+
+    응답 schema 는 semantic_search 와 동일하되 추가로:
+        - ``score``: RRF 점수 (0..1 cosine 이 아님, 0.01~0.05 범위가 일반적)
+        - ``score_semantic``: 원 semantic score (있을 때만)
+        - ``score_fts_rank``: FTS 결과 내 rank (1-based, 있을 때만)
+
+    설계 노트:
+        - FTS 는 score 없이 rank 만 의미가 있으므로 RRF 가 자연스러운 결합.
+        - 중복 키는 (record_id, section_id) — section 없는 fts 결과 (Record-level
+          매칭) 는 (record_id, None) 으로 별개 hit 으로 취급.
+    """
+    if not (q or "").strip():
+        return []
+
+    fetch_k = max(top_k * fetch_multiplier, top_k)
+    rrf_k = max(1, int(rrf_k))
+
+    # 1) semantic 결과 가져오기
+    sem_hits = await semantic_search(
+        session,
+        q,
+        top_k=fetch_k,
+        data_types=data_types,
+        record_ids=record_ids,
+    )
+
+    # 2) FTS 결과 가져오기 (record_ids/data_types 필터는 후처리)
+    fts_items, _ = await fts_search(session, q, limit=fetch_k)
+    rid_set = set(record_ids) if record_ids else None
+    dt_set = set(data_types) if data_types else None
+    if rid_set is not None:
+        fts_items = [it for it in fts_items if it.get("record_id") in rid_set]
+    if dt_set is not None:
+        fts_items = [it for it in fts_items if it.get("data_type") in dt_set]
+
+    # 3) RRF 합산
+    fused: dict[tuple[str, str | None], dict] = {}
+
+    def _key(item: dict) -> tuple[str, str | None]:
+        return (item.get("record_id") or "", item.get("section_id"))
+
+    for rank, item in enumerate(sem_hits, start=1):
+        k = _key(item)
+        entry = fused.setdefault(k, dict(item))
+        entry["score_semantic"] = float(item.get("score") or 0.0)
+        entry["rrf_score"] = entry.get("rrf_score", 0.0) + 1.0 / (rrf_k + rank)
+
+    for rank, item in enumerate(fts_items, start=1):
+        k = _key(item)
+        entry = fused.setdefault(k, dict(item))
+        entry["score_fts_rank"] = rank
+        entry["rrf_score"] = entry.get("rrf_score", 0.0) + 1.0 / (rrf_k + rank)
+
+    # 4) 정렬 + 응답 정규화
+    fused_list = list(fused.values())
+    fused_list.sort(key=lambda x: x.get("rrf_score", 0.0), reverse=True)
+
+    out: list[dict] = []
+    # rerank 입력은 자르기 전 후보를 넉넉히 (top_k * 2) 넘겨야 의미 있음.
+    rerank_in_k = min(len(fused_list), max(top_k, top_k * 2))
+    for item in fused_list[:rerank_in_k]:
+        rrf = round(float(item.pop("rrf_score", 0.0)), 6)
+        item["score"] = rrf  # 통일된 score 필드 (semantic 응답과 호환)
+        out.append(item)
+
+    # 5) 선택적 cross-encoder rerank — env AIDH_RERANK_PROVIDER 활성 시만.
+    try:
+        from .rerank import maybe_rerank
+        out = maybe_rerank(q, out, top_k=top_k)
+    except Exception:  # pragma: no cover — rerank 실패가 검색을 막아선 안 됨
+        out = out[:top_k]
+    else:
+        # rerank 가 no-op 이었으면 (provider off) 입력 길이를 보존했을 수 있음 → top_k.
+        out = out[:top_k]
+    return out
+
+
 __all__ = [
     "array_contains_all",
     "array_overlap_compat",
     "data_for_agent",
     "fts_search",
+    "hybrid_search",
     "semantic_search",
     "tag_search",
 ]

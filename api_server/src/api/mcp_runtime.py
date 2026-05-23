@@ -30,12 +30,16 @@ Tool 목록:
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
 from .db.base import SessionLocal
+
+
+# JSON Schema enum 으로 노출되어 클라이언트(Claude/Cline) 자동완성 + 오타 차단.
+SearchMode = Literal["semantic", "fts", "tag", "hybrid"]
 
 
 _INSTRUCTIONS = """\
@@ -126,10 +130,44 @@ async def list_agents() -> list[dict[str, Any]]:
     ),
 )
 async def recommend_agents(q: str, top_k: int = 5) -> dict[str, Any]:
+    """자연어 → ranked agents. 0건일 때는 catalog 전체에서 후보 + sample_queries 를
+    함께 반환해 LLM 이 사용자에게 재질의할 단서가 되도록 한다.
+    """
+    from sqlalchemy import select
+    from .db.models import Agent
     from .services import recommend_svc
+
     async with SessionLocal() as session:
         agents = await recommend_svc.recommend_agents(session, query=q, top_k=top_k)
-        return {"query": q, "agents": agents}
+        if agents:
+            return {"query": q, "agents": agents, "fallback": False}
+
+        # 0건 폴백 — 전체 agent 의 메타 + sample_queries 상위 일부.
+        rows = (
+            await session.execute(select(Agent).order_by(Agent.agent_type))
+        ).scalars().all()
+        catalog = [
+            {
+                "agent_type": a.agent_type,
+                "name": a.name,
+                "description": (a.description or "")[:200],
+                "common_tags": list(a.common_tags or []),
+                "data_types": list(a.data_types or []),
+                "sample_queries": list((a.sample_queries or []))[:3],
+            }
+            for a in rows
+        ]
+        return {
+            "query": q,
+            "agents": [],
+            "fallback": True,
+            "hint": (
+                "No matching agents for the query. Ask the user to clarify "
+                "intent, or pick a candidate from `catalog` below whose "
+                "`sample_queries` resemble the user's need."
+            ),
+            "catalog": catalog,
+        }
 
 
 # ===========================================================================
@@ -201,13 +239,15 @@ async def get_agent_session(agent_type: str) -> dict[str, Any]:
         "PRIMARY SEARCH TOOL. Searches within the agent's records and automatically applies "
         "its retrieval_config: top_k, score_threshold, data_type_filter, tag_boost. "
         "Returns hits with a 'refused' flag when scores are below refuse_below_score. "
-        "mode: 'semantic' (default, vector cosine) | 'fts' (keyword) | 'tag' (exact tags, q=comma-separated tags)"
+        "mode: 'semantic' (default, vector cosine) | 'fts' (keyword tsvector) | "
+        "'hybrid' (semantic + fts via Reciprocal Rank Fusion — most robust) | "
+        "'tag' (exact tags, q=comma-separated tags)"
     ),
 )
 async def agent_search(
     agent_type: str,
     q: str,
-    mode: str = "semantic",
+    mode: SearchMode = "semantic",
 ) -> dict[str, Any]:
     """Agent retrieval_config 를 자동 적용하는 agent-scoped 검색.
 
@@ -304,6 +344,27 @@ async def agent_search(
                 scope_set = set(scope_record_ids)
                 raw = [r for r in raw if r["record_id"] in scope_set]
             hits = raw[:top_k]
+
+        elif mode == "hybrid":
+            # semantic + fts RRF 결합 — 패러프레이즈와 정확 키워드 모두 강함.
+            # tag_boost / score_threshold 는 RRF 후 파이썬에서 적용.
+            raw_hits = await search_svc.hybrid_search(
+                session,
+                q,
+                top_k=max(top_k, top_k * 2),  # 후필터 위해 여유
+                data_types=data_type_filter or None,
+                record_ids=scope_record_ids,
+            )
+            # tag_boost 가산 + min_score 필터
+            if tag_boost:
+                for h in raw_hits:
+                    delta = sum(tag_boost.get(t, 0.0) for t in h.get("tags") or [])
+                    if delta:
+                        h["score"] = round(min(1.0, (h.get("score") or 0.0) + delta), 6)
+                raw_hits.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+            if score_threshold is not None:
+                raw_hits = [h for h in raw_hits if (h.get("score") or 0.0) >= score_threshold]
+            hits = raw_hits[:top_k]
 
         else:  # semantic (default)
             # tag_boost / score_threshold 는 search_svc.semantic_search 의
@@ -408,6 +469,50 @@ async def semantic_search(
                 )
 
         return await search_svc.semantic_search(
+            session,
+            q,
+            top_k=top_k,
+            data_types=data_types or None,
+            record_ids=record_ids or None,
+        )
+
+
+@mcp.tool(
+    title="Hybrid search (semantic + FTS via RRF)",
+    description=(
+        "Combines semantic vector search and full-text keyword search using "
+        "Reciprocal Rank Fusion (RRF, k=60). Most robust for queries that mix "
+        "concepts and exact terms (e.g. acronyms, model codes, paraphrased intent). "
+        "Optionally scoped to a specific agent's records."
+    ),
+)
+async def hybrid_search(
+    q: str,
+    top_k: int = 10,
+    data_types: list[str] | None = None,
+    agent_type: str | None = None,
+) -> list[dict[str, Any]]:
+    from sqlalchemy import select
+    from .db.models import Record
+    from .services import search_svc
+
+    async with SessionLocal() as session:
+        record_ids: list[str] | None = None
+        if agent_type:
+            try:
+                from sqlalchemy import literal
+                id_stmt = select(Record.id).where(
+                    literal(agent_type) == Record.agents.any_()  # type: ignore[attr-defined]
+                )
+                record_ids = list((await session.execute(id_stmt)).scalars().all())
+            except Exception:
+                from .services.sql_compat import array_overlap
+                pred = array_overlap(Record.agents, [agent_type], session)
+                record_ids = list(
+                    (await session.execute(select(Record.id).where(pred.where_clause)))
+                    .scalars().all()
+                )
+        return await search_svc.hybrid_search(
             session,
             q,
             top_k=top_k,
@@ -546,22 +651,55 @@ async def get_record(record_id: str) -> dict[str, Any]:
 @mcp.tool(
     title="Get RAG section chunks for a record",
     description=(
-        "Returns the sectioned (chunked) body of a record, suitable for RAG. "
-        "Each section has section_id, level, title, content_text. "
-        "Call this after search to get the full text of a relevant section."
+        "Returns sectioned (chunked) body of a record, suitable for RAG. "
+        "PREFER passing `sections` (list of section_ids from a search hit) to "
+        "fetch only what you cite — keeps token cost low. Omit `sections` to "
+        "get the first `limit` sections (default 10). Each section returns "
+        "section_id, level, title, content_text."
     ),
 )
-async def get_record_sections(record_id: str, limit: int = 50) -> list[dict[str, Any]]:
+async def get_record_sections(
+    record_id: str,
+    sections: list[str] | None = None,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    """선택적 부분 조회.
+
+    - ``sections`` 지정 → 해당 section_id 만 반환 (순서는 입력 순서 유지).
+    - ``sections`` 미지정 → 처음 ``limit`` 섹션 (id 오름차순).
+    """
     from sqlalchemy import select
     from .db.models import RecordSection
 
     async with SessionLocal() as session:
+        if sections:
+            # 입력 순서 보존을 위해 id 정렬 대신 매핑 후 재정렬.
+            stmt = (
+                select(RecordSection)
+                .where(RecordSection.record_id == record_id)
+                .where(RecordSection.section_id.in_(list(sections)))
+            )
+            rows = (await session.execute(stmt)).scalars().all()
+            by_id: dict[str, Any] = {s.section_id: s for s in rows}
+            ordered = [by_id[sid] for sid in sections if sid in by_id]
+            return [
+                {
+                    "section_id": s.section_id,
+                    "level": s.level,
+                    "title": s.title,
+                    "content_text": s.content_text or "",
+                }
+                for s in ordered
+            ]
+
+        # 부분 미지정 — 처음 limit 섹션
+        limit_safe = max(1, min(int(limit), 50))
         secs = (
             await session.execute(
                 select(RecordSection)
                 .where(RecordSection.record_id == record_id)
                 .order_by(RecordSection.id.asc())
-                .limit(limit)
+                .limit(limit_safe)
             )
         ).scalars().all()
         return [
@@ -617,6 +755,72 @@ async def get_context_bundle(
 # ===========================================================================
 # Resources
 # ===========================================================================
+
+# ===========================================================================
+# Prompts — Claude Desktop "/" 메뉴 / Cline 슬래시에서 자주 쓰는 워크플로 노출
+# ===========================================================================
+
+@mcp.prompt(
+    name="aidh-onboard",
+    title="AI Data Hub 사용법 안내",
+    description="AI Data Hub MCP 사용 흐름을 LLM 에게 한 번에 설명한다.",
+)
+async def prompt_onboard() -> str:
+    """allow LLM to self-onboard with the hub's tool surface."""
+    return (
+        "You are connecting to the Mobile eXperience AI Data Hub (MCP server `aidatahub`).\n"
+        "Use these tools in order:\n"
+        "  1) discover() — see catalog totals + data_types + agents.\n"
+        "  2) recommend_agents(q='<user intent>') — get top agents. If `fallback`\n"
+        "     is true in the result, read `catalog` and ask the user to clarify.\n"
+        "  3) get_agent_session(agent_type=...) — adopt the returned `system_prompt`\n"
+        "     as your persona for the rest of the session.\n"
+        "  4) agent_search(agent_type, q, mode='hybrid') — primary search. Use\n"
+        "     mode='hybrid' for most queries (semantic + FTS via RRF). Fall back\n"
+        "     to mode='fts' for exact part numbers / model codes only.\n"
+        "  5) get_record_sections(record_id, sections=[...]) — pull only the\n"
+        "     specific section_ids you need to keep token cost low.\n"
+        "Cite every factual claim as `(source: <RECORD_ID> §<section_id>)`."
+    )
+
+
+@mcp.prompt(
+    name="aidh-find",
+    title="질의로 적합 에이전트 + 검색 한 번에",
+    description="자연어 질의를 받아 recommend_agents → agent_search 흐름 가이드를 생성.",
+)
+async def prompt_find(q: str) -> str:
+    """Compose a one-shot workflow guide for a given user query."""
+    return (
+        f"User question: \"{q}\"\n\n"
+        "Plan:\n"
+        f"  1) Call recommend_agents(q='{q}'). If `fallback`=true, ask the user\n"
+        "     to clarify using one of the `sample_queries` in `catalog`.\n"
+        "  2) Pick the top agent_type, then call get_agent_session(agent_type).\n"
+        "  3) Adopt the returned `system_prompt` as your persona.\n"
+        f"  4) Call agent_search(agent_type, q='{q}', mode='hybrid'). If the\n"
+        "     result has `refused`=true, return `refusal_message` verbatim.\n"
+        "  5) For each promising hit, call get_record_sections(record_id,\n"
+        "     sections=[<section_id>]) — only the sections you cite.\n"
+        "  6) Answer in ≤3 sentences with `(source: <id> §<section_id>)` citations."
+    )
+
+
+@mcp.prompt(
+    name="aidh-cite",
+    title="허브 인용 규약 리마인더",
+    description="record id 형식 + 인용 형식을 LLM 에게 다시 강조.",
+)
+async def prompt_cite() -> str:
+    return (
+        "Cite every factual claim using this exact format:\n"
+        "  (source: <RECORD_ID> §<section_id>)\n"
+        "Where RECORD_ID = {DATA_TYPE}-{TEAM}-{GROUP}-{YEAR}-{SEQ:010d}\n"
+        "  e.g. (source: DOC-HE-CAE-2026-0000000001 §4.2)\n"
+        "If no source exists in the hub for a claim, say \"허브에 근거 없음\" instead\n"
+        "of guessing numbers. Never fabricate record ids."
+    )
+
 
 @mcp.resource(
     "aidh://llm-guide",

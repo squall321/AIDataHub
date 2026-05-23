@@ -143,7 +143,11 @@ app.mount(
 # lifespan 은 위의 통합 lifespan() 에서 처리한다.
 # ---------------------------------------------------------------------------
 if _MCP_AVAILABLE and _mcp_app is not None:
-    app.mount("/mcp", _mcp_app, name="mcp")
+    # MCP 호출(JSON-RPC over streamable HTTP) 의 tool name + latency 를 JSONL 로
+    # 기록하는 ASGI 미들웨어. env AIDH_MCP_LOG=0 으로 비활성.
+    from .middleware.mcp_logging import MCPLoggingASGI
+    _mcp_logged = MCPLoggingASGI(_mcp_app)
+    app.mount("/mcp", _mcp_logged, name="mcp")
 
 
 @app.get("/", tags=["system"])
