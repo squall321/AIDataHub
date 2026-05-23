@@ -853,6 +853,33 @@ async def discover_resource() -> str:
     return json.dumps(d, ensure_ascii=False, indent=2)
 
 
+# ===========================================================================
+# 동적 셸스크립트 도구 등록 (사이드카 매니페스트 패턴 — mcp_scripts.py)
+# AIDH_MCP_SCRIPTS=off 면 비활성. AIDH_MCP_SCRIPTS_DIR 로 디렉토리 override.
+# 기본 위치: <repo>/api_server/mcp_scripts/ — 매니페스트가 없으면 no-op.
+# ===========================================================================
+try:
+    from pathlib import Path as _Path
+    from .mcp_scripts import register_all_scripts
+    _scripts_dir = _Path(
+        os.environ.get("AIDH_MCP_SCRIPTS_DIR")
+        or (_Path(__file__).resolve().parent.parent.parent / "mcp_scripts")
+    )
+    _registered_scripts = register_all_scripts(mcp, _scripts_dir)
+    if _registered_scripts:
+        import logging as _logging
+        _logging.getLogger(__name__).info(
+            "mcp_scripts: %d tool(s) registered: %s",
+            len(_registered_scripts),
+            ", ".join(_registered_scripts),
+        )
+except Exception:  # pragma: no cover — 동적 등록 실패가 서버를 막아선 안 됨
+    import logging as _logging
+    _logging.getLogger(__name__).exception(
+        "mcp_scripts: registration failed (continuing without script tools)"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public ASGI app
 # ---------------------------------------------------------------------------

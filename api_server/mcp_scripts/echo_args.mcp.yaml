@@ -1,0 +1,27 @@
+name: echo_args
+title: "Echo arguments (mcp_scripts demo)"
+description: |
+  Sample MCP tool that echoes its arguments to stdout. Useful as a sanity
+  check that mcp_scripts dynamic registration works end-to-end. Returns
+  {ok, exit_code, stdout, stderr}.
+script: ./echo_args.sh
+args:
+  - name: message
+    type: string
+    required: true
+    description: "에코할 문자열."
+  - name: repeat
+    type: integer
+    default: 1
+    description: "반복 횟수 (1 이상)."
+  - name: upper
+    type: boolean
+    default: false
+    description: "true 면 결과를 대문자로 변환."
+timeout_sec: 5
+args_style: long_flags
+env_allowlist:
+  - LANG
+  - LC_ALL
+return:
+  format: text
