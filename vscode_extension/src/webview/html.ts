@@ -503,7 +503,7 @@ function clientScript(): string {
       contextJson: null,    // string | null
       busy: null,           // 'recommend' | 'prompt' | 'md' | 'json' | null
       // v0.11.0 — MCP client selector
-      mcpClient: 'cline',   // cline | claude_desktop | claude_code | cursor | copilot | gemini
+      mcpClient: 'cline',   // cline | cline_sr | roo_code | continue | windsurf | claude_desktop | claude_code | cursor | copilot | gemini | codex
       // v0.12.0 — MCP auto-install state
       mcpInstalling: false,
       mcpInstallResult: null,  // { ok, action, configPath, shellCommand, error, hint } | null
@@ -3239,6 +3239,9 @@ function clientScript(): string {
       [
         ['cline', 'Cline (VSCode)'],
         ['cline_sr', 'Cline SR (VSCode)'],
+        ['roo_code', 'Roo Code (VSCode)'],
+        ['continue', 'Continue.dev (VSCode/JetBrains)'],
+        ['windsurf', 'Windsurf (Codeium IDE)'],
         ['claude_desktop', 'Claude Desktop'],
         ['claude_code', 'Claude Code (CLI)'],
         ['cursor', 'Cursor'],
@@ -3416,6 +3419,31 @@ function clientScript(): string {
         location: '~/.codex/config.toml (자동설치가 [mcp_servers.aidatahub] 블록 작성)',
         body: '[mcp_servers.aidatahub]\\nurl = "' + url + '"',
         note: 'Codex CLI 재시작 후 새 세션부터 도구 인식. system_prompt 는 AGENTS.md 에 주입됨.',
+      };
+    }
+    if (client === 'continue') {
+      // Continue.dev v1.x — config.yaml
+      var bodyContinue = 'mcpServers:\\n  aidatahub:\\n    type: http\\n    url: ' + url + '\\n';
+      return {
+        location: '~/.continue/config.yaml (자동설치가 mcpServers.aidatahub 블록 머지)',
+        body: bodyContinue,
+        note: 'Continue (VSCode/JetBrains) 재시작 후 새 도구 자동 발견. 기존 mcpServers 가 있으면 충돌 시 수동 머지 필요.',
+      };
+    }
+    if (client === 'roo_code') {
+      var cfgR = { mcpServers: { aidatahub: { url: url } } };
+      return {
+        location: '~/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json (자동설치)',
+        body: JSON.stringify(cfgR, null, 2),
+        note: 'Roo Code 패널을 한 번 열어 새 도구 일람을 확인하세요. Cline 포크라 구조 동일.',
+      };
+    }
+    if (client === 'windsurf') {
+      var cfgW = { mcpServers: { aidatahub: { url: url } } };
+      return {
+        location: '~/.codeium/windsurf/mcp_config.json (자동설치)',
+        body: JSON.stringify(cfgW, null, 2),
+        note: 'Windsurf 를 재시작하거나 Settings → MCP 패널을 새로고침하세요. system_prompt 는 .windsurfrules 에 주입됨.',
       };
     }
     // Cline / Claude Desktop / Cursor — 모두 동일 mcpServers 구조

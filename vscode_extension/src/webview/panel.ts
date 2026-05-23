@@ -1062,6 +1062,77 @@ async function installMcpConfig(
         promptPath: prompt ? 'Gemini CLI: 표준 system_prompt 저장 위치가 없습니다 — 세션 시작 시 수동 복사' : undefined,
       };
     }
+    case 'continue': {
+      // Continue.dev v1.x — ~/.continue/config.yaml
+      const home = os.homedir();
+      const target = path.join(home, '.continue', 'config.yaml');
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      const action = await mergeContinueYaml(target, mcpUrl, fs);
+      const base: McpInstallResult = {
+        client,
+        configPath: target,
+        action,
+        hint: 'Continue (VSCode/JetBrains) 를 재시작하거나 Continue 패널을 다시 열어 새 MCP 도구를 발견하세요. 기존 mcpServers 가 있다면 충돌 시 수동 머지 필요.',
+      };
+      return attachPromptResult(base, async () => {
+        // Continue 는 system_prompt 를 ~/.continue/customSystemMessage 같은 슬롯이 없음.
+        // 가장 가까운 슬롯은 config.yaml 내 ``rules:`` 또는 ``allowAnonymousTelemetry`` 같은
+        // top-level. 자동 주입 경로가 명확하지 않으므로 manual 안내.
+        return { action: 'created', path: 'Continue: 워크스페이스 rules / custom prompts 에 수동 복사 (자동 주입 경로 없음)' };
+      });
+    }
+    case 'roo_code': {
+      // Roo Code — VSCode 확장 RooVeterinaryInc.roo-cline. globalStorage 의 cline_mcp_settings.json.
+      const home = os.homedir();
+      const candidates = [
+        path.join(home, '.config', 'Code', 'User', 'globalStorage', 'rooveterinaryinc.roo-cline', 'settings', 'cline_mcp_settings.json'),
+        path.join(home, 'Library', 'Application Support', 'Code', 'User', 'globalStorage', 'rooveterinaryinc.roo-cline', 'settings', 'cline_mcp_settings.json'),
+        path.join(home, 'AppData', 'Roaming', 'Code', 'User', 'globalStorage', 'rooveterinaryinc.roo-cline', 'settings', 'cline_mcp_settings.json'),
+      ];
+      const target = await pickExistingOrFirst(candidates, fs);
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      const action = await mergeMcpJson(target, 'aidatahub', serverEntry, fs);
+      const base: McpInstallResult = {
+        client,
+        configPath: target,
+        action,
+        hint: 'Roo Code 의 MCP Servers 에 자동 반영. Roo Code 패널을 한 번 열어 새 도구 일람을 확인하세요.',
+      };
+      return attachPromptResult(base, async () => {
+        // Roo Code 는 Cline 포크 — VSCode setting ``roo-cline.customInstructions`` (있다면).
+        const cfg = vscode.workspace.getConfiguration('roo-cline');
+        const cur = String(cfg.get('customInstructions') || '');
+        const merged = mergePromptBlock(cur, prompt, agentType || 'aidatahub');
+        await cfg.update('customInstructions', merged.text, vscode.ConfigurationTarget.Global);
+        return { action: merged.action, path: 'VSCode setting: roo-cline.customInstructions (User)' };
+      });
+    }
+    case 'windsurf': {
+      // Windsurf (Codeium IDE) — ~/.codeium/windsurf/mcp_config.json
+      const home = os.homedir();
+      const target = path.join(home, '.codeium', 'windsurf', 'mcp_config.json');
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      const action = await mergeMcpJson(target, 'aidatahub', serverEntry, fs);
+      const base: McpInstallResult = {
+        client,
+        configPath: target,
+        action,
+        hint: 'Windsurf 를 재시작하거나 Settings → MCP 패널을 새로고침하세요.',
+      };
+      return attachPromptResult(base, async () => {
+        // Windsurf: workspace ``.windsurfrules`` 또는 ``~/.codeium/windsurf/memories/global_rules.md``.
+        const ws = vscode.workspace.workspaceFolders?.[0];
+        const mdPath = ws
+          ? path.join(ws.uri.fsPath, '.windsurfrules')
+          : path.join(os.homedir(), '.codeium', 'windsurf', 'memories', 'global_rules.md');
+        await fs.mkdir(path.dirname(mdPath), { recursive: true });
+        let cur = '';
+        try { cur = await fs.readFile(mdPath, 'utf-8'); } catch { /* new file */ }
+        const merged = mergePromptBlock(cur, prompt, agentType || 'aidatahub');
+        await fs.writeFile(mdPath, merged.text, 'utf-8');
+        return { action: merged.action, path: mdPath };
+      });
+    }
     case 'codex': {
       // OpenAI Codex CLI: ~/.codex/config.toml 의 [mcp_servers.aidatahub] 블록.
       // streamable HTTP 는 url 키로 지정. prompt 는 Codex 가 읽는 AGENTS.md 로.
@@ -1186,6 +1257,69 @@ async function mergeMcpJson(
   await fs.writeFile(filePath, JSON.stringify(existing, null, 2) + '\n', 'utf-8');
   return isNew ? 'created' : 'updated';
 }
+
+/**
+ * Continue.dev v1.x 의 ~/.continue/config.yaml 에 mcpServers.aidatahub 블록을 머지.
+ *
+ * 의존성 없는 narrow YAML 머지: aidatahub 자식 블록만 다룬다. 동작 케이스:
+ *   - 파일 미존재 → fresh write (``mcpServers:\n  aidatahub:\n    type: http\n    url: ...``)
+ *   - ``mcpServers:`` 있고 ``aidatahub:`` 자식 있음 → 자식 블록 replace
+ *   - ``mcpServers:`` 있고 자식 없음 → 첫 자식으로 insert
+ *   - ``mcpServers:`` 없음 → EOF 에 새 top-level block append
+ *
+ * 사용자가 복잡한 들여쓰기 또는 array-of-objects 형태로 mcpServers 를 정의했다면
+ * 정규식 매치가 빗나가 fresh append → 중복 top-level key 가 될 수 있다. 그
+ * 경우 사용자가 수동 머지 필요 (hint 메시지로 안내).
+ */
+async function mergeContinueYaml(
+  filePath: string,
+  mcpUrl: string,
+  fs: typeof import('node:fs/promises'),
+): Promise<'created' | 'updated'> {
+  const aidatahubBlock =
+    '  aidatahub:\n' +
+    '    type: http\n' +
+    '    url: ' + mcpUrl + '\n';
+  const freshFile =
+    '# Continue.dev config — auto-managed mcpServers.aidatahub block by AI Data Hub extension.\n' +
+    'mcpServers:\n' +
+    aidatahubBlock;
+
+  let existing: string;
+  try {
+    existing = await fs.readFile(filePath, 'utf-8');
+  } catch {
+    await fs.writeFile(filePath, freshFile, 'utf-8');
+    return 'created';
+  }
+
+  // mcpServers: top-level key 존재 여부.
+  const hasMcp = /^mcpServers:\s*(?:#.*)?$/m.test(existing);
+  if (!hasMcp) {
+    const sep = existing.length === 0 ? '' : (existing.endsWith('\n') ? '\n' : '\n\n');
+    const next = existing + sep + 'mcpServers:\n' + aidatahubBlock;
+    await fs.writeFile(filePath, next, 'utf-8');
+    return 'updated';
+  }
+
+  // aidatahub 자식 블록 (들여쓰기 2칸, 자식은 4칸 들여쓰기) 정규식.
+  // ``^  aidatahub:\n`` 다음에 ``    .*\n`` 이 연속되는 부분을 잡는다.
+  const childRe = /^ {2}aidatahub:\n(?: {4}.*\n)*/m;
+  if (childRe.test(existing)) {
+    const replaced = existing.replace(childRe, aidatahubBlock);
+    await fs.writeFile(filePath, replaced, 'utf-8');
+    return 'updated';
+  }
+
+  // mcpServers 는 있는데 aidatahub 자식 없음 → 첫 자식으로 삽입.
+  const inserted = existing.replace(
+    /^mcpServers:\s*(?:#.*)?\n/m,
+    (m) => m + aidatahubBlock,
+  );
+  await fs.writeFile(filePath, inserted, 'utf-8');
+  return 'updated';
+}
+
 
 /**
  * 임의 path (예: ``chat.mcp.servers.aidatahub``) 에 entry 를 머지한다.

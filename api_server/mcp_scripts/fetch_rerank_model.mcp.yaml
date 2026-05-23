@@ -1,0 +1,31 @@
+name: fetch_rerank_model
+title: "Cross-encoder rerank 모델 사전 캐시"
+description: |
+  BAAI/bge-reranker-v2-m3 (또는 지정 모델) 을 huggingface_hub 로 로컬 디렉토리에
+  미리 받는다. 외부망 가능 환경에서 1회 호출하면 이후 AIDH_RERANK_PROVIDER=bge_m3
+  설정 시 첫 호출 latency 폭증을 피할 수 있다. 이미 캐시되어 있으면 즉시 반환.
+script: ./fetch_rerank_model.sh
+args:
+  - name: model_id
+    type: string
+    default: "BAAI/bge-reranker-v2-m3"
+    description: "HuggingFace repo id (예: BAAI/bge-reranker-v2-m3)"
+  - name: dest_root
+    type: string
+    default: "/opt/models"
+    description: "모델 캐시 루트. embedding.py 의 _local_or_repo 정책에 맞춰 basename 하위에 저장."
+  - name: force
+    type: boolean
+    default: false
+    description: "이미 캐시된 경우라도 재다운로드."
+timeout_sec: 600
+args_style: long_flags
+env_allowlist:
+  - LANG
+  - LC_ALL
+  - HTTPS_PROXY
+  - HTTP_PROXY
+  - HF_HOME
+  - HUGGINGFACE_HUB_TOKEN
+return:
+  format: json
