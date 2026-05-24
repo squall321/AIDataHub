@@ -379,9 +379,52 @@ Claude: "stress-strain SUS304" 호출
 ```
 
 **다음 단계 (P1.8+)**:
-- attachment URL 을 MCP response 에 자동 동봉 (LLM 이 인용 시 자동 표시)
 - LLM auto-convert (GUI→CLI) 별 엔드포인트
 - 큰 embedding 작업 비동기 worker (현재 동기 — 동시 호출 많을 때 latency 영향 가능)
+
+---
+
+## 5.8 P1.8 — Attachment URL 자동 동봉 (LLM 인용 표시 완성)
+
+P1.6 의 attachment 파일 영구 저장 위에, **MCP response 에 URL 자동 노출** → LLM 이 답변 시 인용·링크 클릭 가능.
+
+**`_persist_record_insert()` 확장**:
+- 저장된 파일별 상대 URL (`/attachments/<rid>/<filename>`) 을 수집
+- `captured.attachment_urls` (capture 단계의 size 초과 fallback) 도 통합 (중복 제거)
+- 반환 dict 에 `attachment_urls: list[str]` 추가
+
+**`_absolutize_url()` + `_to_mcp_content()`**:
+- env `MCP_BASE_URL` (또는 `HOST_URL`) 있으면 `http://aidh.example.com:8001/attachments/...` 로 절대화
+- summary TextContent 에 `attachments: [url1, url2, ...]` 키로 노출
+- 이미지 inline 없어도 attachments 만 있으면 Content list 반환 (단순 summary)
+
+**LLM 가시 응답 예** (Claude Desktop 에 도착):
+```json
+{
+  "ok": true,
+  "persisted": {
+    "record_id": "SIM-HE-CAE-2026-0000000123",
+    "attachment_count": 1,
+    "section_count": 2,
+    "embedded": true
+  },
+  "captured_meta": {"image_count": 1, ...},
+  "attachments": [
+    "http://aidh.example.com:8001/attachments/SIM-HE-CAE-2026-0000000123/sus304.png"
+  ]
+}
+```
+
+→ Claude 가 답변 시 자연스럽게: "결과: [stress-strain plot](http://aidh.example.com:8001/attachments/.../sus304.png) (source: SIM-HE-CAE-2026-0000000123)".
+
+**테스트 (3 추가, 55 PASS / 6 skip)**:
+- `test_to_mcp_content_includes_attachments` — persisted.attachment_urls 가 summary 에 노출
+- `test_to_mcp_content_absolute_url_with_base` — MCP_BASE_URL 환경변수로 URL 절대화
+- `test_to_mcp_content_attachments_only_returns_content_list` — 이미지 inline 없어도 URL 만 있으면 Content list (단순 summary)
+
+**다음 단계 (P1.9+)**:
+- LLM auto-convert (GUI→CLI) 별 엔드포인트
+- 비동기 embedding worker
 
 거절 시 즉시 400 응답 + 에러 코드 + 사람이 읽을 진단 메시지. 빌드 큐에 안 들어감.
 

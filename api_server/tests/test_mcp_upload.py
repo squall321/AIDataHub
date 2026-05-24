@@ -673,6 +673,67 @@ async def test_persist_creates_sections_with_embeddings(
         assert "run completed normally" in secs[1].content_text
 
 
+def test_to_mcp_content_includes_attachments() -> None:
+    """P1.8 — persisted.attachment_urls 가 summary 의 attachments 키로 노출."""
+    from api.services.mcp_upload_svc import _to_mcp_content
+
+    result = {
+        "ok": True, "exit_code": 0, "stdout": "{}", "parsed": {},
+        "captured": {
+            "images": [{"path": "out.png", "mime": "image/png", "data": "aGVsbG8=", "size_b": 5}],
+            "texts": [], "resources": [], "attachment_urls": [],
+        },
+        "persisted": {
+            "record_id": "SIM-HE-CAE-2026-0000000123",
+            "attachment_urls": [
+                "/attachments/SIM-HE-CAE-2026-0000000123/out.png",
+                "/attachments/SIM-HE-CAE-2026-0000000123/data.csv",
+            ],
+        },
+    }
+    content = _to_mcp_content(result)
+    assert isinstance(content, list)
+    text = content[0].text
+    assert "attachments" in text
+    assert "/attachments/SIM-HE-CAE-2026-0000000123/out.png" in text
+    assert "/attachments/SIM-HE-CAE-2026-0000000123/data.csv" in text
+
+
+def test_to_mcp_content_absolute_url_with_base(monkeypatch) -> None:
+    """MCP_BASE_URL env 설정 시 URL 절대화."""
+    from api.services.mcp_upload_svc import _to_mcp_content
+
+    monkeypatch.setenv("MCP_BASE_URL", "http://aidh.example.com:8001")
+    result = {
+        "ok": True, "stdout": "{}",
+        "persisted": {
+            "record_id": "SIM-HE-CAE-2026-0000000456",
+            "attachment_urls": ["/attachments/SIM-HE-CAE-2026-0000000456/plot.png"],
+        },
+    }
+    content = _to_mcp_content(result)
+    text = content[0].text
+    assert "http://aidh.example.com:8001/attachments/SIM-HE-CAE-2026-0000000456/plot.png" in text
+
+
+def test_to_mcp_content_attachments_only_returns_content_list() -> None:
+    """이미지 inline 없어도 attachments URL 만 있으면 Content list 반환 (단순 summary)."""
+    from api.services.mcp_upload_svc import _to_mcp_content
+
+    result = {
+        "ok": True, "stdout": "{}",
+        "persisted": {
+            "record_id": "SIM-HE-CAE-2026-0000000789",
+            "attachment_urls": ["/attachments/SIM-HE-CAE-2026-0000000789/large.pdf"],
+        },
+    }
+    content = _to_mcp_content(result)
+    assert isinstance(content, list)
+    assert len(content) == 1  # TextContent 만 (ImageContent 없음 — large.pdf)
+    assert content[0].type == "text"
+    assert "large.pdf" in content[0].text
+
+
 @pytest.mark.asyncio
 @pytest.mark.skipif(not aiosqlite_available, reason="aiosqlite 미설치")
 async def test_persist_embedder_failure_silent(

@@ -877,14 +877,36 @@ def _capture_output_files(
     return out
 
 
+def _absolutize_url(rel_or_abs: str) -> str:
+    """relative URL (/attachments/...) 을 절대 URL 로 (MCP_BASE_URL env 있으면).
+
+    LLM 이 인용 시 클릭 가능하려면 절대 URL 이 좋다. env 미설정 시 상대 그대로.
+    이미 절대 URL (http:// 또는 https://) 이면 그대로 반환.
+    """
+    if not rel_or_abs:
+        return rel_or_abs
+    if rel_or_abs.startswith(("http://", "https://")):
+        return rel_or_abs
+    base = (os.environ.get("MCP_BASE_URL") or os.environ.get("HOST_URL") or "").rstrip("/")
+    if not base:
+        return rel_or_abs
+    if not rel_or_abs.startswith("/"):
+        rel_or_abs = "/" + rel_or_abs
+    return base + rel_or_abs
+
+
 def _to_mcp_content(result: dict[str, Any]) -> Any:
     """dispatch_call result → MCP Content list 변환.
 
     captured 에 image 또는 resource (svg) 가 있으면 list[Content] 반환:
         [TextContent(summary JSON), ImageContent...]
     그 외엔 dict 그대로 (FastMCP 가 TextContent 로 wrap).
+
+    P1.8 — persisted.attachment_urls 와 captured.attachment_urls 를 summary 의
+    ``attachments`` 키로 동봉 (MCP_BASE_URL 있으면 절대 URL 로).
     """
     captured = (result or {}).get("captured") or {}
+    persisted = (result or {}).get("persisted") or {}
     images = captured.get("images") or []
     resources = captured.get("resources") or []
     # SVG 만 ImageContent 로 본다 (PDF 는 TextContent 안내).
@@ -893,7 +915,20 @@ def _to_mcp_content(result: dict[str, Any]) -> Any:
         mime = r.get("mime") or ""
         if mime.startswith("image/"):
             inline_imgs.append(r)
-    if not inline_imgs:
+
+    # P1.8 — attachments URL 통합 (persisted 우선, 중복 제거)
+    all_urls: list[str] = []
+    for url in (persisted.get("attachment_urls") or []):
+        au = _absolutize_url(url)
+        if au not in all_urls:
+            all_urls.append(au)
+    for url in (captured.get("attachment_urls") or []):
+        au = _absolutize_url(url)
+        if au not in all_urls:
+            all_urls.append(au)
+
+    # 이미지·SVG 인라인 없고 attachments URL 도 없으면 dict 그대로.
+    if not inline_imgs and not all_urls:
         return result
 
     try:
@@ -906,9 +941,10 @@ def _to_mcp_content(result: dict[str, Any]) -> Any:
         "image_count": len(captured.get("images") or []),
         "text_count": len(captured.get("texts") or []),
         "resource_count": len(captured.get("resources") or []),
-        "attachment_urls": captured.get("attachment_urls") or [],
         "skipped": captured.get("skipped") or [],
     }
+    if all_urls:
+        summary["attachments"] = all_urls
     content: list[Any] = [
         TextContent(type="text", text=json.dumps(summary, ensure_ascii=False, indent=2))
     ]
@@ -1109,9 +1145,12 @@ async def _persist_record_insert(
     session.add(rec)
     await session.flush()  # ID 확정 + 다음 attachment INSERT 가 record_id 참조 가능
 
-    # 4. attachment 저장 — captured.images / resources 의 base64 데이터를 파일로
+    # 4. attachment 저장 — captured.images / resources 의 base64 데이터를 파일로.
+    # P1.8 — 저장된 파일별 상대 URL (/attachments/<rid>/<name>) 을 수집.
     attach_count = 0
-    if attachments_root is not None and (captured.get("images") or captured.get("resources")):
+    attachment_urls: list[str] = []
+    has_inline_attachments = bool(captured.get("images") or captured.get("resources"))
+    if attachments_root is not None and has_inline_attachments:
         dst_dir = attachments_root / record_id
         dst_dir.mkdir(parents=True, exist_ok=True)
         for category in ("images", "resources"):
@@ -1132,14 +1171,17 @@ async def _persist_record_insert(
                     )
                 )
                 attach_count += 1
-        # captured.attachment_urls (이미 size 초과로 attachment 처리된 것) 도 카운트만
-        for _ in (captured.get("attachment_urls") or []):
-            attach_count += 1
+                attachment_urls.append(f"/attachments/{record_id}/{name}")
+    # captured.attachment_urls (capture 단계에서 size 초과로 미리 attachment 화된 것)
+    for url in (captured.get("attachment_urls") or []):
+        attach_count += 1
+        if url not in attachment_urls:
+            attachment_urls.append(url)
 
-        if attach_count > 0:
-            rec.has_attachments = True
-            rec.attachment_count = attach_count
-            await session.flush()
+    if attach_count > 0:
+        rec.has_attachments = True
+        rec.attachment_count = attach_count
+        await session.flush()
 
     # 5. P1.7 — sections + embedding 자동 생성
     sections_payload = _build_persist_sections(
@@ -1192,6 +1234,7 @@ async def _persist_record_insert(
         "record_id": record_id,
         "action": "inserted",
         "attachment_count": attach_count,
+        "attachment_urls": attachment_urls,
         "section_count": len(sections_payload),
         "embedded": embedded_ok,
     }
