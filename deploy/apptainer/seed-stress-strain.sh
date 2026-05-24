@@ -38,7 +38,7 @@ echo "  ✓ $ZIP_PATH ($(du -h "$ZIP_PATH" | cut -f1))"
 step "2. POST /api/mcp_tools/upload"
 UPLOAD_RESP=$(curl -s -X POST "$BASE/api/mcp_tools/upload" \
   -F "bundle=@$ZIP_PATH" \
-  -F "metadata={\"uploader\":\"$UPLOADER\"}")
+  -F "uploader=$UPLOADER")
 echo "  응답: $UPLOAD_RESP" | head -c 300
 echo
 JOB_ID=$(echo "$UPLOAD_RESP" | "$VENV_PY" -c "import sys,json; print(json.load(sys.stdin).get('job_id',''))" 2>/dev/null)
@@ -65,18 +65,23 @@ if [[ "$STATUS" != "registered" && "$STATUS" != "completed" ]]; then
 fi
 echo "  ✓ 등록 완료"
 
+# MCP streamable_http SSE 응답 → JSON 추출 헬퍼
+_sse_to_json() { sed -n 's/^data: //p' | head -1; }
+
 step "4. 등록 확인 + tool count"
 LIST=$(curl -s "$BASE/api/mcp_tools/")
 echo "$LIST" | "$VENV_PY" -c "import sys,json; ds=json.load(sys.stdin); print('  등록된 도구:', [d['name'] for d in ds])"
-TOOLS_JSON=$(curl -s -X POST "$BASE/mcp/" \
+TOOLS_RAW=$(curl -s -X POST "$BASE/mcp/" \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}')
-N=$(echo "$TOOLS_JSON" | "$VENV_PY" -c "import sys,json; print(len(json.load(sys.stdin)['result']['tools']))")
+TOOLS_JSON=$(echo "$TOOLS_RAW" | _sse_to_json)
+[[ -z "$TOOLS_JSON" ]] && TOOLS_JSON="$TOOLS_RAW"
+N=$(echo "$TOOLS_JSON" | "$VENV_PY" -c "import sys,json; print(len(json.load(sys.stdin)['result']['tools']))" 2>/dev/null)
 echo "  ✓ MCP tools 수: $N (>=15 기대 — built-in 12 + 동적 2 + stress_strain_plot)"
 
 step "5. tools/call stress_strain_plot"
-CALL_RESP=$(curl -s -X POST "$BASE/mcp/" \
+CALL_RAW=$(curl -s -X POST "$BASE/mcp/" \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
   -d '{
@@ -84,6 +89,8 @@ CALL_RESP=$(curl -s -X POST "$BASE/mcp/" \
     "params":{"name":"stress_strain_plot",
               "arguments":{"material_name":"SUS304","e_modulus":200.0,
                            "yield_stress":215.0,"ultimate_strain":0.4}}}')
+CALL_RESP=$(echo "$CALL_RAW" | _sse_to_json)
+[[ -z "$CALL_RESP" ]] && CALL_RESP="$CALL_RAW"
 RID=$(echo "$CALL_RESP" | "$VENV_PY" -c "
 import sys, json, re
 try:

@@ -82,10 +82,13 @@ DISCOVER=$(curl -s -m 10 "$BASE/api/discover" | head -c 200)
 # §3 MCP tool list (자체 + 동적 스크립트 + wave-5 + wave-6)
 # ─────────────────────────────────────────────────
 sec "§3 MCP tools (tools/list)"
-TOOLS_JSON=$(curl -s -m 10 -X POST "$BASE/mcp/" \
+TOOLS_RAW=$(curl -s -m 10 -X POST "$BASE/mcp/" \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' 2>/dev/null)
+# MCP streamable_http 는 SSE 포맷 (event: message\ndata: {json}) — data: 라인만 추출.
+TOOLS_JSON=$(echo "$TOOLS_RAW" | sed -n 's/^data: //p' | head -1)
+[[ -z "$TOOLS_JSON" ]] && TOOLS_JSON="$TOOLS_RAW"  # 평문 JSON 폴백
 TOOL_COUNT=$(echo "$TOOLS_JSON" | "$VENV_PY" -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('result',{}).get('tools',[])))" 2>/dev/null)
 [[ "$TOOL_COUNT" -ge 12 ]] && ok "MCP tools 수: $TOOL_COUNT (>=12 built-in 정상)" || fail "MCP tools 수 비정상: $TOOL_COUNT"
 
