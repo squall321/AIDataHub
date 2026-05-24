@@ -924,6 +924,66 @@ def _to_mcp_content(result: dict[str, Any]) -> Any:
 # ---------------------------------------------------------------------------
 # P1.6 — persist_output 실 records INSERT (+ dedup_key UPSERT + attachment)
 # ---------------------------------------------------------------------------
+def _build_persist_sections(
+    rec_id: str,
+    title: str,
+    summary: str,
+    body_markdown: str,
+    captured: dict[str, Any],
+    args: dict[str, Any],
+    parsed: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Record 의 검색 가능 sections 합성 (P1.7).
+
+    section_id 규약:
+        - ``1``  : title + summary + body_markdown + args/parsed 요약 (메인)
+        - ``2..N``: captured.texts 각각 (csv/txt/json 등)
+
+    각 섹션은 ``content_text`` 가 비어있지 않을 때만 반환.
+    """
+    sections: list[dict[str, Any]] = []
+
+    # 메인 section — title + summary + body + args/parsed 요약
+    main_parts: list[str] = []
+    if title:
+        main_parts.append(f"# {title}")
+    if summary:
+        main_parts.append(summary)
+    if body_markdown:
+        main_parts.append(body_markdown)
+    if args:
+        main_parts.append("## Inputs")
+        for k, v in args.items():
+            main_parts.append(f"- {k}: {v}")
+    if parsed:
+        main_parts.append("## Outputs")
+        for k, v in parsed.items():
+            if isinstance(v, (str, int, float, bool)) or v is None:
+                main_parts.append(f"- {k}: {v}")
+    main_text = "\n".join(p for p in main_parts if p).strip()
+    if main_text:
+        sections.append({
+            "section_id": "1",
+            "level": 1,
+            "title": title or "summary",
+            "content_text": main_text,
+        })
+
+    # 캡쳐된 텍스트 파일들을 별 section 으로
+    for idx, t in enumerate((captured or {}).get("texts") or [], start=2):
+        text_content = (t.get("content") or "").strip()
+        if not text_content:
+            continue
+        sections.append({
+            "section_id": str(idx),
+            "level": 1,
+            "title": t.get("path") or f"capture_{idx}",
+            "content_text": text_content,
+        })
+
+    return sections
+
+
 async def _persist_record_insert(
     session: Any,
     manifest: UploadManifest,
@@ -940,17 +1000,19 @@ async def _persist_record_insert(
         3. 없으면 next_seq + format_id → Record() INSERT
         4. captured.images / resources / attachment_urls 가 있으면
            attachments_root/<record_id>/ 로 파일 저장 + RecordAttachment INSERT
-        5. caller 가 session.commit() 책임 (실패 시 rollback)
+        5. **P1.7** sections 합성 + embedding 생성 → record_sections INSERT
+           (embedder 실패 시 silent — embedding=None 으로 row 만, 백필 job 이 후처리)
+        6. caller 가 session.commit() 책임 (실패 시 rollback)
 
     Returns:
         ``{"record_id": str, "action": "inserted" | "updated_dedup",
-           "attachment_count": int}``.
+           "attachment_count": int, "section_count": int, "embedded": bool}``.
     """
     import base64 as _b64
     from datetime import datetime, timezone
     from sqlalchemy import and_, select, text as _sql_text
 
-    from ..db.models import Record, RecordAttachment
+    from ..db.models import Record, RecordAttachment, RecordSection
     from ..schemas.id_format import format_id
     from .seq import next_seq
 
@@ -1079,10 +1141,59 @@ async def _persist_record_insert(
             rec.attachment_count = attach_count
             await session.flush()
 
+    # 5. P1.7 — sections + embedding 자동 생성
+    sections_payload = _build_persist_sections(
+        rec_id=record_id,
+        title=rendered_title,
+        summary=rendered_summary or "",
+        body_markdown=rendered_body or "",
+        captured=captured,
+        args=dict(args),
+        parsed=dict(result.get("parsed") or {}),
+    )
+    embedded_ok = False
+    if sections_payload:
+        # embedder lazy import + 실패 silent (INSERT 자체는 보존)
+        embedder = None
+        try:
+            from .embedding import get_embedder as _get_embedder
+            embedder = _get_embedder()
+        except Exception:  # pragma: no cover — provider 설정 오류
+            embedder = None
+
+        for s in sections_payload:
+            text = (s["content_text"] or "").strip()
+            vec: list[float] | None = None
+            model_name: str | None = None
+            embedded_at: datetime | None = None
+            if embedder is not None and text:
+                try:
+                    vec = embedder.encode(text[:8000])
+                    model_name = embedder.name
+                    embedded_at = now
+                    embedded_ok = True
+                except Exception:  # pragma: no cover — encode 실패 silent
+                    vec = None
+            session.add(
+                RecordSection(
+                    record_id=record_id,
+                    section_id=s["section_id"],
+                    level=int(s["level"]),
+                    title=s["title"],
+                    content_text=text,
+                    embedding=vec,
+                    embedded_at=embedded_at,
+                    embedding_model=model_name,
+                )
+            )
+        await session.flush()
+
     return {
         "record_id": record_id,
         "action": "inserted",
         "attachment_count": attach_count,
+        "section_count": len(sections_payload),
+        "embedded": embedded_ok,
     }
 
 

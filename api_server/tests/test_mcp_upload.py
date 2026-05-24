@@ -579,3 +579,133 @@ def test_persist_disabled_manifest_rejected() -> None:
         validate_manifest(bad)
     assert ei.value.code == "INVALID_MANIFEST"
     assert "team" in ei.value.message_ko
+
+
+# ===========================================================================
+# P1.7 — sections + embedding 자동 생성 (재귀 RAG 완성)
+# ===========================================================================
+def test_build_persist_sections_shape() -> None:
+    """메인 section + 캡쳐 텍스트 section 합성."""
+    from api.services.mcp_upload_svc import _build_persist_sections
+
+    captured = {
+        "texts": [
+            {"path": "data.csv", "content": "a,b\n1,2\n", "size_b": 8},
+            {"path": "empty.txt", "content": "", "size_b": 0},  # 빈 텍스트는 제외
+        ],
+        "images": [], "resources": [],
+    }
+    secs = _build_persist_sections(
+        rec_id="SIM-HE-CAE-2026-0000000001",
+        title="Test Title",
+        summary="요약 abc",
+        body_markdown="",
+        captured=captured,
+        args={"x": "abc", "n": 3},
+        parsed={"result": 42},
+    )
+    # 메인 section + data.csv (empty.txt 제외)
+    assert len(secs) == 2
+    assert secs[0]["section_id"] == "1"
+    assert "Test Title" in secs[0]["content_text"]
+    assert "abc" in secs[0]["content_text"]
+    assert "result: 42" in secs[0]["content_text"]
+    assert secs[1]["section_id"] == "2"
+    assert secs[1]["title"] == "data.csv"
+    assert "a,b" in secs[1]["content_text"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not aiosqlite_available, reason="aiosqlite 미설치")
+async def test_persist_creates_sections_with_embeddings(
+    tmp_path: Path, test_session_maker, monkeypatch
+) -> None:
+    """persist_output INSERT 가 RecordSection 까지 자동 생성 + embedding 채움.
+
+    HashEmbedder (default) 사용 — 외부 의존 0, deterministic.
+    """
+    from sqlalchemy import select
+
+    from api.db.models import Record, RecordSection
+    from api.services.mcp_upload_svc import _persist_record_insert, validate_manifest
+
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "hash")
+
+    manifest = validate_manifest(_persist_manifest_dict())
+    fake_result = {
+        "ok": True, "exit_code": 0,
+        "stdout": '{"y": 99}', "parsed": {"y": 99},
+        "captured": {
+            "images": [], "resources": [], "attachment_urls": [],
+            "texts": [{"path": "log.txt", "content": "run completed normally\n", "size_b": 23}],
+        },
+    }
+    async with test_session_maker() as session:
+        out = await _persist_record_insert(
+            session, manifest, {"x": "embed_test"}, fake_result,
+            attachments_root=tmp_path / "att",
+        )
+        await session.commit()
+
+    rid = out["record_id"]
+    assert out["section_count"] == 2  # 메인 + log.txt
+    assert out["embedded"] is True
+
+    async with test_session_maker() as s:
+        secs = (
+            await s.execute(
+                select(RecordSection)
+                .where(RecordSection.record_id == rid)
+                .order_by(RecordSection.section_id)
+            )
+        ).scalars().all()
+        assert len(secs) == 2
+        # 메인 section
+        assert secs[0].section_id == "1"
+        assert "embed_test" in secs[0].content_text
+        assert secs[0].embedding is not None
+        # embedding 차원 검증 (hash provider 는 EMBEDDING_DIM)
+        from api.services.embedding import EMBEDDING_DIM
+        assert len(secs[0].embedding) == EMBEDDING_DIM
+        assert secs[0].embedding_model and "hash" in secs[0].embedding_model
+        # 캡쳐 텍스트 section
+        assert secs[1].section_id == "2"
+        assert "run completed normally" in secs[1].content_text
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not aiosqlite_available, reason="aiosqlite 미설치")
+async def test_persist_embedder_failure_silent(
+    tmp_path: Path, test_session_maker, monkeypatch
+) -> None:
+    """embedder 실패해도 record + sections INSERT 자체는 성공 (embedding=None)."""
+    from sqlalchemy import select
+
+    from api.db.models import RecordSection
+    from api.services import embedding as _emb_mod
+    from api.services.mcp_upload_svc import _persist_record_insert, validate_manifest
+
+    # get_embedder 가 RuntimeError 던지도록 monkeypatch
+    def _boom():
+        raise RuntimeError("embedder 강제 실패")
+    monkeypatch.setattr(_emb_mod, "get_embedder", _boom)
+
+    manifest = validate_manifest(_persist_manifest_dict())
+    fake_result = {
+        "ok": True, "exit_code": 0, "stdout": "{}", "parsed": {},
+        "captured": {"images": [], "texts": [], "resources": []},
+    }
+    async with test_session_maker() as session:
+        out = await _persist_record_insert(
+            session, manifest, {"x": "no_embed"}, fake_result,
+            attachments_root=tmp_path,
+        )
+        await session.commit()
+
+    assert out["embedded"] is False
+    assert out["section_count"] == 1  # 메인 section 은 여전히 INSERT
+
+    async with test_session_maker() as s:
+        secs = (await s.execute(select(RecordSection).where(RecordSection.record_id == out["record_id"]))).scalars().all()
+        assert len(secs) == 1
+        assert secs[0].embedding is None  # 백필 job 이 후처리할 대상

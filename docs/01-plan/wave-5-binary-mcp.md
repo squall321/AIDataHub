@@ -329,10 +329,59 @@ async def handler(**kwargs):
 **Wave-5 sweet spot 완성**:
 도구가 만든 결과가 → records 테이블 → embedding (별 백필 sync 또는 즉시 INSERT 시 임베더) → 다음 시맨틱 검색의 근거. 재귀 RAG 구조.
 
-**다음 단계 (P1.7+)**:
-- 실 INSERT 시 embedding 자동 생성 (현재는 별 백필 필요 — `record_sections.embedding` 갱신)
+**다음 단계 (P1.8+)**:
 - attachment URL 을 MCP response 에 자동 포함 (`/attachments/<rid>/<name>`)
 - LLM auto-convert (GUI→CLI) 별 엔드포인트
+
+---
+
+## 5.7 P1.7 — Sections + Embedding 자동 생성 (재귀 RAG 완성)
+
+P1.6 의 records INSERT 위에, **검색 가능 sections + embedding 까지 자동 생성**. 도구 호출 결과가 즉시 `semantic_search` / `agent_search` 에 노출 — 재귀 RAG 구조 완성.
+
+**`_build_persist_sections()`**:
+- section_id "1" : title + summary + body_markdown + args/parsed 요약 (메인 — LLM 이 검색에서 발견할 핵심 텍스트)
+- section_id "2..N" : captured.texts 각각 (csv/txt/json 등) — 본문 그대로
+- 빈 텍스트는 제외
+
+**`_persist_record_insert()` 의 §5 확장**:
+1. sections payload 합성 (위)
+2. `get_embedder()` lazy import (provider 미설정 시 `HashEmbedder` default — 외부 의존 0)
+3. 각 section 에 대해 `embedder.encode(text[:8000])` → 768d vector
+4. `RecordSection(record_id, section_id, level, title, content_text, embedding, embedded_at, embedding_model)` INSERT
+5. **embedder 실패 silent** — encode 예외 시 embedding=None 으로 row 만 INSERT. 기존 `embed_handler` 백필 job 이 후처리.
+
+**반환 dict 확장**:
+```python
+{
+  "record_id": "SIM-HE-CAE-2026-0000000123",
+  "action": "inserted",
+  "attachment_count": 1,
+  "section_count": 2,
+  "embedded": True
+}
+```
+
+**테스트 (3 추가, 52 PASS / 6 skip)**:
+- `test_build_persist_sections_shape` — 메인 + 캡쳐 텍스트 합성, 빈 텍스트 제외 (aiosqlite 무관, 항상 PASS)
+- `test_persist_creates_sections_with_embeddings` — RecordSection INSERT + embedding 차원 + model_name 검증 (aiosqlite-dep)
+- `test_persist_embedder_failure_silent` — get_embedder monkeypatch RuntimeError, INSERT 자체는 성공 + embedding=None (aiosqlite-dep)
+
+**Wave-5 재귀 RAG 흐름 완성**:
+```
+Claude: "stress-strain SUS304" 호출
+  → tool 실행 → PNG + JSON stdout
+  → P1.5 capture: MCP ImageContent
+  → P1.6 persist: Record INSERT (SIM-HE-CAE-... + attachment)
+  → P1.7 sections + embedding (즉시 검색 가능)
+  → 다음 호출: "지난주 SUS304 결과" → semantic_search 발견
+  → get_record_sections / get_context_bundle 으로 본문 + attachment URL 회수
+```
+
+**다음 단계 (P1.8+)**:
+- attachment URL 을 MCP response 에 자동 동봉 (LLM 이 인용 시 자동 표시)
+- LLM auto-convert (GUI→CLI) 별 엔드포인트
+- 큰 embedding 작업 비동기 worker (현재 동기 — 동시 호출 많을 때 latency 영향 가능)
 
 거절 시 즉시 400 응답 + 에러 코드 + 사람이 읽을 진단 메시지. 빌드 큐에 안 들어감.
 
