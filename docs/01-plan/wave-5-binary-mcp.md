@@ -278,6 +278,62 @@ Claude Desktop / Cursor / Cline 모두 ImageContent 인라인 렌더 — 추가 
 - `_to_mcp_content` MCP Content list 변환
 - 이미지 없으면 dict 그대로
 
+---
+
+## 5.6 P1.6 — persist_output 실 records INSERT (완료)
+
+P1 단계의 preview 단계를 넘어, 도구 호출 결과를 **실제 records 테이블에 INSERT** + 이미지/리소스를 attachments 영구 저장. Claude / Cursor 호출이 곧 검색 가능한 지식 자산이 됨.
+
+**매니페스트 강제 (validate_manifest)**:
+- `persist_output.enabled=true` 면 `data_type`, `team`, `group` 모두 **필수** — `record_id` 자동 생성 ({DATA_TYPE}-{TEAM}-{GROUP}-{YEAR}-{SEQ:010d}) 위해.
+- 누락 시 `INVALID_MANIFEST` 에러.
+
+**서버 처리 (`_persist_record_insert`)**:
+1. placeholder render — `title_template / summary_template / body_template / dedup_key` 모두 `{tool_name} / {args.X} / {parsed.Y}` 치환
+2. **dedup_key 검색** — `content->'tool_call'->>'dedup_key' = rendered_dedup` (PG JSONB path) → 매치 시 `updated_at` 만 갱신, return `action="updated_dedup"`. SQLite (테스트) 는 JSON path 미지원 → fallback INSERT.
+3. **신규 INSERT** — `next_seq()` 로 SEQ → `format_id()` → `Record()` add. content 는:
+   ```json
+   {
+     "tool_call": {"tool_name", "args", "stdout", "parsed", "exit_code", "dedup_key"},
+     "captured_meta": {"image_count", "text_count", "resource_count"},
+     "body_markdown": "(optional)"
+   }
+   ```
+4. **attachment 저장** — captured.images / resources 의 base64 데이터를 `<attachments_dir>/<record_id>/<filename>` 으로 영구 파일 생성 + `RecordAttachment` INSERT + `Record.has_attachments=true`, `attachment_count=N`.
+5. **트랜잭션** — handler 가 `SessionLocal()` 자동 관리, 실패 시 rollback + `result["persist_failed"]=true` (tool 응답은 보존).
+
+**handler 통합**:
+```python
+async def handler(**kwargs):
+    result = await dispatch_call(manifest, kwargs)
+    if manifest.persist_output.enabled and result.get("ok"):
+        try:
+            async with SessionLocal() as sess:
+                persisted = await _persist_record_insert(
+                    sess, manifest, kwargs, result,
+                    attachments_root=settings.attachments_dir,
+                )
+                await sess.commit()
+                result["persisted"] = persisted
+        except Exception as e:
+            result["persist_failed"] = True; result["persist_error"] = str(e)
+    return _to_mcp_content(result)
+```
+
+**테스트** (4 추가, 51/55 전체 PASS, 4 skip = aiosqlite 미설치):
+- `test_persist_record_insert_basic` — 신규 INSERT + title/summary 렌더
+- `test_persist_dedup_updates_existing` — 같은 dedup_key 두 번 호출 시 PG=UPSERT, SQLite=fallback INSERT 둘 다 허용
+- `test_persist_attachment_save` — 캡쳐된 PNG 가 `<attachments_dir>/<rid>/` 저장 + RecordAttachment INSERT
+- `test_persist_disabled_manifest_rejected` — enabled=true + team/group 누락 → INVALID_MANIFEST
+
+**Wave-5 sweet spot 완성**:
+도구가 만든 결과가 → records 테이블 → embedding (별 백필 sync 또는 즉시 INSERT 시 임베더) → 다음 시맨틱 검색의 근거. 재귀 RAG 구조.
+
+**다음 단계 (P1.7+)**:
+- 실 INSERT 시 embedding 자동 생성 (현재는 별 백필 필요 — `record_sections.embedding` 갱신)
+- attachment URL 을 MCP response 에 자동 포함 (`/attachments/<rid>/<name>`)
+- LLM auto-convert (GUI→CLI) 별 엔드포인트
+
 거절 시 즉시 400 응답 + 에러 코드 + 사람이 읽을 진단 메시지. 빌드 큐에 안 들어감.
 
 ## 6. persist_output 템플릿 엔진

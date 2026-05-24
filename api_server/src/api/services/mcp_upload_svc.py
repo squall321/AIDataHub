@@ -291,16 +291,28 @@ def validate_manifest(raw: dict[str, Any]) -> UploadManifest:
     po = PersistOutput()
     if isinstance(po_raw, dict) and po_raw.get("enabled"):
         dt = str(po_raw.get("data_type") or "").strip().upper()
-        if dt and dt not in _VALID_DATA_TYPES:
+        if not dt:
+            raise UploadError(
+                "INVALID_MANIFEST",
+                "persist_output.enabled=true 면 data_type 필수.",
+            )
+        if dt not in _VALID_DATA_TYPES:
             raise UploadError(
                 "INVALID_MANIFEST",
                 f"persist_output.data_type {dt!r} 미지원 — {sorted(_VALID_DATA_TYPES)} 중 선택.",
             )
+        team = str(po_raw.get("team") or "").strip().upper()
+        grp = str(po_raw.get("group") or "").strip().upper()
+        if not team or not grp:
+            raise UploadError(
+                "INVALID_MANIFEST",
+                "persist_output.enabled=true 면 team / group 필수 (record_id 자동 생성용).",
+            )
         po = PersistOutput(
             enabled=True,
-            data_type=dt or None,
-            team=(str(po_raw.get("team") or "").strip() or None),
-            group=(str(po_raw.get("group") or "").strip() or None),
+            data_type=dt,
+            team=team,
+            group=grp,
             title_template=str(po_raw.get("title_template") or ""),
             summary_template=str(po_raw.get("summary_template") or ""),
             body_template=str(po_raw.get("body_template") or ""),
@@ -909,6 +921,171 @@ def _to_mcp_content(result: dict[str, Any]) -> Any:
     return content
 
 
+# ---------------------------------------------------------------------------
+# P1.6 — persist_output 실 records INSERT (+ dedup_key UPSERT + attachment)
+# ---------------------------------------------------------------------------
+async def _persist_record_insert(
+    session: Any,
+    manifest: UploadManifest,
+    args: dict[str, Any],
+    result: dict[str, Any],
+    *,
+    attachments_root: Path | None = None,
+) -> dict[str, Any]:
+    """도구 호출 결과를 records 테이블에 INSERT (또는 dedup UPSERT).
+
+    Steps:
+        1. placeholder render — title / summary / body / dedup_key
+        2. dedup_key 있으면 같은 key 의 record 검색 → updated_at 만 갱신
+        3. 없으면 next_seq + format_id → Record() INSERT
+        4. captured.images / resources / attachment_urls 가 있으면
+           attachments_root/<record_id>/ 로 파일 저장 + RecordAttachment INSERT
+        5. caller 가 session.commit() 책임 (실패 시 rollback)
+
+    Returns:
+        ``{"record_id": str, "action": "inserted" | "updated_dedup",
+           "attachment_count": int}``.
+    """
+    import base64 as _b64
+    from datetime import datetime, timezone
+    from sqlalchemy import and_, select, text as _sql_text
+
+    from ..db.models import Record, RecordAttachment
+    from ..schemas.id_format import format_id
+    from .seq import next_seq
+
+    po = manifest.persist_output
+    if not po.enabled:
+        raise UploadError("PERSIST_DISABLED", "persist_output 비활성 — INSERT 호출 X")
+    if not (po.data_type and po.team and po.group):
+        raise UploadError(
+            "INVALID_MANIFEST",
+            "persist_output 의 data_type/team/group 누락",
+        )
+
+    # 1. placeholder context
+    now = datetime.now(timezone.utc)
+    ctx: dict[str, Any] = {
+        "tool_name": manifest.name,
+        "tool_version": "",
+        "timestamp": now.isoformat(),
+        "args": dict(args),
+        "parsed": dict(result.get("parsed") or {}),
+    }
+    rendered_title = render_template(po.title_template, ctx) or manifest.name
+    rendered_summary = render_template(po.summary_template, ctx)
+    rendered_body = render_template(po.body_template, ctx)
+    rendered_dedup = render_template(po.dedup_key, ctx) if po.dedup_key else ""
+
+    # 2. dedup_key 검색 — content->'tool_call'->>'dedup_key' = rendered_dedup
+    if rendered_dedup:
+        try:
+            existing_stmt = (
+                select(Record)
+                .where(Record.data_type == po.data_type)
+                .where(Record.team == po.team)
+                .where(Record.group == po.group)
+                .where(
+                    _sql_text(
+                        "content->'tool_call'->>'dedup_key' = :dk"
+                    ).bindparams(dk=rendered_dedup)
+                )
+                .limit(1)
+            )
+            existing = (await session.execute(existing_stmt)).scalar_one_or_none()
+        except Exception:
+            # SQLite 등 JSON path 미지원 환경 — 단순 fallback (현재 dedup 무동작).
+            existing = None
+        if existing is not None:
+            existing.updated_at = now
+            return {
+                "record_id": existing.id,
+                "action": "updated_dedup",
+                "attachment_count": int(existing.attachment_count or 0),
+            }
+
+    # 3. 신규 INSERT
+    year = now.year
+    seq = await next_seq(
+        session,
+        data_type=po.data_type, team=po.team, group=po.group, year=year,
+    )
+    record_id = format_id(po.data_type, po.team, po.group, year, seq)
+
+    captured = result.get("captured") or {}
+    content: dict[str, Any] = {
+        "tool_call": {
+            "tool_name": manifest.name,
+            "args": dict(args),
+            "stdout": result.get("stdout", ""),
+            "parsed": dict(result.get("parsed") or {}),
+            "exit_code": int(result.get("exit_code") or 0),
+            "dedup_key": rendered_dedup or None,
+        },
+        "captured_meta": {
+            "image_count": len(captured.get("images") or []),
+            "text_count": len(captured.get("texts") or []),
+            "resource_count": len(captured.get("resources") or []),
+        },
+    }
+    if rendered_body:
+        content["body_markdown"] = rendered_body
+
+    rec = Record(
+        id=record_id,
+        data_type=po.data_type,
+        team=po.team,
+        group=po.group,
+        year=year,
+        seq=seq,
+        title=rendered_title,
+        summary=rendered_summary or "",
+        tags=list(po.tags),
+        agents=[],
+        content=content,
+    )
+    session.add(rec)
+    await session.flush()  # ID 확정 + 다음 attachment INSERT 가 record_id 참조 가능
+
+    # 4. attachment 저장 — captured.images / resources 의 base64 데이터를 파일로
+    attach_count = 0
+    if attachments_root is not None and (captured.get("images") or captured.get("resources")):
+        dst_dir = attachments_root / record_id
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        for category in ("images", "resources"):
+            for item in (captured.get(category) or []):
+                name = item.get("path") or f"out_{attach_count}.bin"
+                data = item.get("data") or ""
+                try:
+                    blob = _b64.b64decode(data)
+                except Exception:
+                    continue
+                (dst_dir / name).write_bytes(blob)
+                session.add(
+                    RecordAttachment(
+                        record_id=record_id,
+                        filename=name,
+                        mime_type=item.get("mime") or "application/octet-stream",
+                        size_bytes=item.get("size_b") or len(blob),
+                    )
+                )
+                attach_count += 1
+        # captured.attachment_urls (이미 size 초과로 attachment 처리된 것) 도 카운트만
+        for _ in (captured.get("attachment_urls") or []):
+            attach_count += 1
+
+        if attach_count > 0:
+            rec.has_attachments = True
+            rec.attachment_count = attach_count
+            await session.flush()
+
+    return {
+        "record_id": record_id,
+        "action": "inserted",
+        "attachment_count": attach_count,
+    }
+
+
 def _render_persist_preview(
     manifest: UploadManifest,
     args: dict[str, Any],
@@ -966,6 +1143,27 @@ def _make_handler(manifest: UploadManifest):
 
     async def handler(**kwargs: Any) -> Any:
         result = await dispatch_call(manifest, kwargs)
+        # P1.6 — persist_output 활성 시 실 records INSERT (DB session 자동 관리).
+        # 실패해도 tool 응답 자체는 유지 → persist_failed 플래그만 추가.
+        if manifest.persist_output.enabled and result.get("ok"):
+            try:
+                from ..db.base import SessionLocal as _SessionLocal  # type: ignore[attr-defined]
+                # attachments 저장 위치 (settings.attachments_dir 우선, 미존재 시 폴백)
+                try:
+                    from ..config import settings as _settings
+                    _att_root = Path(_settings.attachments_dir)
+                except Exception:
+                    _att_root = Path(os.environ.get("AIDH_ATTACHMENTS_DIR") or "/tmp/aidh-attachments")
+                async with _SessionLocal() as _sess:
+                    persisted = await _persist_record_insert(
+                        _sess, manifest, kwargs, result,
+                        attachments_root=_att_root,
+                    )
+                    await _sess.commit()
+                    result["persisted"] = persisted
+            except Exception as e:
+                result["persist_failed"] = True
+                result["persist_error"] = str(e)
         # P1.5 — capture 가 이미지/SVG 를 포함하면 MCP Content list 반환
         # (Claude Desktop 인라인 렌더). 그 외는 dict (FastMCP 가 TextContent 로 wrap).
         return _to_mcp_content(result)

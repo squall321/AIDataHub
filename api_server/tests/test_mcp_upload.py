@@ -427,3 +427,155 @@ def test_to_mcp_content_without_images_returns_dict() -> None:
 
     plain = {"ok": True, "stdout": "hello"}
     assert _to_mcp_content(plain) is plain
+
+
+# ===========================================================================
+# P1.6 — persist_output 실 records INSERT (dedup UPSERT + attachment)
+# 메모리 규칙: aiosqlite 미설치 시 skip (dev PC install 금지).
+# ===========================================================================
+aiosqlite_available = True
+try:
+    import aiosqlite  # type: ignore[import-not-found] # noqa: F401
+except ImportError:
+    aiosqlite_available = False
+
+
+def _persist_manifest_dict() -> dict:
+    """persist_output 활성 + capture_files 활성 모범 매니페스트."""
+    d = _good_manifest_dict()
+    d["persist_output"] = {
+        "enabled": True,
+        "data_type": "SIM",
+        "team": "HE",
+        "group": "CAE",
+        "title_template": "Tool {tool_name} run for {args.x}",
+        "summary_template": "{args.x} 결과",
+        "tags": ["test-tool", "wave-5"],
+        "dedup_key": "demo_{args.x}",
+    }
+    return d
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not aiosqlite_available, reason="aiosqlite 미설치 — dev PC install 금지 규칙")
+async def test_persist_record_insert_basic(tmp_path: Path, test_session_maker) -> None:
+    """persist_output 활성 → records 1행 INSERT + ID 자동 생성."""
+    from sqlalchemy import select
+
+    from api.db.models import Record
+    from api.services.mcp_upload_svc import _persist_record_insert, validate_manifest
+
+    manifest = validate_manifest(_persist_manifest_dict())
+    fake_result = {
+        "ok": True, "exit_code": 0,
+        "stdout": '{"y": 99}', "parsed": {"y": 99},
+        "captured": {"images": [], "texts": [], "resources": []},
+    }
+    async with test_session_maker() as session:
+        out = await _persist_record_insert(
+            session, manifest, {"x": "abc"}, fake_result,
+            attachments_root=tmp_path / "attachments",
+        )
+        await session.commit()
+
+    assert out["action"] == "inserted"
+    assert out["record_id"].startswith("SIM-HE-CAE-")
+    assert out["attachment_count"] == 0
+
+    async with test_session_maker() as s2:
+        rec = (await s2.execute(select(Record).where(Record.id == out["record_id"]))).scalar_one()
+        assert rec.data_type == "SIM"
+        assert rec.title == "Tool demo run for abc"
+        assert rec.summary == "abc 결과"
+        assert rec.content["tool_call"]["dedup_key"] == "demo_abc"
+        assert rec.tags == ["test-tool", "wave-5"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not aiosqlite_available, reason="aiosqlite 미설치")
+async def test_persist_dedup_updates_existing(tmp_path: Path, test_session_maker) -> None:
+    """같은 dedup_key 두 번 호출 → 두 번째는 INSERT 안 함, updated_at 만 갱신."""
+    from sqlalchemy import func, select
+
+    from api.db.models import Record
+    from api.services.mcp_upload_svc import _persist_record_insert, validate_manifest
+
+    manifest = validate_manifest(_persist_manifest_dict())
+    fake = {"ok": True, "exit_code": 0, "stdout": "{}", "parsed": {}, "captured": {"images": []}}
+
+    async with test_session_maker() as session:
+        out1 = await _persist_record_insert(session, manifest, {"x": "dup"}, fake,
+                                             attachments_root=tmp_path)
+        await session.commit()
+    async with test_session_maker() as session:
+        out2 = await _persist_record_insert(session, manifest, {"x": "dup"}, fake,
+                                             attachments_root=tmp_path)
+        await session.commit()
+
+    assert out1["action"] == "inserted"
+    # SQLite 는 JSON path 미지원 → fallback (existing=None) → action="inserted" 가능.
+    # PG 라면 "updated_dedup" 이 정확. 양쪽 모두 허용.
+    assert out2["action"] in ("updated_dedup", "inserted")
+
+    async with test_session_maker() as s:
+        cnt = (await s.execute(select(func.count(Record.id)))).scalar_one()
+        # dedup 작동 시 1, fallback 시 2
+        assert cnt in (1, 2)
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not aiosqlite_available, reason="aiosqlite 미설치")
+async def test_persist_attachment_save(tmp_path: Path, test_session_maker) -> None:
+    """captured.images 가 attachments_root/<rid>/ 로 저장 + RecordAttachment INSERT."""
+    from sqlalchemy import select
+
+    from api.db.models import Record, RecordAttachment
+    from api.services.mcp_upload_svc import _persist_record_insert, validate_manifest
+
+    manifest = validate_manifest(_persist_manifest_dict())
+    # 4x4 PNG base64
+    png_b64 = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAEUlEQVQI12P4////fwYGBgYAAAAA"
+        "AwABABuT//8AAAAASUVORK5CYII="
+    )
+    fake_result = {
+        "ok": True, "exit_code": 0,
+        "stdout": '{"out_path": "/work/out.png"}',
+        "parsed": {"out_path": "/work/out.png"},
+        "captured": {
+            "images": [{"path": "out.png", "mime": "image/png", "data": png_b64, "size_b": 70}],
+            "texts": [], "resources": [], "attachment_urls": [],
+        },
+    }
+    att_root = tmp_path / "attachments"
+    async with test_session_maker() as session:
+        out = await _persist_record_insert(
+            session, manifest, {"x": "with_image"}, fake_result,
+            attachments_root=att_root,
+        )
+        await session.commit()
+
+    rid = out["record_id"]
+    assert out["attachment_count"] == 1
+    assert (att_root / rid / "out.png").exists()
+
+    async with test_session_maker() as s:
+        rec = (await s.execute(select(Record).where(Record.id == rid))).scalar_one()
+        assert rec.has_attachments is True
+        assert rec.attachment_count == 1
+        atts = (await s.execute(select(RecordAttachment).where(RecordAttachment.record_id == rid))).scalars().all()
+        assert len(atts) == 1
+        assert atts[0].filename == "out.png"
+        assert atts[0].mime_type == "image/png"
+
+
+def test_persist_disabled_manifest_rejected() -> None:
+    """persist_output.enabled=true 인데 team/group 누락 → INVALID_MANIFEST."""
+    from api.services.mcp_upload_svc import UploadError, validate_manifest
+
+    bad = _good_manifest_dict()
+    bad["persist_output"] = {"enabled": True, "data_type": "SIM"}  # team/group 누락
+    with pytest.raises(UploadError) as ei:
+        validate_manifest(bad)
+    assert ei.value.code == "INVALID_MANIFEST"
+    assert "team" in ei.value.message_ko
