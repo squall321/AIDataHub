@@ -39,6 +39,10 @@ env_allowlist:
 
 return:
   format: json
+  # P1.5 — /work/ 의 산출물 자동 캡쳐 → MCP ImageContent 로 Claude/Cursor 인라인 렌더.
+  # default 활성 시 PNG/JPG/SVG 는 base64 inline, max 5MB 초과는 attachment URL 만.
+  capture_files:
+    enabled: true
 
 platform_capability:
   net: false

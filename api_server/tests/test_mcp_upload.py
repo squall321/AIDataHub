@@ -332,3 +332,98 @@ def test_process_upload_missing_uploader(tmp_path: Path, monkeypatch):
     with pytest.raises(UploadError) as exc_info:
         process_upload(zpath, uploader="   ")
     assert exc_info.value.code == "MISSING_UPLOADER"
+
+
+# ===========================================================================
+# P1.5 — capture_files (PNG inline / large attachment / text+SVG / MCP wrap)
+# ===========================================================================
+def _png_bytes(width: int = 4, height: int = 4) -> bytes:
+    """무의존 미니 PNG — 4x4 단색. 캡쳐 테스트 전용."""
+    import struct, zlib
+    sig = b"\x89PNG\r\n\x1a\n"
+    def chunk(t: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + t + data + struct.pack(">I", zlib.crc32(t + data) & 0xFFFFFFFF)
+    ihdr = chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+    raw = b"".join(b"\x00" + b"\xff\x00\x00" * width for _ in range(height))
+    idat = chunk(b"IDAT", zlib.compress(raw))
+    iend = chunk(b"IEND", b"")
+    return sig + ihdr + idat + iend
+
+
+def test_capture_files_png_inline(tmp_path: Path) -> None:
+    """작은 PNG → CaptureFiles 가 base64 inline."""
+    from api.services.mcp_upload_svc import CaptureFiles, _capture_output_files
+
+    (tmp_path / "out.png").write_bytes(_png_bytes())
+    cf = CaptureFiles(enabled=True)
+    captured = _capture_output_files(tmp_path, cf)
+    assert len(captured["images"]) == 1
+    img = captured["images"][0]
+    assert img["path"] == "out.png"
+    assert img["mime"] == "image/png"
+    assert len(img["data"]) > 0
+    assert captured["total_inline_b"] == img["size_b"]
+
+
+def test_capture_files_large_attachment_fallback(tmp_path: Path) -> None:
+    """max_inline_mb 초과 + record_id 제공 → attachments_dir 저장 + URL."""
+    from api.services.mcp_upload_svc import CaptureFiles, _capture_output_files
+
+    big = tmp_path / "big.png"
+    big.write_bytes(_png_bytes() + b"\x00" * (2 * 1024 * 1024))  # ~2MB
+
+    cf = CaptureFiles(enabled=True, max_inline_mb=1)
+    att_dir = tmp_path / "attachments" / "SIM-HE-CAE-2026-0000000001"
+    captured = _capture_output_files(
+        tmp_path, cf,
+        attachments_dir=att_dir,
+        record_id="SIM-HE-CAE-2026-0000000001",
+    )
+    assert captured["images"] == []
+    assert len(captured["attachment_urls"]) == 1
+    assert captured["attachment_urls"][0].endswith("/big.png")
+    assert (att_dir / "big.png").exists()
+
+
+def test_capture_files_text_and_svg(tmp_path: Path) -> None:
+    """텍스트(csv) inline + SVG resource."""
+    from api.services.mcp_upload_svc import CaptureFiles, _capture_output_files
+
+    (tmp_path / "data.csv").write_text("a,b,c\n1,2,3\n4,5,6\n")
+    (tmp_path / "chart.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"/>')
+
+    cf = CaptureFiles(enabled=True)
+    captured = _capture_output_files(tmp_path, cf)
+    assert len(captured["texts"]) == 1
+    assert captured["texts"][0]["path"] == "data.csv"
+    assert "a,b,c" in captured["texts"][0]["content"]
+    assert len(captured["resources"]) == 1
+    assert captured["resources"][0]["mime"] == "image/svg+xml"
+
+
+def test_to_mcp_content_with_images() -> None:
+    """captured.images → MCP Content list [TextContent, ImageContent]."""
+    from api.services.mcp_upload_svc import _to_mcp_content
+
+    fake_result = {
+        "ok": True, "exit_code": 0, "stdout": '{"x": 1}', "parsed": {"x": 1},
+        "captured": {
+            "images": [{"path": "out.png", "mime": "image/png", "data": "aGVsbG8=", "size_b": 5}],
+            "texts": [], "resources": [], "attachment_urls": [], "skipped": [],
+            "total_inline_b": 5,
+        },
+    }
+    content = _to_mcp_content(fake_result)
+    assert isinstance(content, list)
+    assert len(content) == 2
+    assert content[0].type == "text"
+    assert content[1].type == "image"
+    assert content[1].mimeType == "image/png"
+
+
+def test_to_mcp_content_without_images_returns_dict() -> None:
+    """이미지 없으면 dict 그대로 (FastMCP 가 TextContent 로 wrap)."""
+    from api.services.mcp_upload_svc import _to_mcp_content
+
+    plain = {"ok": True, "stdout": "hello"}
+    assert _to_mcp_content(plain) is plain

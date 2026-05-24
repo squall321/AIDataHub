@@ -279,9 +279,17 @@ async def exec_in_container(manifest: Any, args: dict[str, Any]) -> dict[str, An
         }
 
     argv = _build_argv(manifest, args)
+
+    # P1.5 — 호스트 임시 디렉토리를 컨테이너 /work 에 bind 마운트.
+    # 도구가 /work/out.png 등에 쓰면 호스트에서 capture 가능.
+    # capture_files 비활성이어도 항상 마운트해서 호환 (스캔 안 하면 무영향).
+    import tempfile as _tempfile
+    host_workdir = Path(_tempfile.mkdtemp(prefix="aidh-work-"))
+
     cmd = [
         "apptainer", "exec",
         "--containall", "--no-home", "--writable-tmpfs",
+        "--bind", f"{host_workdir}:/work",
         "--net=none" if not _capability_net(manifest) else "--net",
         str(sif_path),
         *argv,
@@ -299,6 +307,7 @@ async def exec_in_container(manifest: Any, args: dict[str, Any]) -> dict[str, An
             "ok": False,
             "error": f"apptainer not available: {e}",
             "exit_code": -1,
+            "workdir": str(host_workdir),
         }
 
     try:
@@ -325,6 +334,7 @@ async def exec_in_container(manifest: Any, args: dict[str, Any]) -> dict[str, An
         "exit_code": rc,
         "stdout": stdout,
         "stderr": stderr,
+        "workdir": str(host_workdir),  # capture_files 가 스캔 (caller 책임 — 후 cleanup 도)
     }
     if getattr(manifest, "return_format", "text") == "json" and rc == 0 and stdout.strip():
         try:

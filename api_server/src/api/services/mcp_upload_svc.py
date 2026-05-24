@@ -107,6 +107,30 @@ class LLMHints:
 
 
 @dataclass
+class CaptureFiles:
+    """도구 실행 후 ``scan_dir`` 의 산출물을 자동 캡쳐 → MCP content 동봉.
+
+    image_extensions  → MCP ImageContent (base64 inline, Claude Desktop 인라인 렌더)
+    text_extensions   → 본문 stdout 에 첨부 (작은 텍스트)
+    resource_extensions → ImageContent (SVG) 또는 TextContent 안내 (PDF)
+
+    크기 한도 초과 시 ``attachments_dir`` 로 저장 + URL 만 반환.
+    """
+
+    enabled: bool = False
+    scan_dir: str = "/work/"
+    image_extensions: list[str] = field(
+        default_factory=lambda: ["png", "jpg", "jpeg", "gif", "webp"]
+    )
+    text_extensions: list[str] = field(
+        default_factory=lambda: ["txt", "csv", "json", "md"]
+    )
+    resource_extensions: list[str] = field(default_factory=lambda: ["pdf", "svg"])
+    max_inline_mb: int = 5
+    max_total_mb: int = 20
+
+
+@dataclass
 class UploadManifest:
     name: str
     description: str
@@ -122,6 +146,7 @@ class UploadManifest:
     restrict_agents: list[str] = field(default_factory=list)
     persist_output: PersistOutput = field(default_factory=PersistOutput)
     llm_hints: LLMHints = field(default_factory=LLMHints)
+    capture_files: CaptureFiles = field(default_factory=CaptureFiles)
     # build/runtime 시점 채워짐 (validate 단계에서는 None)
     sif_path: Path | None = None
     bundle_sha: str | None = None
@@ -232,10 +257,34 @@ def validate_manifest(raw: dict[str, Any]) -> UploadManifest:
 
     return_raw = raw.get("return") or {}
     return_format = "text"
+    capture_files = CaptureFiles()
     if isinstance(return_raw, dict):
         rf = str(return_raw.get("format") or "text").lower()
         if rf in ("text", "json"):
             return_format = rf
+        # capture_files — bool 또는 dict 지원
+        cap_raw = return_raw.get("capture_files")
+        if cap_raw is True:
+            capture_files = CaptureFiles(enabled=True)
+        elif isinstance(cap_raw, dict):
+            capture_files = CaptureFiles(
+                enabled=bool(cap_raw.get("enabled", True)),
+                scan_dir=str(cap_raw.get("scan_dir") or "/work/"),
+                image_extensions=[
+                    str(e).lstrip(".").lower()
+                    for e in (cap_raw.get("image_extensions") or CaptureFiles().image_extensions)
+                ],
+                text_extensions=[
+                    str(e).lstrip(".").lower()
+                    for e in (cap_raw.get("text_extensions") or CaptureFiles().text_extensions)
+                ],
+                resource_extensions=[
+                    str(e).lstrip(".").lower()
+                    for e in (cap_raw.get("resource_extensions") or CaptureFiles().resource_extensions)
+                ],
+                max_inline_mb=int(cap_raw.get("max_inline_mb") or 5),
+                max_total_mb=int(cap_raw.get("max_total_mb") or 20),
+            )
 
     # ---- persist_output ----
     po_raw = raw.get("persist_output") or {}
@@ -275,6 +324,7 @@ def validate_manifest(raw: dict[str, Any]) -> UploadManifest:
     ]
 
     return UploadManifest(
+        capture_files=capture_files,
         name=name,
         description=description,
         script=script,
@@ -535,6 +585,15 @@ def _manifest_to_dict(m: UploadManifest) -> dict[str, Any]:
             "example_calls": list(m.llm_hints.example_calls),
             "output_description": m.llm_hints.output_description,
         },
+        "capture_files": {
+            "enabled": m.capture_files.enabled,
+            "scan_dir": m.capture_files.scan_dir,
+            "image_extensions": list(m.capture_files.image_extensions),
+            "text_extensions": list(m.capture_files.text_extensions),
+            "resource_extensions": list(m.capture_files.resource_extensions),
+            "max_inline_mb": m.capture_files.max_inline_mb,
+            "max_total_mb": m.capture_files.max_total_mb,
+        },
         "sif_path": str(m.sif_path) if m.sif_path else None,
         "bundle_sha": m.bundle_sha,
     }
@@ -570,7 +629,19 @@ def _manifest_from_dict(d: dict[str, Any]) -> UploadManifest:
         example_calls=list(hints_raw.get("example_calls") or []),
         output_description=str(hints_raw.get("output_description") or ""),
     )
+    cf_raw = d.get("capture_files") or {}
+    cf_def = CaptureFiles()
+    cf = CaptureFiles(
+        enabled=bool(cf_raw.get("enabled") or False),
+        scan_dir=str(cf_raw.get("scan_dir") or cf_def.scan_dir),
+        image_extensions=list(cf_raw.get("image_extensions") or cf_def.image_extensions),
+        text_extensions=list(cf_raw.get("text_extensions") or cf_def.text_extensions),
+        resource_extensions=list(cf_raw.get("resource_extensions") or cf_def.resource_extensions),
+        max_inline_mb=int(cf_raw.get("max_inline_mb") or cf_def.max_inline_mb),
+        max_total_mb=int(cf_raw.get("max_total_mb") or cf_def.max_total_mb),
+    )
     return UploadManifest(
+        capture_files=cf,
         name=d["name"],
         description=d.get("description", ""),
         script=d.get("script", ""),
@@ -645,6 +716,26 @@ async def dispatch_call(manifest: UploadManifest, args: dict[str, Any]) -> dict[
         }
     result = await build_svc.exec_in_container(manifest, args)
 
+    # P1.5 — capture_files: workdir 산출물 자동 캡쳐.
+    # exec_in_container 가 결과 dict 에 "workdir" 키로 작업 디렉토리 경로를
+    # 반환하면 그걸 스캔. 미반환 시 capture 비활성 (회귀 0).
+    workdir_path = result.pop("workdir", None)  # 응답에 노출하지 않음
+    if manifest.capture_files.enabled and result.get("ok") and workdir_path:
+        try:
+            captured = _capture_output_files(Path(workdir_path), manifest.capture_files)
+            if captured.get("images") or captured.get("texts") or captured.get("resources"):
+                result["captured"] = captured
+        except Exception as e:  # pragma: no cover — capture 실패가 tool 응답 막아선 안 됨
+            result["capture_error"] = str(e)
+
+    # workdir cleanup — capture 끝났으면 호스트 임시 디렉토리 제거
+    if workdir_path:
+        try:
+            import shutil as _shutil
+            _shutil.rmtree(workdir_path, ignore_errors=True)
+        except Exception:
+            pass
+
     # persist_output 처리 (실제 records INSERT 는 별도 helper 가 DB 세션 받아 수행)
     if manifest.persist_output.enabled and result.get("ok"):
         result["persist_preview"] = _render_persist_preview(
@@ -652,6 +743,170 @@ async def dispatch_call(manifest: UploadManifest, args: dict[str, Any]) -> dict[
         )
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# P1.5 — Output file capture (PNG / SVG / PDF / text → MCP Content)
+# ---------------------------------------------------------------------------
+_MIME_BY_EXT = {
+    "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+    "gif": "image/gif", "webp": "image/webp",
+    "svg": "image/svg+xml", "pdf": "application/pdf",
+    "txt": "text/plain", "csv": "text/csv",
+    "json": "application/json", "md": "text/markdown",
+}
+
+
+def _capture_output_files(
+    workdir: Path,
+    cf: CaptureFiles,
+    *,
+    attachments_dir: Path | None = None,
+    record_id: str | None = None,
+) -> dict[str, Any]:
+    """``workdir`` 의 산출물을 카테고리별로 캡쳐.
+
+    Returns:
+        ``{images, texts, resources, attachment_urls, skipped, total_inline_b}``.
+
+    동작:
+        - 이미지/리소스 확장자 → ``max_inline_mb`` 이내면 base64 inline.
+          초과 + ``attachments_dir`` 제공 시 거기 저장하고 URL 만 반환.
+          초과 + 미제공 시 skipped 에 reason 표기.
+        - 텍스트 확장자 → ``max_inline_mb`` 이내면 본문 그대로 inline,
+          초과는 skipped.
+        - 전체 누계가 ``max_total_mb`` 넘어가면 이후 파일 skip.
+    """
+    import base64 as _b64
+
+    out: dict[str, Any] = {
+        "images": [],
+        "texts": [],
+        "resources": [],
+        "attachment_urls": [],
+        "skipped": [],
+        "total_inline_b": 0,
+    }
+    if not cf.enabled or not workdir.exists() or not workdir.is_dir():
+        return out
+
+    max_inline_b = int(cf.max_inline_mb) * 1024 * 1024
+    max_total_b = int(cf.max_total_mb) * 1024 * 1024
+
+    img_set = {e.lstrip(".").lower() for e in cf.image_extensions}
+    txt_set = {e.lstrip(".").lower() for e in cf.text_extensions}
+    rsc_set = {e.lstrip(".").lower() for e in cf.resource_extensions}
+
+    # workdir 안만 (재귀 X — 첫 구현은 단일 디렉토리)
+    files = sorted(p for p in workdir.iterdir() if p.is_file())
+    for fp in files:
+        ext = fp.suffix.lstrip(".").lower()
+        size = fp.stat().st_size
+
+        # 전체 누계 한도
+        if out["total_inline_b"] + size > max_total_b:
+            out["skipped"].append({
+                "path": fp.name, "size_b": size,
+                "reason": f"max_total_mb exceeded ({cf.max_total_mb}MB cap)",
+            })
+            continue
+
+        mime = _MIME_BY_EXT.get(ext)
+        if ext in img_set:
+            if size <= max_inline_b:
+                data = _b64.b64encode(fp.read_bytes()).decode("ascii")
+                out["images"].append({
+                    "path": fp.name, "mime": mime or "application/octet-stream",
+                    "data": data, "size_b": size,
+                })
+                out["total_inline_b"] += size
+            elif attachments_dir is not None and record_id:
+                attachments_dir.mkdir(parents=True, exist_ok=True)
+                dst = attachments_dir / fp.name
+                dst.write_bytes(fp.read_bytes())
+                out["attachment_urls"].append(f"/attachments/{record_id}/{fp.name}")
+            else:
+                out["skipped"].append({
+                    "path": fp.name, "size_b": size,
+                    "reason": f"max_inline_mb exceeded ({cf.max_inline_mb}MB), no record_id for attachment",
+                })
+        elif ext in rsc_set:
+            if size <= max_inline_b:
+                data = _b64.b64encode(fp.read_bytes()).decode("ascii")
+                out["resources"].append({
+                    "path": fp.name, "mime": mime or "application/octet-stream",
+                    "data": data, "size_b": size,
+                })
+                out["total_inline_b"] += size
+            elif attachments_dir is not None and record_id:
+                attachments_dir.mkdir(parents=True, exist_ok=True)
+                (attachments_dir / fp.name).write_bytes(fp.read_bytes())
+                out["attachment_urls"].append(f"/attachments/{record_id}/{fp.name}")
+            else:
+                out["skipped"].append({
+                    "path": fp.name, "size_b": size, "reason": "max_inline_mb exceeded",
+                })
+        elif ext in txt_set:
+            if size <= max_inline_b:
+                try:
+                    content = fp.read_text(encoding="utf-8")
+                except UnicodeDecodeError:
+                    content = fp.read_bytes().decode("utf-8", errors="replace")
+                out["texts"].append({
+                    "path": fp.name, "content": content, "size_b": size,
+                })
+                out["total_inline_b"] += size
+            else:
+                out["skipped"].append({
+                    "path": fp.name, "size_b": size, "reason": "text too large",
+                })
+        # 그 외 확장자는 무시 (sif 자체 등)
+
+    return out
+
+
+def _to_mcp_content(result: dict[str, Any]) -> Any:
+    """dispatch_call result → MCP Content list 변환.
+
+    captured 에 image 또는 resource (svg) 가 있으면 list[Content] 반환:
+        [TextContent(summary JSON), ImageContent...]
+    그 외엔 dict 그대로 (FastMCP 가 TextContent 로 wrap).
+    """
+    captured = (result or {}).get("captured") or {}
+    images = captured.get("images") or []
+    resources = captured.get("resources") or []
+    # SVG 만 ImageContent 로 본다 (PDF 는 TextContent 안내).
+    inline_imgs = list(images)
+    for r in resources:
+        mime = r.get("mime") or ""
+        if mime.startswith("image/"):
+            inline_imgs.append(r)
+    if not inline_imgs:
+        return result
+
+    try:
+        from mcp.types import ImageContent, TextContent
+    except ImportError:  # pragma: no cover — mcp SDK 없을 일 없음
+        return result
+
+    summary = {k: v for k, v in result.items() if k != "captured"}
+    summary["captured_meta"] = {
+        "image_count": len(captured.get("images") or []),
+        "text_count": len(captured.get("texts") or []),
+        "resource_count": len(captured.get("resources") or []),
+        "attachment_urls": captured.get("attachment_urls") or [],
+        "skipped": captured.get("skipped") or [],
+    }
+    content: list[Any] = [
+        TextContent(type="text", text=json.dumps(summary, ensure_ascii=False, indent=2))
+    ]
+    for img in inline_imgs:
+        content.append(ImageContent(
+            type="image",
+            data=img["data"],
+            mimeType=img["mime"],
+        ))
+    return content
 
 
 def _render_persist_preview(
@@ -709,8 +964,11 @@ def _make_handler(manifest: UploadManifest):
 
     sig = inspect.Signature(parameters=params, return_annotation=dict)
 
-    async def handler(**kwargs: Any) -> dict[str, Any]:
-        return await dispatch_call(manifest, kwargs)
+    async def handler(**kwargs: Any) -> Any:
+        result = await dispatch_call(manifest, kwargs)
+        # P1.5 — capture 가 이미지/SVG 를 포함하면 MCP Content list 반환
+        # (Claude Desktop 인라인 렌더). 그 외는 dict (FastMCP 가 TextContent 로 wrap).
+        return _to_mcp_content(result)
 
     handler.__name__ = manifest.name
     handler.__signature__ = sig  # type: ignore[attr-defined]

@@ -223,6 +223,61 @@ platform_capability:
 
 **LLM 친화 진단**: 거절 시 응답에 **해결 예시 코드 snippet** 포함 — "argparse + `matplotlib.use('Agg')` + `savefig` 로 리팩토링하세요. 예: `examples/wave-5/stress_strain_plot/`".
 
+---
+
+## 5.5 P1.5 — Output File Capture (Claude 인라인 렌더 — 완료)
+
+도구가 `/work/` 에 쓴 산출물을 자동 캡쳐 → MCP `ImageContent` 로 wrap → Claude Desktop / Cursor 가 채팅에 인라인 렌더.
+
+**매니페스트 (return.capture_files)**:
+
+```yaml
+return:
+  format: json
+  capture_files:
+    enabled: true                    # default false — 명시적 opt-in
+    scan_dir: /work/                 # 컨테이너 안 스캔 경로
+    image_extensions: [png, jpg, jpeg, gif, webp]
+    text_extensions: [txt, csv, json, md]
+    resource_extensions: [pdf, svg]
+    max_inline_mb: 5                 # 이거 초과 시 attachment URL
+    max_total_mb: 20                 # 전체 캡쳐 누계 상한
+```
+
+**서버 처리** (`apptainer_build_svc.exec_in_container` + `mcp_upload_svc._capture_output_files`):
+1. exec 시 호스트 임시 디렉토리를 `--bind <host_tmp>:/work` 로 마운트
+2. 도구가 `/work/out.png` 등에 쓴 파일이 호스트에서 보임
+3. `_capture_output_files` 가 스캔:
+   - image 확장자 → base64 inline (max_inline_mb 이하) 또는 attachment URL fallback
+   - text 확장자 → 본문 그대로 동봉
+   - resource (SVG/PDF) → SVG 는 ImageContent, PDF 는 TextContent 안내
+4. dispatch_call 응답에 `captured` 키로 첨부
+5. handler 가 `_to_mcp_content()` 로 변환: 이미지 있으면 `[TextContent, ImageContent...]` 반환, 없으면 dict 그대로
+
+**MCP 응답 (이미지 있을 때)**:
+```json
+{
+  "content": [
+    { "type": "text", "text": "{...summary JSON, captured_meta...}" },
+    { "type": "image", "data": "<base64 PNG>", "mimeType": "image/png" }
+  ]
+}
+```
+
+Claude Desktop / Cursor / Cline 모두 ImageContent 인라인 렌더 — 추가 작업 0.
+
+**크기 처리**:
+- < max_inline_mb (default 5MB) → base64 inline
+- 초과 + record_id 있음 → `static/attachments/<rid>/<name>` 저장 + URL 만 반환
+- 초과 + record_id 없음 → skipped 로 표기 (사용자 알림)
+
+**테스트** (5개 추가, 50/51 전체 PASS):
+- PNG inline 캡쳐
+- 큰 파일 → attachment fallback
+- 텍스트(csv) + SVG resource
+- `_to_mcp_content` MCP Content list 변환
+- 이미지 없으면 dict 그대로
+
 거절 시 즉시 400 응답 + 에러 코드 + 사람이 읽을 진단 메시지. 빌드 큐에 안 들어감.
 
 ## 6. persist_output 템플릿 엔진
