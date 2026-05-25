@@ -1161,16 +1161,26 @@ async def _persist_record_insert(
                     blob = _b64.b64decode(data)
                 except Exception:
                     continue
-                (dst_dir / name).write_bytes(blob)
+                file_path = dst_dir / name
+                file_path.write_bytes(blob)
+                attach_count += 1
+                # RecordAttachment 스키마: id PK + number + kind + caption +
+                # file_name/path/mime/size. ID 는 ``<record_id>-A<NNN>`` 패턴.
+                kind = "figure" if category == "images" else "resource"
+                att_id = f"{record_id}-A{attach_count:03d}"
                 session.add(
                     RecordAttachment(
+                        id=att_id,
                         record_id=record_id,
-                        filename=name,
+                        number=attach_count,
+                        kind=kind,
+                        caption=name,
+                        file_name=name,
+                        file_path=str(file_path),
                         mime_type=item.get("mime") or "application/octet-stream",
                         size_bytes=item.get("size_b") or len(blob),
                     )
                 )
-                attach_count += 1
                 attachment_urls.append(f"/attachments/{record_id}/{name}")
     # captured.attachment_urls (capture 단계에서 size 초과로 미리 attachment 화된 것)
     for url in (captured.get("attachment_urls") or []):

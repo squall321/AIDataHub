@@ -65,14 +65,43 @@ def generate_def(manifest: dict[str, Any]) -> str:
     else:
         base_image = _DEFAULT_PYTHON_BASE
 
+    # 폐쇄망 우회 — 사전 받은 로컬 sif 가 있으면 Bootstrap: localimage 사용.
+    # 우선순위:
+    #   1. env AIDH_BASE_SIF_DIR (운영자 명시) 의 <base>.sif
+    #   2. <repo>/api_server/cache/bases/<base>.sif  (mcp_uploads_dir 부근)
+    #   3. <repo>/deploy/apptainer/cache/bases/<base>.sif  (deploy 위치)
+    # 어느 것도 없으면 docker:// 폴백 (외부 접근 시도).
+    local_sif: Path | None = None
+    base_basename = base_image.replace(":", "-")  # python-3.12-slim
+    candidate_dirs: list[Path] = []
+    env_dir = os.environ.get("AIDH_BASE_SIF_DIR")
+    if env_dir:
+        candidate_dirs.append(Path(env_dir))
+    # 모듈 위치 기준 추정
+    _here = Path(__file__).resolve()
+    candidate_dirs.append(_here.parent.parent.parent.parent / "cache" / "bases")
+    candidate_dirs.append(_here.parent.parent.parent.parent.parent / "deploy" / "apptainer" / "cache" / "bases")
+    for d in candidate_dirs:
+        cand = d / f"{base_basename}.sif"
+        if cand.exists():
+            local_sif = cand
+            break
+
+    if local_sif is not None:
+        bootstrap_line = "Bootstrap: localimage"
+        from_line = f"From: {local_sif}"
+    else:
+        bootstrap_line = "Bootstrap: docker"
+        from_line = f"From: {base_image}"
+
     script = str(manifest.get("script") or "tool.py").strip()
     name = str(manifest.get("name") or "uploaded_tool").strip()
 
     # %files: bundle 의 모든 파일을 /opt/tool 로 복사 (호출 시점 마운트 아님 — 빌드 내장).
     # %post: requirements.txt 가 있으면 설치.
     # %runscript: python /opt/tool/<script> "$@"
-    return f"""Bootstrap: docker
-From: {base_image}
+    return f"""{bootstrap_line}
+{from_line}
 
 %labels
     aidh.tool.name {name}
@@ -134,13 +163,21 @@ def build_sif(
         return sif_path
 
     # 실 apptainer build — subprocess (동기). 운영 worker 가 이 함수 호출.
+    # cwd 를 def 디렉토리로 고정 — def 의 ``%files . /opt/tool`` 의 ``.`` 가
+    # 정확히 매니페스트/스크립트 디렉토리를 가리키도록. (미명시 시 process cwd
+    # 기준이라 거대한 repo root 가 통째로 복사되는 사고 발생.)
     import subprocess
+    # PROXY 변수 제거 (사내 8080 timeout 사례) — env 명시 시 사용 OK.
+    _env = {k: v for k, v in os.environ.items()
+            if k.upper() not in ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY")}
     try:
         cp = subprocess.run(
-            ["apptainer", "build", "--fakeroot", str(sif_path), str(def_path)],
+            ["apptainer", "build", "--fakeroot", "--force", str(sif_path), str(def_path)],
             capture_output=True,
             text=True,
             timeout=_BUILD_TIMEOUT_SEC,
+            cwd=str(dest_dir),
+            env=_env,
         )
     except FileNotFoundError as e:
         raise RuntimeError(
@@ -207,9 +244,13 @@ def smoke_run(
     # 실 apptainer exec — argv 합성 후 호출.
     argv = _build_argv(manifest, args)
     cmd = [
-        "apptainer", "exec",
+        # ``run`` (not ``exec``) — def 의 %runscript 가 ``exec python /opt/tool/<script> "$@"``
+        # 를 실행. exec 는 명시적 command 필요해서 우리 argv (flags only) 와 불호환.
+        "apptainer", "run",
         "--containall", "--no-home", "--writable-tmpfs",
-        "--net=none" if not _capability_net(manifest) else "--net",
+        # 격리: --net (새 namespace) + --network none (외부 차단).
+        # capability.net=true 시 host network 상속 (--net 미명시).
+        *(["--net", "--network", "none"] if not _capability_net(manifest) else []),
         str(sif_path),
         *argv,
     ]
@@ -287,10 +328,14 @@ async def exec_in_container(manifest: Any, args: dict[str, Any]) -> dict[str, An
     host_workdir = Path(_tempfile.mkdtemp(prefix="aidh-work-"))
 
     cmd = [
-        "apptainer", "exec",
+        # ``run`` (not ``exec``) — def 의 %runscript 가 ``exec python /opt/tool/<script> "$@"``
+        # 를 실행. exec 는 명시적 command 필요해서 우리 argv (flags only) 와 불호환.
+        "apptainer", "run",
         "--containall", "--no-home", "--writable-tmpfs",
         "--bind", f"{host_workdir}:/work",
-        "--net=none" if not _capability_net(manifest) else "--net",
+        # 격리: --net (새 namespace) + --network none (외부 차단).
+        # capability.net=true 시 host network 상속 (--net 미명시).
+        *(["--net", "--network", "none"] if not _capability_net(manifest) else []),
         str(sif_path),
         *argv,
     ]
