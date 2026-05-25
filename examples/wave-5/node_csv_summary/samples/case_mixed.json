@@ -1,0 +1,11 @@
+{
+  "_comment": "numeric + categorical 혼합",
+  "args": {
+    "csv_path": "/work/mixed.csv"
+  },
+  "fixtures": {
+    "/work/mixed.csv": "name,age,city\nAlice,30,Seoul\nBob,25,Busan\nCarol,35,Seoul\n"
+  },
+  "expected_exit": 0,
+  "expected_stdout_contains": "categorical"
+}

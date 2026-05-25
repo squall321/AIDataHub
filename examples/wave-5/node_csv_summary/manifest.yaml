@@ -1,0 +1,75 @@
+name: csv_summary
+title: "CSV → 컬럼별 통계 요약"
+description: >-
+  CSV 파일 1개를 읽어 각 컬럼의 통계 (numeric: count/mean/median/stddev/min/max,
+  categorical: count/unique/top5) 를 계산하고 JSON 으로 반환. 외부 라이브러리 0
+  (Node 표준 라이브러리만 — 폐쇄망 친화).
+
+script: csv_summary.js
+runtime: node
+node_version: "20"
+
+args:
+  - name: csv_path
+    type: string
+    required: true
+    description: "입력 CSV 절대경로 (컨테이너 /work/ 안에 마운트)."
+  - name: out_json
+    type: string
+    default: "/work/summary.json"
+    description: "출력 JSON 경로."
+  - name: delim
+    type: string
+    default: ","
+    description: "구분자 (default 콤마)."
+
+timeout_sec: 30
+args_style: long_flags
+env_allowlist:
+  - LANG
+  - LC_ALL
+
+return:
+  format: json
+  capture_files:
+    enabled: true                  # JSON 결과 자동 캡쳐 (text)
+
+platform_capability:
+  net: false
+  gpu: false
+
+resource_limits:
+  cpu_percent: 200
+  ram_gib: 1
+  disk_gib: 1
+
+persist_output:
+  enabled: true
+  data_type: DATA                 # CSV 분석 결과 = DATA 타입
+  team: HE
+  group: CAE
+  title_template: "CSV Summary — {args.csv_path}"
+  tags:
+    - csv
+    - summary
+    - statistics
+    - node-tool
+  summary_template: "{parsed.rows} rows, {parsed.columns} 컬럼 통계 — 자동 분석."
+  dedup_key: "csv_summary_{args.csv_path}"
+
+llm_hints:
+  when_to_use: >-
+    사용자가 CSV 파일의 통계 요약 / 컬럼별 분포 / 기초 EDA 를 요청할 때.
+  not_for: >-
+    복잡한 분석 (회귀, 시각화, 머신러닝) — 이 도구는 단순 통계 계산만.
+  example_calls:
+    - natural_language: "이 CSV 통계 요약 보여줘"
+      args:
+        csv_path: "/work/data.csv"
+    - natural_language: "탭 구분자 CSV 통계"
+      args:
+        csv_path: "/work/data.tsv"
+        delim: "\t"
+  output_description: >-
+    JSON: {rows, columns, stats: {col1: {type, count, mean, ...}}}. 결과 파일은
+    out_json 경로에도 저장됨 — capture_files 가 자동으로 records 에 적재.

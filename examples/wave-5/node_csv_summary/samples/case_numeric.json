@@ -1,0 +1,12 @@
+{
+  "_comment": "numeric 컬럼만 — 통계 출력 검증",
+  "args": {
+    "csv_path": "/work/in.csv"
+  },
+  "fixtures": {
+    "/work/in.csv": "id,score\n1,82.5\n2,91.0\n3,76.3\n4,88.9\n5,95.1\n"
+  },
+  "expected_exit": 0,
+  "expected_stdout_contains": "stats",
+  "expected_parsed_keys": ["rows", "columns", "stats"]
+}

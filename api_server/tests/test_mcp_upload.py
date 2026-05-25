@@ -243,6 +243,7 @@ def test_build_sif_dryrun_and_cache(tmp_path: Path, monkeypatch):
     from api.services.apptainer_build_svc import build_sif, generate_def
 
     monkeypatch.setenv("AIDH_BUILD_DRYRUN", "1")
+    monkeypatch.setenv("AIDH_DISABLE_LOCALIMAGE", "1")
 
     def_text = generate_def({
         "name": "demo", "runtime": "python", "python_version": "3.12",
@@ -266,12 +267,39 @@ def test_build_sif_dryrun_and_cache(tmp_path: Path, monkeypatch):
     assert sif2.read_bytes() == b"FAKE_SIF_CACHED"
 
 
-def test_generate_def_non_python_raises():
-    """Python 외 runtime 은 NotImplementedError."""
+def test_generate_def_reserved_runtime_raises():
+    """python/node/jvm/dotnet 외 runtime (binary/wine 등) 은 NotImplementedError."""
     from api.services.apptainer_build_svc import generate_def
 
     with pytest.raises(NotImplementedError):
-        generate_def({"name": "demo", "runtime": "node"})
+        generate_def({"name": "demo", "runtime": "binary"})
+    with pytest.raises(NotImplementedError):
+        generate_def({"name": "demo", "runtime": "wine"})
+
+
+def test_generate_def_multi_runtimes(monkeypatch) -> None:
+    """python/node/jvm/dotnet 각각의 base image + runscript 합성 검증."""
+    from api.services.apptainer_build_svc import generate_def
+
+    monkeypatch.setenv("AIDH_DISABLE_LOCALIMAGE", "1")
+
+    py = generate_def({"name": "py_t", "runtime": "python", "python_version": "3.12", "script": "t.py"})
+    assert "python:3.12-slim" in py
+    assert "exec python /opt/tool/t.py" in py
+    assert "pip install" in py
+
+    node = generate_def({"name": "node_t", "runtime": "node", "node_version": "20", "script": "t.js"})
+    assert "node:20-slim" in node
+    assert "exec node /opt/tool/t.js" in node
+    assert "npm" in node
+
+    jvm = generate_def({"name": "jvm_t", "runtime": "jvm", "jdk_version": "17", "script": "app.jar"})
+    assert "eclipse-temurin:17-jre" in jvm
+    assert "java -jar /opt/tool/app.jar" in jvm
+
+    dn = generate_def({"name": "dn_t", "runtime": "dotnet", "target_framework": "net8.0", "script": "App.dll"})
+    assert "mcr.microsoft.com/dotnet/runtime:8.0" in dn
+    assert "/opt/tool/App.dll" in dn
 
 
 # ---------------------------------------------------------------------------

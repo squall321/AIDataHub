@@ -53,17 +53,32 @@ def generate_def(manifest: dict[str, Any]) -> str:
         NotImplementedError: Python 외 runtime.
     """
     runtime = (manifest.get("runtime") or "python").lower()
-    if runtime != "python":
+    if runtime not in ("python", "node", "jvm", "dotnet"):
         raise NotImplementedError(
-            f"runtime={runtime} 는 MVP 미지원. Python 만 .def 생성 가능."
+            f"runtime={runtime} 는 MVP 미지원. python|node|jvm|dotnet 만 .def 생성 가능 "
+            "(binary/wine 은 wave-5 P2 reserve)."
         )
 
-    pyver = str(manifest.get("python_version") or "3.12").strip()
-    # base image — python:<pyver>-slim 으로 고정 (폐쇄망 캐시 단순화).
-    if pyver in ("3.12", "3.11", "3.10"):
-        base_image = f"python:{pyver}-slim"
-    else:
-        base_image = _DEFAULT_PYTHON_BASE
+    # runtime 별 base image + install + 실행 명령 매핑.
+    # 폐쇄망 base sif 정합을 위해 widely-cached slim 이미지 선호.
+    if runtime == "python":
+        pyver = str(manifest.get("python_version") or "3.12").strip()
+        base_image = f"python:{pyver}-slim" if pyver in ("3.12", "3.11", "3.10") else _DEFAULT_PYTHON_BASE
+    elif runtime == "node":
+        nver = str(manifest.get("node_version") or "20").strip()
+        base_image = f"node:{nver}-slim" if nver in ("22", "20", "18") else "node:20-slim"
+    elif runtime == "jvm":
+        jver = str(manifest.get("jdk_version") or "17").strip()
+        # Eclipse Temurin — Adoptium 공식 jre 이미지.
+        base_image = f"eclipse-temurin:{jver}-jre" if jver in ("21", "17", "11") else "eclipse-temurin:17-jre"
+    elif runtime == "dotnet":
+        # Microsoft 공식 dotnet runtime — runtime 만 (sdk 아님). self-contained 도구 가정.
+        tfm = str(manifest.get("target_framework") or "net8.0").strip()
+        # 8.0 / 9.0 만 매핑 — 그 외는 8.0 폴백.
+        tag = tfm.replace("net", "") if tfm.startswith("net") else "8.0"
+        if tag not in ("8.0", "9.0"):
+            tag = "8.0"
+        base_image = f"mcr.microsoft.com/dotnet/runtime:{tag}"
 
     # 폐쇄망 우회 — 사전 받은 로컬 sif 가 있으면 Bootstrap: localimage 사용.
     # 우선순위:
@@ -72,20 +87,22 @@ def generate_def(manifest: dict[str, Any]) -> str:
     #   3. <repo>/deploy/apptainer/cache/bases/<base>.sif  (deploy 위치)
     # 어느 것도 없으면 docker:// 폴백 (외부 접근 시도).
     local_sif: Path | None = None
-    base_basename = base_image.replace(":", "-")  # python-3.12-slim
-    candidate_dirs: list[Path] = []
-    env_dir = os.environ.get("AIDH_BASE_SIF_DIR")
-    if env_dir:
-        candidate_dirs.append(Path(env_dir))
-    # 모듈 위치 기준 추정
-    _here = Path(__file__).resolve()
-    candidate_dirs.append(_here.parent.parent.parent.parent / "cache" / "bases")
-    candidate_dirs.append(_here.parent.parent.parent.parent.parent / "deploy" / "apptainer" / "cache" / "bases")
-    for d in candidate_dirs:
-        cand = d / f"{base_basename}.sif"
-        if cand.exists():
-            local_sif = cand
-            break
+    base_basename = base_image.replace(":", "-").replace("/", "-")  # python-3.12-slim / mcr.microsoft.com-dotnet-runtime-8.0
+    # 테스트/디버깅용 — localimage 캐시 탐색 끔 (강제 docker bootstrap).
+    if os.environ.get("AIDH_DISABLE_LOCALIMAGE", "").lower() not in ("1", "true", "yes"):
+        candidate_dirs: list[Path] = []
+        env_dir = os.environ.get("AIDH_BASE_SIF_DIR")
+        if env_dir:
+            candidate_dirs.append(Path(env_dir))
+        # 모듈 위치 기준 추정
+        _here = Path(__file__).resolve()
+        candidate_dirs.append(_here.parent.parent.parent.parent / "cache" / "bases")
+        candidate_dirs.append(_here.parent.parent.parent.parent.parent / "deploy" / "apptainer" / "cache" / "bases")
+        for d in candidate_dirs:
+            cand = d / f"{base_basename}.sif"
+            if cand.exists():
+                local_sif = cand
+                break
 
     if local_sif is not None:
         bootstrap_line = "Bootstrap: localimage"
@@ -97,28 +114,69 @@ def generate_def(manifest: dict[str, Any]) -> str:
     script = str(manifest.get("script") or "tool.py").strip()
     name = str(manifest.get("name") or "uploaded_tool").strip()
 
-    # %files: bundle 의 모든 파일을 /opt/tool 로 복사 (호출 시점 마운트 아님 — 빌드 내장).
-    # %post: requirements.txt 가 있으면 설치.
-    # %runscript: python /opt/tool/<script> "$@"
+    # runtime 별 %post (의존성 설치) + %runscript (실행 명령) 합성.
+    if runtime == "python":
+        post_block = (
+            "    if [ -f /opt/tool/requirements.txt ]; then\n"
+            "        pip install --no-cache-dir -r /opt/tool/requirements.txt\n"
+            "    fi\n"
+            f"    chmod +x /opt/tool/{script} 2>/dev/null || true"
+        )
+        run_cmd = f'exec python /opt/tool/{script} "$@"'
+    elif runtime == "node":
+        # package.json 있으면 npm ci, 아니면 lockfile 없는 npm install 시도
+        post_block = (
+            "    if [ -f /opt/tool/package-lock.json ]; then\n"
+            "        cd /opt/tool && npm ci --omit=dev --no-audit --no-fund\n"
+            "    elif [ -f /opt/tool/package.json ]; then\n"
+            "        cd /opt/tool && npm install --omit=dev --no-audit --no-fund\n"
+            "    fi"
+        )
+        run_cmd = f'exec node /opt/tool/{script} "$@"'
+    elif runtime == "jvm":
+        # %post: 의존성 jars 가 lib/ 에 있으면 classpath 에. 기본은 단일 jar 실행.
+        post_block = (
+            "    # JVM tool — manifest.script = jar 파일 (예: app.jar)\n"
+            "    test -f /opt/tool/" + script + " || echo 'WARN: jar not found at /opt/tool/" + script + "'"
+        )
+        # lib/*.jar 가 있으면 classpath 에 추가 (선택).
+        run_cmd = (
+            'if [ -d /opt/tool/lib ]; then '
+            f'exec java -cp "/opt/tool/{script}:/opt/tool/lib/*" -jar /opt/tool/{script} "$@"; '
+            f'else exec java -jar /opt/tool/{script} "$@"; '
+            'fi'
+        )
+    elif runtime == "dotnet":
+        # self-contained .dll/.exe — runtime image 위에서 그대로 실행.
+        post_block = (
+            "    chmod +x /opt/tool/" + script + " 2>/dev/null || true"
+        )
+        run_cmd = (
+            f'if [ "${{1:-}}" = "" ] && [ -x /opt/tool/{script} ]; '
+            f'then exec /opt/tool/{script}; '
+            f'else exec dotnet /opt/tool/{script} "$@"; '
+            'fi'
+        )
+    else:  # 위에서 차단되므로 unreachable
+        post_block = "    :"
+        run_cmd = f'exec /opt/tool/{script} "$@"'
+
     return f"""{bootstrap_line}
 {from_line}
 
 %labels
     aidh.tool.name {name}
-    aidh.tool.runtime python
+    aidh.tool.runtime {runtime}
 
 %files
     . /opt/tool
 
 %post
     set -eu
-    if [ -f /opt/tool/requirements.txt ]; then
-        pip install --no-cache-dir -r /opt/tool/requirements.txt
-    fi
-    chmod +x /opt/tool/{script} 2>/dev/null || true
+{post_block}
 
 %runscript
-    exec python /opt/tool/{script} "$@"
+    {run_cmd}
 """
 
 
