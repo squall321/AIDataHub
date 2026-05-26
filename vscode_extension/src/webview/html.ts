@@ -465,6 +465,8 @@ function clientScript(): string {
       formError: null,          // form-level error message (string|null)
       saving: false,
       recordsByAgent: {},       // agent_type -> { loading, items, error }
+      // Wave-7 P3 — per-agent tools (manifest 정책 평가 후 호환 도구만).
+      toolsByAgent: {},         // agent_type -> { loading, items, error, tags }
       // v0.13.0 — Test preview (save-time dry-run of RAG recipe).
       preview: {
         query: '',
@@ -2056,6 +2058,9 @@ function clientScript(): string {
           render();
           runSearch();
         }
+        else if (action === 'load-tools') {
+          loadAgentTools(atype);
+        }
       });
     });
     // v0.13.0 — history diff radio selection.
@@ -2202,11 +2207,61 @@ function clientScript(): string {
         + (historyOpen ? 'Hide history' : 'View history')
         + '</button>'
       + '  ' + resyncBtnHtml
-      + '  <button data-action="download-template" data-agent="' + escapeHtml(ag.agent_type) + '" class="secondary" title="Download a Word (.docx) template prefilled for this agent">📄 Download Word template</button>'
+      + '  <button data-action="download-template" data-agent="' + escapeHtml(ag.agent_type) + '" class="secondary" title="Download a Word (.docx) template prefilled for this agent">Download Word template</button>'
+      + '  <button data-action="load-tools" data-agent="' + escapeHtml(ag.agent_type) + '" class="secondary" title="List wave-5 tools callable by this agent (Wave-7 P3)">Available tools</button>'
       + '  <a href="#" data-action="view-records" data-agent="' + escapeHtml(ag.agent_type) + '" style="align-self:center;margin-left:6px">View records →</a>'
       + '</div>'
       + resyncBannerHtml
       + historyHtml
+      + renderAgentToolsBlock(ag.agent_type)
+      + '</div>';
+  }
+
+  // Wave-7 P3 — Render compatible wave-5 tools for an agent (lazy-loaded).
+  function renderAgentToolsBlock(agentType){
+    var t = state.agents.toolsByAgent && state.agents.toolsByAgent[agentType];
+    if (!t) return '';
+    if (t.loading) {
+      return '<p class="muted" style="margin:8px 0">Loading tools…</p>';
+    }
+    if (t.error) {
+      return '<div class="status err" style="margin-top:8px">' + escapeHtml(String(t.error)) + '</div>';
+    }
+    var items = Array.isArray(t.items) ? t.items : [];
+    if (!items.length) {
+      return '<div class="agents-banner" style="background:rgba(128,128,128,0.18);margin-top:8px">No compatible tools for this agent (정책 필터링 또는 등록된 도구 없음).</div>';
+    }
+    var rows = items.map(function(it){
+      var p = it.policy || {};
+      var pBits = [];
+      if (Array.isArray(p.restrict_agents) && p.restrict_agents.length) {
+        pBits.push('restrict=[' + p.restrict_agents.map(escapeHtml).join(', ') + ']');
+      }
+      if (Array.isArray(p.require_agent_tag) && p.require_agent_tag.length) {
+        pBits.push('require_tag=[' + p.require_agent_tag.map(escapeHtml).join(', ') + ']');
+      }
+      if (Array.isArray(p.exclude_agent_tag) && p.exclude_agent_tag.length) {
+        pBits.push('exclude_tag=[' + p.exclude_agent_tag.map(escapeHtml).join(', ') + ']');
+      }
+      var policyHtml = pBits.length
+        ? '<span class="muted" style="font-size:10px">(' + pBits.join(' · ') + ')</span>'
+        : '<span class="muted" style="font-size:10px">(no policy — open)</span>';
+      var titleHtml = it.title
+        ? ' — ' + escapeHtml(String(it.title))
+        : '';
+      return '<tr>'
+        + '<td class="mono"><code>' + escapeHtml(String(it.name)) + '</code> <span class="chip">v' + (it.version || '?') + '</span></td>'
+        + '<td>' + escapeHtml(String(it.description || ''))
+        + (it.title ? '<div class="muted" style="font-size:11px">' + escapeHtml(String(it.title)) + '</div>' : '')
+        + '</td>'
+        + '<td>' + policyHtml + '</td>'
+        + '</tr>';
+    }).join('');
+    return '<div style="margin-top:10px">'
+      + '<div class="subtle" style="margin-bottom:4px">Available tools (' + items.length + ') — wave-5 도구 중 매니페스트 정책 통과한 항목만.</div>'
+      + '<table class="agents-table"><thead><tr>'
+      + '<th style="width:200px">name</th><th>description</th><th style="width:280px">policy</th>'
+      + '</tr></thead><tbody>' + rows + '</tbody></table>'
       + '</div>';
   }
 
@@ -2948,6 +3003,33 @@ function clientScript(): string {
       });
   }
 
+  // Wave-7 P3 — Fetch tools compatible with this agent (manifest 정책 평가 후).
+  function loadAgentTools(agentType){
+    if (!agentType) return;
+    if (!state.agents.toolsByAgent) state.agents.toolsByAgent = {};
+    state.agents.toolsByAgent[agentType] = { loading: true, items: null, error: null, tags: null };
+    render();
+    rpc('getAgentToolsRequest', { agentType: agentType })
+      .then(function(payload){
+        state.agents.toolsByAgent[agentType] = {
+          loading: false,
+          items: (payload && Array.isArray(payload.tools)) ? payload.tools : [],
+          tags: (payload && Array.isArray(payload.agent_common_tags)) ? payload.agent_common_tags : [],
+          error: null,
+        };
+        render();
+      })
+      .catch(function(err){
+        state.agents.toolsByAgent[agentType] = {
+          loading: false,
+          items: null,
+          tags: null,
+          error: String((err && err.message) || err),
+        };
+        render();
+      });
+  }
+
   // v0.13.0 — Toggle the inline history panel for an agent. Loads on first open.
   function toggleAgentHistory(agentType){
     if (!agentType) return;
@@ -3614,6 +3696,7 @@ function clientScript(): string {
     } else if (m.type === 'searchResponse' || m.type === 'searchFacetedResponse'
                || m.type === 'getRecordResponse' || m.type === 'discoverResponse'
                || m.type === 'listAgentsResponse' || m.type === 'getAgentRecordsResponse'
+               || m.type === 'getAgentToolsResponse'
                || m.type === 'createAgentResponse' || m.type === 'updateAgentResponse'
                || m.type === 'deleteAgentResponse'
                || m.type === 'downloadAgentTemplateResponse'

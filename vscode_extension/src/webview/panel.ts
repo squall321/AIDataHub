@@ -236,6 +236,20 @@ export class UploaderPanel {
         }
         return;
       }
+      case 'getAgentToolsRequest': {
+        const client = await this.getClient();
+        if (!client) {
+          this.post({ type: 'getAgentToolsResponse', reqId: msg.reqId, ok: false, error: 'Not connected' });
+          return;
+        }
+        try {
+          const payload = await client.getAgentTools(msg.agentType);
+          this.post({ type: 'getAgentToolsResponse', reqId: msg.reqId, ok: true, payload });
+        } catch (err) {
+          this.post({ type: 'getAgentToolsResponse', reqId: msg.reqId, ok: false, error: formatError(err) });
+        }
+        return;
+      }
       case 'createAgentRequest': {
         const client = await this.getClient();
         if (!client) {

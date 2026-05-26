@@ -95,6 +95,68 @@ async def get_agent_records(
     return [RecordOut.model_validate(r) for r in rows]
 
 
+@router.get(
+    "/{agent_type}/tools",
+    summary="이 agent context 에서 호출 가능한 wave-5 도구 목록 (Wave-7 P3)",
+)
+async def get_agent_tools(
+    agent_type: str,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """매니페스트 정책 (restrict_agents / require_agent_tag / exclude_agent_tag)
+    을 평가하여 이 agent 가 호출 가능한 wave-5 도구만 반환.
+
+    Returns:
+        {
+            "agent_type": ...,
+            "agent_common_tags": [...],
+            "tools": [
+                {"name", "title", "description", "version", "policy": {...}},
+                ...
+            ]
+        }
+    """
+    from sqlalchemy import select
+
+    from api.db.models import MCPUpload
+    from api.services import tool_visibility_svc
+
+    agent = await agent_svc.get_agent(session, agent_type)
+    if agent is None:
+        raise HTTPException(status_code=404, detail=f"agent not found: {agent_type}")
+    tags = list(agent.common_tags or [])
+
+    rows = (
+        await session.execute(
+            select(MCPUpload)
+            .where(MCPUpload.deprecated_at.is_(None))
+            .order_by(MCPUpload.name)
+        )
+    ).scalars().all()
+
+    out: list[dict] = []
+    for r in rows:
+        manifest = r.manifest or {}
+        if not tool_visibility_svc.is_compatible(
+            manifest, agent_type=agent_type, agent_tags=tags
+        ):
+            continue
+        out.append({
+            "name": r.name,
+            "title": manifest.get("title") or "",
+            "description": (manifest.get("description") or "")[:300],
+            "version": r.current_version,
+            "policy": tool_visibility_svc.extract_policy(manifest),
+        })
+
+    return {
+        "agent_type": agent_type,
+        "agent_common_tags": tags,
+        "tools": out,
+        "tool_count": len(out),
+    }
+
+
 @router.post(
     "",
     response_model=AgentOut,

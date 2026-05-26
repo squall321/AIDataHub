@@ -297,6 +297,30 @@ export class ApiClient {
   }
 
   /**
+   * GET /api/agents/{agent_type}/tools — Wave-7 P3.
+   * 매니페스트 정책 (restrict/require/exclude) 평가 후 호환 도구 반환.
+   */
+  async getAgentTools(agentType: string): Promise<{
+    agent_type: string;
+    agent_common_tags: string[];
+    tools: Array<{
+      name: string;
+      title: string;
+      description: string;
+      version: number;
+      policy: { restrict_agents: string[]; require_agent_tag: string[]; exclude_agent_tag: string[] };
+    }>;
+    tool_count: number;
+  }> {
+    const res = await fetch(
+      joinUrl(this.baseUrl, `/api/agents/${encodeURIComponent(agentType)}/tools`),
+      { method: 'GET', headers: this.headers() },
+    );
+    if (!res.ok) throw await parseError(res);
+    return await res.json();
+  }
+
+  /**
    * GET /api/agents/{agent_type}/template — Word (.docx) template for this agent.
    *
    * Server returns `application/vnd.openxmlformats-officedocument.wordprocessingml.document`

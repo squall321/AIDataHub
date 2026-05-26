@@ -51,6 +51,8 @@ export type WebviewToHost =
   // ---- v0.6.0 Agents CRUD ----
   | { type: 'listAgentsRequest'; reqId: number }
   | { type: 'getAgentRecordsRequest'; reqId: number; agentType: string }
+  // ---- Wave-7 P3 — agent 별 호환 도구 목록 ----
+  | { type: 'getAgentToolsRequest'; reqId: number; agentType: string }
   | { type: 'createAgentRequest'; reqId: number; payload: AgentInT }
   | { type: 'updateAgentRequest'; reqId: number; agentType: string; patch: AgentPatchT }
   | { type: 'deleteAgentRequest'; reqId: number; agentType: string }
@@ -118,6 +120,24 @@ export type HostToWebview =
   // ---- v0.6.0 Agents CRUD responses ----
   | { type: 'listAgentsResponse'; reqId: number; ok: boolean; payload?: AgentOutT[]; error?: string }
   | { type: 'getAgentRecordsResponse'; reqId: number; ok: boolean; payload?: SearchItem[]; error?: string }
+  | {
+      type: 'getAgentToolsResponse';
+      reqId: number;
+      ok: boolean;
+      payload?: {
+        agent_type: string;
+        agent_common_tags: string[];
+        tools: Array<{
+          name: string;
+          title: string;
+          description: string;
+          version: number;
+          policy: { restrict_agents: string[]; require_agent_tag: string[]; exclude_agent_tag: string[] };
+        }>;
+        tool_count: number;
+      };
+      error?: string;
+    }
   | { type: 'createAgentResponse'; reqId: number; ok: boolean; payload?: AgentOutT; error?: string; httpStatus?: number }
   | { type: 'updateAgentResponse'; reqId: number; ok: boolean; payload?: AgentOutT; error?: string; httpStatus?: number }
   | { type: 'deleteAgentResponse'; reqId: number; ok: boolean; agentType?: string; error?: string; httpStatus?: number }
