@@ -129,18 +129,39 @@ async def list_agents() -> list[dict[str, Any]]:
         "an intent and you need to pick the right agent."
     ),
 )
-async def recommend_agents(q: str, top_k: int = 5) -> dict[str, Any]:
-    """자연어 → ranked agents. 0건일 때는 catalog 전체에서 후보 + sample_queries 를
-    함께 반환해 LLM 이 사용자에게 재질의할 단서가 되도록 한다.
+async def recommend_agents(
+    q: str, top_k: int = 5, top_k_tools: int = 3
+) -> dict[str, Any]:
+    """자연어 → ranked agents (+ Wave-7 P1: relevant_tools 동봉).
+
+    0건일 때는 catalog 전체에서 후보 + sample_queries 를 함께 반환해 LLM 이
+    사용자에게 재질의할 단서가 되도록 한다.
     """
     from sqlalchemy import select
     from .db.models import Agent
-    from .services import recommend_svc
+    from .services import recommend_svc, tool_embedding_svc
 
     async with SessionLocal() as session:
         agents = await recommend_svc.recommend_agents(session, query=q, top_k=top_k)
+        # Wave-7 P1 — 도구 검색 (별도 실패해도 agent 추천은 유지)
+        relevant_tools: list[dict[str, Any]] = []
+        try:
+            relevant_tools = await tool_embedding_svc.search_tools(
+                session, q, top_k=max(0, min(int(top_k_tools), 10))
+            )
+        except Exception as e:  # pragma: no cover — defensive
+            import logging as _l
+            _l.getLogger(__name__).warning(
+                "relevant_tools 검색 실패 (agent 응답은 유지): %s", e
+            )
+
         if agents:
-            return {"query": q, "agents": agents, "fallback": False}
+            return {
+                "query": q,
+                "agents": agents,
+                "relevant_tools": relevant_tools,
+                "fallback": False,
+            }
 
         # 0건 폴백 — 전체 agent 의 메타 + sample_queries 상위 일부.
         rows = (
@@ -160,6 +181,7 @@ async def recommend_agents(q: str, top_k: int = 5) -> dict[str, Any]:
         return {
             "query": q,
             "agents": [],
+            "relevant_tools": relevant_tools,
             "fallback": True,
             "hint": (
                 "No matching agents for the query. Ask the user to clarify "

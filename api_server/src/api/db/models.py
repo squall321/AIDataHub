@@ -771,6 +771,18 @@ class MCPUpload(Base):
     deprecated_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
+    # ---- Wave-7 P1: tool description embedding (Migration 0024) ----------
+    # ``description_text`` = description + when_to_use + example_calls 자연어 join.
+    # ``description_embedding`` = e5-base 768d (sections 와 동일 모델).
+    description_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    if _VECTOR_AVAILABLE:
+        description_embedding: Mapped[list[float] | None] = mapped_column(
+            _Vector(_EMBEDDING_DIM), nullable=True
+        )
+    else:  # pragma: no cover — pgvector 패키지 없음
+        description_embedding: Mapped[list[float] | None] = mapped_column(
+            _Vector, nullable=True
+        )
 
 
 class MCPUploadHistory(Base):

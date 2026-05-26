@@ -179,6 +179,18 @@ async def upload_tool(
             )
             await session.commit()
 
+            # ── 4b. Wave-7 P1: description embedding sync (자체 commit) ──
+            try:
+                from api.services import tool_embedding_svc
+                await tool_embedding_svc.sync_tool_embedding(
+                    session, name=result["name"], manifest=result["manifest"]
+                )
+            except Exception as e:
+                log.warning(
+                    "tool_embedding sync 실패 (도구 등록은 성공 — 다음 업로드/백필에서 재시도): %s",
+                    e,
+                )
+
         payload = {
             "job_id": job_id,
             "status": "completed",
