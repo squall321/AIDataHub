@@ -218,11 +218,20 @@ async def test_engine():
     PostgreSQL 전용 컬럼(ARRAY/JSONB 등)을 SQLite에서 사용하면 깨지므로,
     Agent 1 모델이 아직 PG 전용이면 이 픽스처는 그대로 못 쓸 수 있다.
     이런 경우 호출 측에서 직접 skip 하면 된다.
+
+    aiosqlite 미설치 환경 (dev PC install 금지 규칙) — fixture 자체를 skip
+    처리하여 165 ModuleNotFoundError 가 발생하지 않도록 한다. 호출 측 테스트도
+    skip 표시되며, 실 DB 의존 테스트는 target 서버에서만 돌린다.
     """
     try:
         from sqlalchemy.ext.asyncio import create_async_engine
     except ImportError:  # pragma: no cover
         pytest.skip("sqlalchemy[asyncio] not available", allow_module_level=False)
+
+    try:
+        import aiosqlite  # noqa: F401
+    except ImportError:
+        pytest.skip("aiosqlite not installed — SQLite in-memory fixture 비활성")
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",

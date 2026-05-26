@@ -12,7 +12,7 @@ async def test_root() -> None:
         resp = await ac.get("/")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["service"] == "ai-data-api"
+    assert body["service"] == "mobile-experience-ai-data-hub"
     assert body["status"] == "running"
 
 

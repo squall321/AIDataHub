@@ -96,12 +96,16 @@ async def test_ask_follow_up_present(db_client, seed_records) -> None:
 
 @pytest.mark.asyncio
 async def test_interpret_keywords_unit() -> None:
-    """순수 키워드 인터프리터 단위 테스트."""
-    parsed = discover_svc._interpret_keywords(  # type: ignore[attr-defined]
+    """순수 키워드 인터프리터 단위 테스트.
+
+    session=None 호출 — DB 기반 agent 매칭 비활성 (Migration 0012 이후 정책).
+    따라서 ``agent`` 필터는 None. data_type / quality / 날짜 추출만 검증.
+    """
+    parsed = await discover_svc._interpret_keywords(  # type: ignore[attr-defined]
         "최근 7일 IGA 시뮬레이션 quality 80 이상"
     )
     f = parsed["filters"]
-    assert f.get("agent") == "iga-analyst"
+    assert f.get("agent") is None  # DB 없을 땐 agent 매칭 안 함
     assert f.get("data_type") == "SIM"
     assert f.get("quality_score_gte") == 80
     assert f.get("created_at_gte")
