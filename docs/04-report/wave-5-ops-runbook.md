@@ -315,16 +315,109 @@ P1.7 의 진정한 가치 — 도구 결과가 다음 검색의 근거:
 
 ---
 
+## 9. 멀티 런타임 운영 체크리스트 (v0.5.0 — P1.9)
+
+v0.5.0 부터 `generate_def` 가 4 런타임 지원. 폐쇄망 운영을 위해 base sif **사전 fetch + 배치 필수**.
+
+### 9.1 base sif 사전 준비 (1회)
+
+| runtime | base image | 사전 sif 파일명 |
+|---|---|---|
+| Python 3.12 | `python:3.12-slim` | `python-3.12-slim.sif` |
+| Python 3.11 | `python:3.11-slim` | `python-3.11-slim.sif` |
+| Node 20 | `node:20-slim` | `node-20-slim.sif` |
+| Node 22 | `node:22-slim` | `node-22-slim.sif` |
+| JVM 17 | `eclipse-temurin:17-jre` | `eclipse-temurin-17-jre.sif` |
+| JVM 21 | `eclipse-temurin:21-jre` | `eclipse-temurin-21-jre.sif` |
+| .NET 8 | `mcr.microsoft.com/dotnet/runtime:8.0` | `mcr.microsoft.com-dotnet-runtime-8.0.sif` |
+
+```bash
+# 외부 접근 가능 머신에서:
+for IMG in "python:3.12-slim" "node:20-slim" "eclipse-temurin:17-jre" "mcr.microsoft.com/dotnet/runtime:8.0"; do
+  SIF=$(echo "$IMG" | tr ':/' '-').sif
+  apptainer pull "$SIF" "docker://$IMG"
+done
+
+# target 서버로 scp:
+scp *.sif user@<target>:/opt/aidh/base-sifs/
+
+# target 서버 .env:
+echo "AIDH_BASE_SIF_DIR=/opt/aidh/base-sifs" >> deploy/apptainer/.env
+bash deploy/apptainer/restart.sh --api
+```
+
+### 9.2 런타임별 smoke 검증
+
+각 런타임이 올바르게 빌드/실행되는지 1 회 검증.
+
+| runtime | 예제 zip | 기대 응답 |
+|---|---|---|
+| Python | `examples/wave-5/stress_strain_plot/` | ImageContent + record_id |
+| Node | `examples/wave-5/node_csv_summary/` | TextContent (JSON) + record_id |
+| JVM | (예제 미작성 — 매니페스트 예시는 plan §5.9 참조) | TextContent + record_id |
+| .NET | (예제 미작성 — 매니페스트 예시는 plan §5.9 참조) | TextContent + record_id |
+
+검증 명령 (Node 예제):
+
+```bash
+HOST="http://<server>:8001"
+cd <repo>/examples/wave-5/node_csv_summary
+zip -r /tmp/node_csv.zip csv_summary.js manifest.yaml samples/
+
+JOB=$(curl -s -F "uploader=ops" -F "package=@/tmp/node_csv.zip" \
+        $HOST/api/mcp_tools/upload \
+        | python3 -c "import sys,json;print(json.load(sys.stdin)['job_id'])")
+
+# 폴링 — completed 까지 대기
+while true; do
+  ST=$(curl -s $HOST/api/mcp_tools/jobs/$JOB | python3 -c "import sys,json;print(json.load(sys.stdin)['status'])")
+  echo "  status=$ST"
+  [[ "$ST" == "completed" || "$ST" == "failed" ]] && break
+  sleep 2
+done
+
+# tools/call 검증
+curl -s -X POST $HOST/mcp -H 'Accept: application/json,text/event-stream' \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"csv_summary","arguments":{"csv_path":"/work/samples/case_numeric.json"}}}' \
+  | sed -n 's/^data: //p' | head -1 | python3 -m json.tool
+```
+
+### 9.3 트러블슈팅
+
+| 증상 | 원인 | 해결 |
+|---|---|---|
+| `BUILD_FAIL: proxyconnect tcp` | 사내 proxy 가 docker.io 접근 차단 | `.env` 에 base sif 사전 배치 → `AIDH_BASE_SIF_DIR` 지정 |
+| `Bootstrap: docker` 로 떨어짐 (사전 sif 있음에도) | basename 미스매치 — `:` 와 `/` 모두 `-` 치환 | `mv` 로 이름 통일 |
+| `apptainer: Invalid value "none"` (--net=none) | apptainer 의 `--net` 은 boolean | 자동 처리 — 코드는 `--net --network none` 사용 |
+| sif 크기 폭주 (수 GB) | `%files . /opt/tool` 의 `.` 가 process cwd | 자동 처리 — `subprocess.run(cwd=dest_dir)` |
+| .NET self-contained 가 동작 안 함 | 매니페스트의 `target_framework` 가 image 와 불일치 | `net8.0` ↔ runtime 8.0, `net9.0` ↔ runtime 9.0 매칭 |
+
+### 9.4 force docker bootstrap (디버깅)
+
+테스트 / CI / "사전 sif 가 손상되었나?" 의심 시 강제로 docker bootstrap 시도:
+
+```bash
+AIDH_DISABLE_LOCALIMAGE=1 bash deploy/apptainer/restart.sh --api
+# 다음 업로드는 base sif 무시하고 docker://... 로 시도
+# (인터넷 접근 가능한 환경에서만 동작)
+```
+
+운영 시 항상 해제 (`unset AIDH_DISABLE_LOCALIMAGE`).
+
+---
+
 ## 완료 신호
 
-위 모든 단계 PASS 시 wave-5 P1~P1.8 운영 검증 종료. report-generator 가 자동 보고서 작성 가능:
+위 모든 단계 PASS 시 wave-5 P1~P1.9 운영 검증 종료. report-generator 가 자동 보고서 작성 가능:
 
 ```bash
 /pdca report wave-5-binary-mcp
 ```
 
 다음 트랙 후보:
+
 - Wave-5 P2 Dashboard UI (사용자 진입 장벽 낮춤)
 - Wave-6 P2 stdio transport + 헬스체크 worker
-- Wave-5 P1.9 LLM auto-convert (GUI→CLI)
+- Wave-7 — agent 통합 (wave-5 도구를 agent_definitions 에 자동 등록 → recommend_agents 가 도구 추천)
 - 운영 회귀 자동화 (`verify-wave-5.sh` cron)
