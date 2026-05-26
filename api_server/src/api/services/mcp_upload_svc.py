@@ -144,6 +144,9 @@ class UploadManifest:
     env_allowlist: list[str] = field(default_factory=list)
     return_format: str = "text"
     restrict_agents: list[str] = field(default_factory=list)
+    # Wave-7 P2 — agent context 필터 정책 (기본 빈 리스트 = 제약 없음).
+    require_agent_tag: list[str] = field(default_factory=list)
+    exclude_agent_tag: list[str] = field(default_factory=list)
     persist_output: PersistOutput = field(default_factory=PersistOutput)
     llm_hints: LLMHints = field(default_factory=LLMHints)
     capture_files: CaptureFiles = field(default_factory=CaptureFiles)
@@ -334,6 +337,13 @@ def validate_manifest(raw: dict[str, Any]) -> UploadManifest:
     restrict_agents = [
         str(a) for a in (raw.get("restrict_agents") or []) if isinstance(a, str)
     ]
+    # Wave-7 P2 — agent context 필터 키.
+    require_agent_tag = [
+        str(t) for t in (raw.get("require_agent_tag") or []) if isinstance(t, str) and t
+    ]
+    exclude_agent_tag = [
+        str(t) for t in (raw.get("exclude_agent_tag") or []) if isinstance(t, str) and t
+    ]
 
     return UploadManifest(
         capture_files=capture_files,
@@ -349,6 +359,8 @@ def validate_manifest(raw: dict[str, Any]) -> UploadManifest:
         env_allowlist=env_allowlist,
         return_format=return_format,
         restrict_agents=restrict_agents,
+        require_agent_tag=require_agent_tag,
+        exclude_agent_tag=exclude_agent_tag,
         persist_output=po,
         llm_hints=hints,
     )
@@ -580,6 +592,8 @@ def _manifest_to_dict(m: UploadManifest) -> dict[str, Any]:
         "env_allowlist": list(m.env_allowlist),
         "return_format": m.return_format,
         "restrict_agents": list(m.restrict_agents),
+        "require_agent_tag": list(m.require_agent_tag),
+        "exclude_agent_tag": list(m.exclude_agent_tag),
         "persist_output": {
             "enabled": m.persist_output.enabled,
             "data_type": m.persist_output.data_type,
@@ -666,6 +680,8 @@ def _manifest_from_dict(d: dict[str, Any]) -> UploadManifest:
         env_allowlist=list(d.get("env_allowlist") or []),
         return_format=d.get("return_format", "text"),
         restrict_agents=list(d.get("restrict_agents") or []),
+        require_agent_tag=list(d.get("require_agent_tag") or []),
+        exclude_agent_tag=list(d.get("exclude_agent_tag") or []),
         persist_output=po,
         llm_hints=hints,
         sif_path=Path(d["sif_path"]) if d.get("sif_path") else None,

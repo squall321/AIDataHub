@@ -130,25 +130,52 @@ async def list_agents() -> list[dict[str, Any]]:
     ),
 )
 async def recommend_agents(
-    q: str, top_k: int = 5, top_k_tools: int = 3
+    q: str,
+    top_k: int = 5,
+    top_k_tools: int = 3,
+    agent_type: str | None = None,
 ) -> dict[str, Any]:
-    """자연어 → ranked agents (+ Wave-7 P1: relevant_tools 동봉).
+    """자연어 → ranked agents (+ Wave-7 P1: relevant_tools 동봉, P2: agent context 필터).
 
     0건일 때는 catalog 전체에서 후보 + sample_queries 를 함께 반환해 LLM 이
     사용자에게 재질의할 단서가 되도록 한다.
+
+    Args:
+        agent_type: 호출자 agent context (Wave-7 P2). 설정 시 매니페스트 정책
+                    (restrict/require/exclude) 적용 후 relevant_tools 필터.
     """
     from sqlalchemy import select
-    from .db.models import Agent
-    from .services import recommend_svc, tool_embedding_svc
+
+    from .db.models import Agent, MCPUpload
+    from .services import recommend_svc, tool_embedding_svc, tool_visibility_svc
 
     async with SessionLocal() as session:
         agents = await recommend_svc.recommend_agents(session, query=q, top_k=top_k)
-        # Wave-7 P1 — 도구 검색 (별도 실패해도 agent 추천은 유지)
+        # Wave-7 P1+P2 — 도구 검색 + 정책 필터 (별도 실패해도 agent 추천은 유지)
         relevant_tools: list[dict[str, Any]] = []
         try:
-            relevant_tools = await tool_embedding_svc.search_tools(
-                session, q, top_k=max(0, min(int(top_k_tools), 10))
-            )
+            k = max(0, min(int(top_k_tools), 10))
+            if k > 0:
+                over_fetch = min(k * 3, 20)
+                raw = await tool_embedding_svc.search_tools(session, q, top_k=over_fetch)
+                if agent_type and raw:
+                    names = [r["name"] for r in raw]
+                    rows = (
+                        await session.execute(
+                            select(MCPUpload).where(MCPUpload.name.in_(names))
+                        )
+                    ).scalars().all()
+                    by_name = {r.name: r.manifest for r in rows}
+                    enriched = [{**r, "manifest": by_name.get(r["name"], {})} for r in raw]
+                    filt = await tool_visibility_svc.filter_tools_for_agent(
+                        session, enriched, agent_type=agent_type
+                    )
+                    relevant_tools = [
+                        {kk: vv for kk, vv in r.items() if kk != "manifest"}
+                        for r in filt
+                    ][:k]
+                else:
+                    relevant_tools = raw[:k]
         except Exception as e:  # pragma: no cover — defensive
             import logging as _l
             _l.getLogger(__name__).warning(
