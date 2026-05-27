@@ -34,7 +34,8 @@
   <button data-tab="groups"><span class="tab-num">05</span>그룹·분류</button>
   <button data-tab="analytics"><span class="tab-num">06</span>분석</button>
   <button data-tab="org"><span class="tab-num">07</span>조직 관리</button>
-  <button data-tab="docs"><span class="tab-num">08</span>API 가이드</button>
+  <button data-tab="tools"><span class="tab-num">08</span>MCP 도구</button>
+  <button data-tab="docs"><span class="tab-num">09</span>API 가이드</button>
 </nav>
 
 <main>
@@ -432,6 +433,65 @@
   <!-- ============================================================ -->
   <!-- Section 6: API 가이드 (인터랙티브 Explorer) -->
   <!-- ============================================================ -->
+  <!-- Wave-5 P2 — MCP 도구 업로드/관리 (zip 만들 필요 없이 파일 drag-drop) -->
+  <section class="panel" data-panel="tools">
+    <div class="panel-head">
+      <div>
+        <h2>MCP 도구</h2>
+        <p class="panel-sub">wave-5 CLI 도구를 zip 으로 업로드 → 서버가 Apptainer 빌드 + smoke + MCP 등록. Python/Node/JVM/.NET 4 런타임 지원.</p>
+      </div>
+      <div class="actions">
+        <button id="tools-refresh" class="btn ghost icon-btn" title="새로고침">↻ 새로고침</button>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <div class="actions" style="gap:8px; flex-wrap:wrap;">
+        <span class="muted" style="font-size:12px;">매니페스트 사양:</span>
+        <a class="btn ghost" href="/static/examples/wave-5/MANIFEST-SPEC.md" target="_blank">↗ MANIFEST-SPEC.md</a>
+        <a class="btn ghost" href="/static/examples/wave-5/stress_strain_plot/" target="_blank">↗ Python 예제</a>
+        <a class="btn ghost" href="/static/examples/wave-5/node_csv_summary/" target="_blank">↗ Node 예제</a>
+      </div>
+    </div>
+
+    <!-- 업로드 영역 -->
+    <div class="filter-bar" style="flex-direction:column; align-items:stretch; gap:10px;">
+      <h3 style="margin:0;">새 도구 업로드</h3>
+      <div id="tools-drop" style="border:2px dashed var(--border, #888); border-radius:6px; padding:24px; text-align:center; cursor:pointer; transition:background 0.15s;">
+        <div style="font-size:14px; margin-bottom:6px;"><strong>zip 파일 drag &amp; drop</strong> 또는 클릭해서 선택</div>
+        <div class="muted" style="font-size:11px;">zip 안에 manifest.yaml + 스크립트 + samples/*.json 필요</div>
+        <input id="tools-file" type="file" accept=".zip,application/zip" style="display:none;">
+      </div>
+
+      <div style="display:flex; gap:10px; align-items:center;">
+        <label class="field" style="flex:1;">
+          <span class="field-label">uploader (감사 추적)</span>
+          <input id="tools-uploader" type="text" placeholder="예: koopark@samsung.com" value="">
+        </label>
+        <label class="field" style="display:flex; align-items:center; gap:6px;">
+          <input id="tools-dryrun" type="checkbox">
+          <span style="font-size:12px;">dry-run (DB INSERT skip)</span>
+        </label>
+        <button id="tools-upload-go" class="btn" disabled>업로드</button>
+      </div>
+      <div id="tools-upload-state" class="state" style="font-size:12px; min-height:18px;"></div>
+    </div>
+
+    <!-- job 결과 -->
+    <div id="tools-job-result" style="margin-top:10px; display:none;">
+      <h3 style="margin:6px 0;">업로드 결과</h3>
+      <pre id="tools-job-pre" style="background:rgba(128,128,128,0.06); padding:8px; border-radius:3px; max-height:280px; overflow:auto; white-space:pre-wrap; font-size:11px;"></pre>
+    </div>
+
+    <!-- 등록된 도구 목록 -->
+    <div style="margin-top:16px;">
+      <h3 style="margin:6px 0;">등록된 도구 (mcp_uploads)</h3>
+      <div id="tools-list-wrap">
+        <div class="state">[조회] 새로고침으로 로드.</div>
+      </div>
+    </div>
+  </section>
+
   <section class="panel docs-panel" data-panel="docs">
     <div class="panel-head">
       <div>

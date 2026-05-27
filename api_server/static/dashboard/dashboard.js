@@ -1151,6 +1151,168 @@ LOADERS["analytics"] = loadAnalytics;
 
 LOADERS["org"] = loadOrg;
 
+// ============================================================================
+// Section 8: MCP 도구 (Wave-5 P2 — Dashboard Upload UI)
+// ============================================================================
+let _toolsSelectedFile = null;
+
+function _toolsSetState(msg, kind) {
+  const el = document.getElementById("tools-upload-state");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.style.color = kind === "err" ? "var(--vscode-errorForeground, #c33)"
+                : kind === "ok" ? "var(--vscode-foreground, #393)"
+                : "";
+}
+
+function _toolsRefreshGoBtn() {
+  const btn = document.getElementById("tools-upload-go");
+  const uploaderEl = document.getElementById("tools-uploader");
+  const uploader = (uploaderEl && uploaderEl.value || "").trim();
+  if (btn) btn.disabled = !(_toolsSelectedFile && uploader);
+}
+
+function _toolsAcceptFile(file) {
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith(".zip")) {
+    _toolsSetState(`거절: ${file.name} (zip 만 허용)`, "err");
+    _toolsSelectedFile = null;
+    _toolsRefreshGoBtn();
+    return;
+  }
+  _toolsSelectedFile = file;
+  _toolsSetState(`선택: ${file.name} (${(file.size/1024).toFixed(1)} KB)`, "ok");
+  _toolsRefreshGoBtn();
+}
+
+async function _toolsUpload() {
+  if (!_toolsSelectedFile) return;
+  const uploader = (document.getElementById("tools-uploader").value || "").trim();
+  const dryRun = !!document.getElementById("tools-dryrun").checked;
+  const btn = document.getElementById("tools-upload-go");
+  btn.disabled = true;
+  _toolsSetState(`업로드 중... (${_toolsSelectedFile.name}, ${dryRun ? "dry-run" : "real"})`);
+
+  const fd = new FormData();
+  fd.append("bundle", _toolsSelectedFile);
+  fd.append("uploader", uploader);
+  fd.append("dry_run", dryRun ? "true" : "false");
+
+  try {
+    const headers = {};
+    const key = getApiKey();
+    if (key) headers["X-API-Key"] = key;
+    const resp = await fetch(BASE + "/api/mcp_tools/upload", {
+      method: "POST",
+      headers,
+      body: fd,
+    });
+    const body = await resp.json();
+    const pre = document.getElementById("tools-job-pre");
+    const wrap = document.getElementById("tools-job-result");
+    if (pre && wrap) {
+      pre.textContent = JSON.stringify(body, null, 2);
+      wrap.style.display = "";
+    }
+    if (resp.ok) {
+      _toolsSetState(`성공: ${body.name || ""} v${body.version || "?"} (status=${body.status})`, "ok");
+      _toolsSelectedFile = null;
+      document.getElementById("tools-file").value = "";
+      loadToolsList();
+    } else {
+      _toolsSetState(`실패: HTTP ${resp.status}`, "err");
+    }
+  } catch (e) {
+    _toolsSetState(`업로드 에러: ${e.message || e}`, "err");
+  } finally {
+    _toolsRefreshGoBtn();
+  }
+}
+
+async function loadToolsList() {
+  const wrap = document.getElementById("tools-list-wrap");
+  if (!wrap) return;
+  setState(wrap, "", "로드 중...");
+  try {
+    const items = await apiFetch("/api/mcp_tools/");
+    const list = Array.isArray(items) ? items : (items.tools || items.items || []);
+    if (!list.length) {
+      setState(wrap, "", "등록된 도구 없음 (위에서 zip 업로드).");
+      return;
+    }
+    const table = el("table", { class: "data-table" });
+    table.appendChild(el("thead", {}, el("tr", {}, [
+      el("th", {}, "name"),
+      el("th", {}, "version"),
+      el("th", {}, "runtime"),
+      el("th", {}, "description"),
+      el("th", {}, "policy"),
+      el("th", {}, "actions"),
+    ])));
+    const tbody = el("tbody");
+    list.forEach((t) => {
+      const m = t.manifest || t || {};
+      const policyBits = [];
+      const ra = (m.restrict_agents || []);
+      const rt = (m.require_agent_tag || []);
+      const xt = (m.exclude_agent_tag || []);
+      if (ra.length) policyBits.push(`restrict=[${ra.join(", ")}]`);
+      if (rt.length) policyBits.push(`require=[${rt.join(", ")}]`);
+      if (xt.length) policyBits.push(`exclude=[${xt.join(", ")}]`);
+      const tr = el("tr", {}, [
+        el("td", { class: "mono" }, t.name || m.name || "?"),
+        el("td", {}, "v" + (t.current_version || t.version || "?")),
+        el("td", {}, m.runtime || "?"),
+        el("td", { class: "desc" }, (m.description || "").slice(0, 200)),
+        el("td", { class: "muted" }, policyBits.join(" · ") || "(open)"),
+        el("td", {},
+          el("a", {
+            href: `/api/mcp_tools/${encodeURIComponent(t.name || m.name)}`,
+            target: "_blank",
+          }, "↗ detail")
+        ),
+      ]);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    wrap.innerHTML = "";
+    wrap.appendChild(table);
+  } catch (err) {
+    showError(wrap, err);
+  }
+}
+
+function initToolsTab() {
+  const drop = document.getElementById("tools-drop");
+  const fileInput = document.getElementById("tools-file");
+  const uploaderInput = document.getElementById("tools-uploader");
+  const goBtn = document.getElementById("tools-upload-go");
+  const refreshBtn = document.getElementById("tools-refresh");
+  if (!drop || !fileInput) return;
+  drop.addEventListener("click", () => fileInput.click());
+  drop.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    drop.style.background = "rgba(80, 140, 220, 0.08)";
+  });
+  drop.addEventListener("dragleave", () => { drop.style.background = ""; });
+  drop.addEventListener("drop", (e) => {
+    e.preventDefault();
+    drop.style.background = "";
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) _toolsAcceptFile(f);
+  });
+  fileInput.addEventListener("change", () => {
+    const f = fileInput.files && fileInput.files[0];
+    if (f) _toolsAcceptFile(f);
+  });
+  if (uploaderInput) uploaderInput.addEventListener("input", _toolsRefreshGoBtn);
+  if (goBtn) goBtn.addEventListener("click", _toolsUpload);
+  if (refreshBtn) refreshBtn.addEventListener("click", loadToolsList);
+  loadToolsList();
+}
+
+LOADERS["tools"] = initToolsTab;
+
 function flattenEndpoints(spec) {
   const out = [];
   const paths = spec.paths || {};

@@ -124,6 +124,20 @@ if DASHBOARD_DIR.exists():
     )
 
 # ---------------------------------------------------------------------------
+# /static/examples — wave-5 매니페스트/스크립트 예제 (Dashboard "MCP 도구" 탭
+# 의 안내 링크용). repo 의 examples/ 디렉토리를 그대로 노출.
+# ---------------------------------------------------------------------------
+EXAMPLES_DIR = (
+    Path(__file__).resolve().parent.parent.parent.parent / "examples"
+)
+if EXAMPLES_DIR.exists():
+    app.mount(
+        "/static/examples",
+        StaticFiles(directory=str(EXAMPLES_DIR), html=False),
+        name="examples",
+    )
+
+# ---------------------------------------------------------------------------
 # /downloads — VSCode extension .vsix 및 배포 파일 다운로드.
 # setup.sh 가 빌드 후 api_server/static/downloads/ 에 복사한다.
 # ---------------------------------------------------------------------------
