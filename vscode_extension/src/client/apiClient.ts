@@ -571,4 +571,86 @@ export class ApiClient {
     );
     if (!res.ok && res.status !== 204) throw await parseError(res);
   }
+
+  // ---------------------------------------------------------------------------
+  // v0.9.0 — LLM-assisted ingest
+  // ---------------------------------------------------------------------------
+  /**
+   * GET /api/schema/ingest-guide — LLM 시스템 프롬프트로 그대로 쓸 수 있는 가이드.
+   * format=markdown(기본) 이면 text/markdown 본문, json 이면 구조화 dict.
+   */
+  async getIngestGuide(
+    agentType?: string | null,
+    format: 'markdown' | 'json' = 'markdown',
+  ): Promise<{ text: string; payload?: unknown }> {
+    const params = new URLSearchParams();
+    params.set('format', format);
+    if (agentType) params.set('agent_type', agentType);
+    const res = await fetch(
+      joinUrl(this.baseUrl, `/api/schema/ingest-guide?${params.toString()}`),
+      { method: 'GET', headers: this.headers() },
+    );
+    if (!res.ok) throw await parseError(res);
+    if (format === 'json') {
+      const payload = await res.json();
+      return { text: JSON.stringify(payload, null, 2), payload };
+    }
+    return { text: await res.text() };
+  }
+
+  /**
+   * GET /api/schema/ingest-kit.zip — self-contained 검증 키트 (zip bytes).
+   * agent_type 을 지정하면 해당 agent 의 expected schema 가 validate.py 에 박힘.
+   */
+  async getIngestKitZip(
+    agentType?: string | null,
+  ): Promise<{ bytes: ArrayBuffer; filename: string }> {
+    const params = new URLSearchParams();
+    if (agentType) params.set('agent_type', agentType);
+    const qs = params.toString();
+    const res = await fetch(
+      joinUrl(this.baseUrl, `/api/schema/ingest-kit.zip${qs ? `?${qs}` : ''}`),
+      { method: 'GET', headers: this.headers() },
+    );
+    if (!res.ok) throw await parseError(res);
+    // 파일명 파싱 (Content-Disposition: attachment; filename="...").
+    const cd = res.headers.get('content-disposition') || '';
+    const m = /filename="?([^"]+)"?/i.exec(cd);
+    const filename = (m && m[1]) || (agentType ? `ingest-kit-${agentType}.zip` : 'ingest-kit.zip');
+    const bytes = await res.arrayBuffer();
+    return { bytes, filename };
+  }
+
+  /**
+   * POST /api/records/import — JSON 일괄 임포트 (auto_seq + UPSERT + dry_run).
+   * `body` 는 record dict, list, 또는 {records:[...]} 형식 모두 허용.
+   */
+  async importRecords(
+    body: unknown,
+    opts: { autoSeq?: boolean; dryRun?: boolean } = {},
+  ): Promise<{
+    count: number;
+    ok: number;
+    failed: number;
+    warnings: number;
+    auto_seq: boolean;
+    dry_run: boolean;
+    results: Array<Record<string, unknown>>;
+  }> {
+    const params = new URLSearchParams();
+    if (opts.autoSeq) params.set('auto_seq', 'true');
+    if (opts.dryRun) params.set('dry_run', 'true');
+    const qs = params.toString();
+    const url = joinUrl(
+      this.baseUrl,
+      `/api/records/import${qs ? `?${qs}` : ''}`,
+    );
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: this.headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw await parseError(res);
+    return await res.json();
+  }
 }

@@ -39,6 +39,7 @@ from . import (
     recommend,
     records,
     search,
+    sync,
     system,
     taxonomy,
 )
@@ -110,6 +111,8 @@ def register_routers(app: FastAPI) -> None:
     # 의미 그룹 (Semantic Groups) 라우터 — 같은 의미의 record 군을 묶어
     # 작은 AI 가 한 번에 가져갈 수 있게 한다.
     app.include_router(groups.router)
+    # /api/sync/* — 외부 데이터 소스 정기 pull 동기화 (alembic 0027)
+    app.include_router(sync.router)
     # /api/discover, /api/schema, /api/hints, /api/docs/llm.txt, /api/ask
     app.include_router(discover.router)
     if settings.enable_metrics:

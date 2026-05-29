@@ -328,7 +328,7 @@ async def ingest_bundle(
 
         # ---- DB 적재 ----------------------------------------------------
         try:
-            await write_record(session, record_in)
+            _wr = await write_record(session, record_in)
             await session.commit()
         except Exception as exc:
             await session.rollback()
@@ -338,6 +338,14 @@ async def ingest_bundle(
                 message=f"failed to persist record {doc_id}: {exc}",
                 status_code=500,
             ) from exc
+        # commit 후 embed schedule (write_record 가 should_embed 만 결정).
+        if getattr(_wr, "should_embed", False):
+            try:
+                from ..services.jobs import maybe_schedule_auto_embed
+
+                maybe_schedule_auto_embed(_wr.record.id)
+            except Exception as exc:  # noqa: BLE001
+                log.debug("auto-embed schedule skipped post-commit: %s", exc)
 
         # ---- 정적 마운트 디렉터리에 자원 복사 ---------------------------
         # source_root 는 resources_dir 의 부모 (= json_path 부모) — copy_*

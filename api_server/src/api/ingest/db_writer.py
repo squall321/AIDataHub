@@ -35,20 +35,31 @@ class WriteResult:
         record: ORM ``Record`` 인스턴스.
         action: ``"inserted"`` | ``"updated"`` | ``"skipped"``.
         sections_written: DOC 의 경우 생성된 ``RecordSection`` 수.
+        should_embed: 호출자가 commit 후에 ``maybe_schedule_auto_embed(record.id)``
+            를 호출해야 함을 뜻한다. write_record 안에서 스케줄링하면 commit
+            실패(IntegrityError 등) 시 ghost 잡이 큐잉되는 부작용이 있어
+            결정만 하고 실행은 호출자에게 위임한다.
     """
 
-    __slots__ = ("record", "action", "sections_written")
+    __slots__ = ("record", "action", "sections_written", "should_embed")
 
-    def __init__(self, record: Any, action: str, sections_written: int = 0) -> None:
+    def __init__(
+        self,
+        record: Any,
+        action: str,
+        sections_written: int = 0,
+        should_embed: bool = False,
+    ) -> None:
         self.record = record
         self.action = action
         self.sections_written = sections_written
+        self.should_embed = should_embed
 
     def __repr__(self) -> str:  # pragma: no cover
         rid = getattr(self.record, "id", "?")
         return (
             f"<WriteResult id={rid!r} action={self.action!r} "
-            f"sections={self.sections_written}>"
+            f"sections={self.sections_written} embed={self.should_embed}>"
         )
 
 
@@ -475,15 +486,50 @@ async def write_record(
     # ----------------------------- S4 auto-embed trigger --------------------
     # ``AUTO_EMBED_ON_INSERT=true`` 인 경우 inserted/updated 이벤트에 대해
     # 임베딩 backfill 잡을 등록한다. 섹션이 없는 레코드는 스킵.
-    if action in ("inserted", "updated") and sections_written > 0:
-        try:
-            from ..services.jobs import maybe_schedule_auto_embed
+    #
+    # v0.8 alembic 0026 — record 의 doc_type.mode 가 ``data_extract`` 이면
+    # 임베딩 스킵. 수치 자료에 대한 embedding 은 의미 매칭 가치가 낮고
+    # 천만 건급 대량 적재 시 비용 폭증을 막는다.
+    should_embed = action in ("inserted", "updated") and sections_written > 0
+    if should_embed:
+        # UPDATE 인데 record_in.doc_type 가 비어있으면 기존 record 의 doc_type 을 사용.
+        effective_doc_type = record_doc_type
+        if not effective_doc_type and action == "updated":
+            try:
+                effective_doc_type = getattr(target, "doc_type", None)
+            except Exception:
+                effective_doc_type = None
+        if effective_doc_type:
+            try:
+                from ..db.models import DocType
 
-            maybe_schedule_auto_embed(target.id)
-        except Exception as exc:  # noqa: BLE001 - best effort
-            logger.debug("auto-embed schedule skipped for %s: %s", target.id, exc)
+                dt_row = await session.scalar(
+                    select(DocType.mode).where(DocType.code == effective_doc_type)
+                )
+                if dt_row == "data_extract":
+                    should_embed = False
+                    logger.info(
+                        "embedding skipped for %s — doc_type=%s is data_extract mode",
+                        target.id, effective_doc_type,
+                    )
+                elif dt_row is None:
+                    # mode 컬럼 없거나 doc_type 미등록 — 보수적으로 embed 진행 + INFO
+                    logger.info(
+                        "embedding proceeds for %s — doc_type=%s not registered (or mode column missing pre-0026)",
+                        target.id, effective_doc_type,
+                    )
+            except Exception as exc:  # pragma: no cover
+                # 에러는 INFO 로 — DEBUG 숨김으로 인한 PG 문제 은닉 방지
+                logger.info("doc_type mode check error for %s: %s", target.id, exc)
 
-    return WriteResult(target, action=action, sections_written=sections_written)
+    # NOTE: 실제 schedule 호출은 caller 가 commit 성공 후 수행. 여기서는 결정만.
+    # (이전 동작: 여기서 직접 schedule → commit 실패 시 ghost 잡 큐잉됨.)
+    return WriteResult(
+        target,
+        action=action,
+        sections_written=sections_written,
+        should_embed=should_embed,
+    )
 
 
 async def _resync_sections(

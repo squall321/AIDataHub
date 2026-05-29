@@ -243,6 +243,7 @@ class DocTypeOut(_Base):
     name: str
     description: str = ""
     expected_sections: list[str] = Field(default_factory=list)
+    mode: str = "llm_context"   # alembic 0026 — llm_context | data_extract | hybrid
     created_at: datetime | None = None
 
 
@@ -251,12 +252,14 @@ class DocTypeIn(_Base):
     name: str
     description: str = ""
     expected_sections: list[str] = Field(default_factory=list)
+    mode: str = "llm_context"   # 신규 등록 시 모드 명시 (생략 시 llm_context)
 
 
 class DocTypePatch(_Base):
     name: str | None = None
     description: str | None = None
     expected_sections: list[str] | None = None
+    mode: str | None = None     # 모드 변경 가능
 
 
 # ---------------------------------------------------------------------------

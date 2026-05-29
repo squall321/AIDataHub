@@ -26,11 +26,17 @@ async def get_doc_type(session: AsyncSession, code: str) -> DocType | None:
 
 
 async def create_doc_type(session: AsyncSession, payload: dict) -> DocType:
+    # alembic 0026 — mode enum (llm_context | data_extract | hybrid).
+    # 미지정 시 default 'llm_context'.
+    mode = payload.get("mode", "llm_context")
+    if mode not in ("llm_context", "data_extract", "hybrid"):
+        raise ValueError(f"invalid mode: {mode!r} (allowed: llm_context|data_extract|hybrid)")
     dt = DocType(
         code=payload["code"],
         name=payload.get("name", payload["code"]),
         description=payload.get("description", ""),
         expected_sections=list(payload.get("expected_sections", []) or []),
+        mode=mode,
     )
     session.add(dt)
     try:
@@ -49,8 +55,10 @@ async def update_doc_type(
     dt = await get_doc_type(session, code)
     if dt is None:
         return None
-    for key in ("name", "description", "expected_sections"):
+    for key in ("name", "description", "expected_sections", "mode"):
         if key in patch and patch[key] is not None:
+            if key == "mode" and patch[key] not in ("llm_context", "data_extract", "hybrid"):
+                raise ValueError(f"invalid mode: {patch[key]!r}")
             setattr(dt, key, patch[key])
     await session.commit()
     await session.refresh(dt)

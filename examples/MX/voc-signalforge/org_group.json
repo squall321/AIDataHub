@@ -1,0 +1,7 @@
+{
+  "team_code": "MX",
+  "code": "VOC",
+  "name": "Voice of Customer",
+  "description": "시장 VOC 통합 분류 (외부 리뷰/SNS/콜센터/클레임). 출처는 주로 SignalForge.",
+  "is_active": true
+}

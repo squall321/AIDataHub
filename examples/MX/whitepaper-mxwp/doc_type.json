@@ -1,0 +1,14 @@
+[
+  {
+    "code": "whitepaper",
+    "name": "White Paper",
+    "mode": "llm_context",
+    "description": "사내 white paper 본문. RAG context 로 LLM 의사결정 보조에 활용 (전략·타당성·기술 분석)."
+  },
+  {
+    "code": "feasibility_study",
+    "name": "Feasibility Study",
+    "mode": "llm_context",
+    "description": "신규 과제·기술 도입 타당성 보고서. ROI / 리스크 / 일정 / 의존성 항목 포함."
+  }
+]

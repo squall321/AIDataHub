@@ -256,6 +256,15 @@ async def _process_one(
                     elapsed_seconds=time.monotonic() - t0,
                 )
 
+            # commit 후 embed schedule
+            if getattr(wr, "should_embed", False):
+                try:
+                    from ..services.jobs import maybe_schedule_auto_embed
+
+                    maybe_schedule_auto_embed(wr.record.id)
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("%s auto-embed schedule skipped: %s", log_prefix, exc)
+
             # attachments 복사.
             if persist_attachments:
                 try:

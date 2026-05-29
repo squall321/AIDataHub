@@ -1,0 +1,38 @@
+{
+  "_external_id": "84211",
+  "data_type": "DOC",
+  "team": "MX",
+  "group": "VOC",
+  "year": 2026,
+  "title": "Galaxy Z Flip 7, 두 달 만에 힌지 부분에서 삐걱거리는 소리가 납니다...",
+  "content": "Galaxy Z Flip 7, 두 달 만에 힌지 부분에서 삐걱거리는 소리가 납니다. 처음엔 가끔이었는데 지금은 펼 때마다 들려요. AS 센터에서는 분해 점검이 필요하다고 하네요. 동일 증상 겪으신 분 있나요? 사용 환경은 일반적입니다 (실내 위주, 떨어뜨린 적 없음).",
+  "summary": "GZ VOC — negative (youtube, KR)",
+  "doc_type": "voc_report",
+  "agents": ["market-voc-analyst"],
+  "subject_keywords": ["GZ", "Galaxy Z Flip 7"],
+  "tags": [
+    "voc",
+    "voc:hinge",
+    "voc:durability",
+    "country:KR",
+    "channel:youtube",
+    "sentiment:negative"
+  ],
+  "valid_from": "2026-05-12T03:14:00+00:00",
+  "classification": "internal",
+  "language": "ko",
+  "quality_score": 75,
+  "source_url": "https://www.youtube.com/watch?v=xxxxxxxxxxx",
+  "extra": {
+    "signalforge": {
+      "voc_id": 84211,
+      "platform_code": "youtube",
+      "country_code": "KR",
+      "sentiment_score": -0.62,
+      "engagement_score": 8.3,
+      "likes_count": 41,
+      "comments_count": 12,
+      "categories": ["hinge", "durability"]
+    }
+  }
+}

@@ -563,6 +563,82 @@ export class UploaderPanel {
         }
         return;
       }
+      case 'getIngestGuideRequest': {
+        const client = await this.getClient();
+        if (!client) {
+          this.post({ type: 'getIngestGuideResponse', reqId: msg.reqId, ok: false, error: 'Not connected' });
+          return;
+        }
+        try {
+          const result = await client.getIngestGuide(msg.agentType ?? null, msg.format ?? 'markdown');
+          this.post({
+            type: 'getIngestGuideResponse',
+            reqId: msg.reqId,
+            ok: true,
+            text: result.text,
+            payload: result.payload,
+          });
+        } catch (err) {
+          this.post({ type: 'getIngestGuideResponse', reqId: msg.reqId, ok: false, error: formatError(err) });
+        }
+        return;
+      }
+      case 'downloadIngestKitRequest': {
+        const client = await this.getClient();
+        if (!client) {
+          this.post({ type: 'downloadIngestKitResponse', reqId: msg.reqId, ok: false, error: 'Not connected' });
+          return;
+        }
+        try {
+          const { bytes, filename } = await client.getIngestKitZip(msg.agentType ?? null);
+          const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
+          const defaultUri = wsRoot
+            ? vscode.Uri.joinPath(wsRoot, filename)
+            : vscode.Uri.file(filename);
+          const target = await vscode.window.showSaveDialog({
+            defaultUri,
+            filters: { Zip: ['zip'] },
+            saveLabel: 'Save Ingest Kit',
+          });
+          if (!target) {
+            this.post({ type: 'downloadIngestKitResponse', reqId: msg.reqId, ok: false, error: 'cancelled' });
+            return;
+          }
+          await vscode.workspace.fs.writeFile(target, new Uint8Array(bytes));
+          this.post({
+            type: 'downloadIngestKitResponse',
+            reqId: msg.reqId,
+            ok: true,
+            savedPath: target.fsPath,
+            filename,
+          });
+        } catch (err) {
+          this.post({
+            type: 'downloadIngestKitResponse',
+            reqId: msg.reqId,
+            ok: false,
+            error: formatError(err),
+          });
+        }
+        return;
+      }
+      case 'importRecordsRequest': {
+        const client = await this.getClient();
+        if (!client) {
+          this.post({ type: 'importRecordsResponse', reqId: msg.reqId, ok: false, error: 'Not connected' });
+          return;
+        }
+        try {
+          const payload = await client.importRecords(msg.body, {
+            autoSeq: msg.autoSeq,
+            dryRun: msg.dryRun,
+          });
+          this.post({ type: 'importRecordsResponse', reqId: msg.reqId, ok: true, payload });
+        } catch (err) {
+          this.post({ type: 'importRecordsResponse', reqId: msg.reqId, ok: false, error: formatError(err) });
+        }
+        return;
+      }
       case 'openFilePicker': {
         // 드래그-드롭이 webview 안에서 빈 dataTransfer 를 반환할 때 호출됨.
         // VS Code OS 네이티브 파일 다이얼로그를 띄워 사용자가 파일 선택 → fs 로 읽어 webview 로 전달.

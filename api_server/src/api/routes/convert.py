@@ -478,14 +478,16 @@ async def convert_and_ingest(
                     exc,
                 )
 
-        # ---- S4. auto-embedding trigger (best-effort) -------------------
-        if write_result.action in ("inserted", "updated"):
+        # ---- S4. auto-embedding trigger -----------------------------
+        # write_record 가 mode-aware 하게 should_embed 만 결정하고 schedule 은
+        # 안 한다 (ghost 잡 방지). commit 이 성공한 지금 여기서 호출.
+        if getattr(write_result, "should_embed", False):
             try:
                 from ..services.jobs import maybe_schedule_auto_embed
 
                 maybe_schedule_auto_embed(record.id)
             except Exception as exc:  # noqa: BLE001
-                log.debug("auto-embed schedule skipped: %s", exc)
+                log.debug("auto-embed schedule skipped post-commit: %s", exc)
 
         body: dict[str, Any] = {
             "record_id": record_in.id,

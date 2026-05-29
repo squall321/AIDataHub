@@ -93,6 +93,94 @@ AgentGuideSize = Literal["tiny", "small", "medium", "large"]
 AgentGuideFormat = Literal["markdown", "json"]
 
 
+# ---------------------------------------------------------------------------
+# /api/schema/ingest-guide  — LLM 친화 데이터 입력 가이드
+# ---------------------------------------------------------------------------
+@router.get(
+    "/schema/ingest-guide",
+    summary="LLM 시스템 프롬프트로 쓸 수 있는 데이터 입력 가이드",
+)
+async def get_ingest_guide(
+    agent_type: str | None = Query(
+        None,
+        description=(
+            "지정하면 해당 agent 의 expected schema 만 강조한 가이드 반환. "
+            "생략하면 전체 agent 목록 포함."
+        ),
+    ),
+    format: Literal["markdown", "json"] = Query(
+        "markdown",
+        description="응답 포맷. markdown(기본, LLM 시스템 프롬프트로 직접 사용) 또는 json.",
+    ),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """LLM(외부 Claude/ChatGPT 등) 에 그대로 시스템 프롬프트로 줄 수 있는 가이드.
+
+    LLM 은 이 가이드를 읽고 사용자의 원본 데이터(보고서/CSV/문서)를
+    우리 허브가 받는 규격 JSON 으로 변환한다. 변환된 JSON 은
+    ``POST /api/records/import`` 로 업로드한다.
+
+    `agent_type` 을 지정하면 해당 agent 의 required_doc_type / required_tags 만
+    강조한 좁은 가이드를 반환.
+    """
+    from api.services import ingest_guide_svc
+
+    payload = await ingest_guide_svc.build_guide(session, agent_type=agent_type)
+
+    if format == "json":
+        return Response(
+            content=_json.dumps(payload, ensure_ascii=False),
+            media_type="application/json",
+        )
+    return Response(
+        content=payload["instructions"],
+        media_type="text/markdown; charset=utf-8",
+    )
+
+
+# ---------------------------------------------------------------------------
+# /api/schema/ingest-kit.zip  — 자기완결적 LLM 가이드 + validate.py 키트
+# ---------------------------------------------------------------------------
+@router.get(
+    "/schema/ingest-kit.zip",
+    summary="LLM 가이드 + validate.py + 예시를 묶은 zip 키트",
+)
+async def get_ingest_kit_zip(
+    agent_type: str | None = Query(
+        None,
+        description=(
+            "지정하면 해당 agent 의 expected schema 가 validate.py 에 박힘. "
+            "생략하면 전체 검증만 수행."
+        ),
+    ),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """LLM 사용자가 자기 LLM 으로 정제된 데이터를 만들고 자기 PC 에서 검증할 수 있는
+    self-contained 키트를 zip 으로 다운로드.
+
+    키트 구성:
+        - SYSTEM_PROMPT.md (LLM 시스템 프롬프트)
+        - SCHEMA.json (JSON Schema)
+        - validate.py (표준 라이브러리만 쓰는 검증 스크립트)
+        - examples/single.json, auto_seq.json, batch.json
+        - README.md
+        - .kit-meta.json
+    """
+    from api.services import ingest_kit_svc
+
+    blob, filename = await ingest_kit_svc.build_ingest_kit_zip(
+        session, agent_type=agent_type
+    )
+    return Response(
+        content=blob,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(blob)),
+        },
+    )
+
+
 @router.get(
     "/docs/agent-guide",
     summary="모델 사이즈별 친화 가이드 (tiny/small/medium/large)",

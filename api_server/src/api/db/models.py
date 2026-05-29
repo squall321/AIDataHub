@@ -20,6 +20,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Date,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -679,6 +680,13 @@ class DocType(Base):
     expected_sections: Mapped[list[str]] = mapped_column(
         ARRAY(String), nullable=False, server_default="{}"
     )
+    # v0.8 alembic 0026 — 자료 성격 축.
+    # 'llm_context': 텍스트 자료 (보고서/매뉴얼) — embedding 필수.
+    # 'data_extract': 수치 자료 (시뮬 결과/측정) — embedding skip 으로 비용 절감.
+    # 'hybrid': 양쪽 다 가치 있음 — embedding 생성 (기본 동작).
+    mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="llm_context"
+    )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
@@ -686,7 +694,180 @@ class DocType(Base):
     )
 
     def __repr__(self) -> str:  # pragma: no cover
-        return f"<DocType code={self.code!r} name={self.name!r}>"
+        return f"<DocType code={self.code!r} name={self.name!r} mode={self.mode!r}>"
+
+
+# ---------------------------------------------------------------------------
+# alembic 0026 — 외부 시스템 ↔ AX Hub record 매핑.
+# SignalForge, MXWP 등이 자기 ID 로 push/pull 할 때 우리 record_id 와
+# 안전하게 연결. (source, external_id) 가 UNIQUE.
+# ---------------------------------------------------------------------------
+class ExternalIdMap(Base):
+    __tablename__ = "external_id_map"
+    __table_args__ = (
+        # alembic 0026 의 UNIQUE 제약을 ORM 에서도 명시 — SQLite 테스트에서도
+        # 동일하게 enforce 되어 dev/prod 동작 분기를 막는다.
+        UniqueConstraint(
+            "source", "external_id", name="uq_external_id_map_source_external"
+        ),
+        Index("idx_external_id_map_record", "record_id"),
+        Index("idx_external_id_map_source", "source"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    source: Mapped[str] = mapped_column(String(40), nullable=False)
+    external_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    record_id: Mapped[str] = mapped_column(
+        String(80),
+        ForeignKey("records.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return (
+            f"<ExternalIdMap source={self.source!r} ext={self.external_id!r} "
+            f"-> {self.record_id!r}>"
+        )
+
+
+# ---------------------------------------------------------------------------
+# alembic 0027 — 외부 데이터 소스 정기 pull 동기화.
+# ---------------------------------------------------------------------------
+class SyncSource(Base):
+    __tablename__ = "sync_sources"
+    __table_args__ = (
+        Index("idx_sync_sources_enabled", "enabled"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+
+    base_url: Mapped[str] = mapped_column(Text, nullable=False)
+    api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    auth_header: Mapped[str] = mapped_column(
+        String(40), nullable=False, server_default="X-API-Key"
+    )
+    list_endpoint: Mapped[str] = mapped_column(Text, nullable=False)
+    list_method: Mapped[str] = mapped_column(
+        String(8), nullable=False, server_default="GET"
+    )
+    detail_endpoint: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    cursor_param: Mapped[str] = mapped_column(
+        String(40), nullable=False, server_default="cursor"
+    )
+    since_param: Mapped[str] = mapped_column(
+        String(40), nullable=False, server_default="since"
+    )
+    limit_param: Mapped[str] = mapped_column(
+        String(40), nullable=False, server_default="limit"
+    )
+    page_size: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="200"
+    )
+
+    max_rps: Mapped[float] = mapped_column(
+        Float, nullable=False, server_default="2.0"
+    )
+    retry_max: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="3"
+    )
+    retry_backoff_sec: Mapped[float] = mapped_column(
+        Float, nullable=False, server_default="2.0"
+    )
+    trust_pii_masked: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("FALSE")
+    )
+
+    mapping_rules: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+
+    cursor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_sync_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    last_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="never"
+    )
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_fetched_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    last_imported_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+
+    schedule_cron: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("TRUE")
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<SyncSource name={self.name!r} enabled={self.enabled}>"
+
+
+class SyncRun(Base):
+    __tablename__ = "sync_runs"
+    __table_args__ = (
+        Index("idx_sync_runs_source", "source_id"),
+        Index("idx_sync_runs_started", "started_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    source_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("sync_sources.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    started_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="running"
+    )
+    trigger: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="manual"
+    )
+    fetched_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    imported_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    updated_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    failed_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    tombstoned_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    cursor_before: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cursor_after: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dead_letter: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<SyncRun id={self.id} source={self.source_id} status={self.status}>"
 
 
 # ---------------------------------------------------------------------------
@@ -867,6 +1048,7 @@ __all__ = [
     "ApiKey",
     "AuditLog",
     "DocType",
+    "ExternalIdMap",
     "MCPProxyCall",
     "MCPUpload",
     "MCPUploadHistory",
@@ -876,4 +1058,6 @@ __all__ = [
     "Record",
     "RecordAttachment",
     "RecordSection",
+    "SyncRun",
+    "SyncSource",
 ]

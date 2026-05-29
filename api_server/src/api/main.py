@@ -96,10 +96,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# 개발 단계에서는 CORS 전체 허용. 운영 배포 전에 origin 화이트리스트로 좁힌다.
+# CORS — env 로 allow_origins 좁히기 가능.
+#   AIDH_CORS_ALLOW_ORIGINS="https://aidatahub.internal,https://web.example.com"
+#   (생략 시 "*" — 개발 모드. 운영 배포 시 반드시 좁혀라.)
+import os as _os_cors
+
+_cors_env = _os_cors.environ.get("AIDH_CORS_ALLOW_ORIGINS", "").strip()
+_cors_origins = (
+    [o.strip() for o in _cors_env.split(",") if o.strip()]
+    if _cors_env else ["*"]
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

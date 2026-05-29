@@ -1,0 +1,14 @@
+[
+  {
+    "code": "material_test_data",
+    "name": "Material Test Data",
+    "description": "인장/충격/피로 시험 수치 포인트.",
+    "mode": "data_extract"
+  },
+  {
+    "code": "material_test_report",
+    "name": "Material Test Report",
+    "description": "재료 시험 해석·결론 보고.",
+    "mode": "llm_context"
+  }
+]

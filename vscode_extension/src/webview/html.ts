@@ -38,6 +38,7 @@ export function renderHtml(): string {
     <nav id="tabnav" class="tabnav" style="display:none">
       <button class="tab" data-tab="upload">Upload</button>
       <button class="tab" data-tab="bundle">Bundle</button>
+      <button class="tab" data-tab="import">Import JSON</button>
       <button class="tab" data-tab="search">Search</button>
       <button class="tab" data-tab="agents">Agents</button>
       <button class="tab" data-tab="console">Console</button>
@@ -416,6 +417,19 @@ function clientScript(): string {
       error: null,
       response: null,
     },
+    // Import JSON tab (LLM-assisted ingest)
+    importTab: {
+      jsonText: '',             // textarea raw JSON
+      filename: null,           // dropped file name (info only)
+      autoSeq: true,            // default ON — safest path
+      dryRun: false,
+      busy: false,
+      result: null,             // import response or null
+      error: null,
+      guideAgent: '',           // optional agent_type for narrowed guide
+      copying: false,
+      kitDownloading: false,    // Ingest Kit zip download in flight
+    },
     // Search tab
     search: {
       mode: 'semantic',
@@ -585,6 +599,7 @@ function clientScript(): string {
     paintTabs();
     if (state.tab === 'upload') renderUploadTab();
     else if (state.tab === 'bundle') renderBundleTab();
+    else if (state.tab === 'import') renderImportTab();
     else if (state.tab === 'search') renderSearchTab();
     else if (state.tab === 'agents') renderAgentsTab();
     else if (state.tab === 'console') renderConsoleTab();
@@ -1605,6 +1620,223 @@ function clientScript(): string {
       on('btn-breauth',  'click', () => send({ type: 'promptApiKey' }));
       on('btn-banother', 'click', () => { state.bundle.file = null; state.bundle.error = null; goBundle('drop'); });
     }
+  }
+
+  // ====================================================================
+  // IMPORT tab — LLM-assisted JSON ingest
+  // ====================================================================
+  function renderImportTab(){
+    const wrap = el('div');
+    const it = state.importTab;
+    const resultHtml = renderImportResult(it.result);
+    const errorHtml = it.error
+      ? '<div class="status err">' + escapeHtml(it.error) + '</div>'
+      : '';
+    const fnameLabel = it.filename
+      ? ' (loaded: ' + escapeHtml(it.filename) + ')'
+      : '';
+    wrap.innerHTML = '' +
+      '<h1>Import JSON — LLM-assisted ingest</h1>' +
+      '<p class="subtle">외부 LLM (Claude/ChatGPT 등) 에 가이드를 던지고, ' +
+      '응답 받은 규격 JSON 을 그대로 붙여 넣거나 파일로 드롭하면 일괄 입력된다. ' +
+      'VSCode 폼을 한 줄씩 채울 필요가 없다.</p>' +
+
+      '<h2>1. Ingest Kit 받기</h2>' +
+      '<p class="subtle">아래 옵션 중 하나:</p>' +
+      '<ul class="subtle" style="margin-top:0">' +
+        '<li><b>Download Ingest Kit (zip)</b> — 권장. SYSTEM_PROMPT + validate.py + 예시가 묶인 패키지를 다운로드해서 너의 LLM 에 통째로 던지고, 너의 PC 에서 <code>python validate.py</code> 로 검증할 수 있다.</li>' +
+        '<li><b>Copy LLM Instructions</b> — 클립보드에 가이드만 복사. LLM 에 바로 붙여넣기.</li>' +
+      '</ul>' +
+      '<p class="subtle"><code>agent_type</code> 을 지정하면 해당 agent 의 expected schema 가 validate.py 와 가이드에 박힌다.</p>' +
+      '<div class="toolbar">' +
+        '<label style="display:inline-block;margin:0 8px 0 0;font-size:12px;opacity:0.85">agent_type (선택):</label>' +
+        '<input id="i-guide-agent" type="text" placeholder="예: cae-analyst (생략 가능)" value="' + escapeHtml(it.guideAgent) + '" style="width:240px;display:inline-block" />' +
+        '<button id="btn-download-kit" ' + (it.kitDownloading ? 'disabled' : '') + '>' + (it.kitDownloading ? 'Saving…' : 'Download Ingest Kit (zip)') + '</button>' +
+        '<button id="btn-copy-guide" class="secondary" ' + (it.copying ? 'disabled' : '') + '>' + (it.copying ? 'Copying…' : 'Copy LLM Instructions') + '</button>' +
+      '</div>' +
+      '<p class="hint">키트 사용 흐름: zip 풀기 → SYSTEM_PROMPT.md 를 LLM 시스템 프롬프트로 → 원본 데이터를 사용자 메시지로 → LLM 이 JSON 응답 → <code>python validate.py out.json</code> → 통과한 JSON 을 아래 단계에서 import.</p>' +
+
+      '<h2>2. JSON 붙여넣기 또는 파일 드롭</h2>' +
+      '<div id="json-drop" class="dropzone" style="padding:12px 16px;min-height:80px">' +
+        '<div>JSON 파일을 여기 드롭, 또는 <a href="#" id="json-pick">파일 선택…</a>' + fnameLabel + '</div>' +
+        '<div class="hint">단건 객체 / 배열 / {records:[...]} 형식 모두 허용</div>' +
+      '</div>' +
+      '<input id="json-picker" type="file" accept=".json,application/json" style="display:none" />' +
+      '<label>또는 JSON 텍스트 직접 붙여넣기</label>' +
+      '<textarea id="i-json-text" rows="14" placeholder=\'{"title": "...", "content": {"sections": []}, "data_type": "DOC", "team": "HE", "group": "CAE", "year": 2026}\'>' + escapeHtml(it.jsonText) + '</textarea>' +
+
+      '<h2>3. 옵션</h2>' +
+      '<div class="toolbar">' +
+        '<label style="display:inline-flex;align-items:center;gap:6px;margin:0 16px 0 0;font-size:13px"><input type="checkbox" id="cb-auto-seq" ' + (it.autoSeq ? 'checked' : '') + ' style="width:auto" /> auto_seq (id 없으면 자동 채번 — 권장)</label>' +
+        '<label style="display:inline-flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="cb-dry-run" ' + (it.dryRun ? 'checked' : '') + ' style="width:auto" /> dry-run (검증만, 저장 X)</label>' +
+      '</div>' +
+
+      '<div class="toolbar" style="margin-top:14px">' +
+        '<button id="btn-import" ' + (it.busy ? 'disabled' : '') + '>' + (it.busy ? 'Importing…' : 'Import') + '</button>' +
+        '<button id="btn-import-reset" class="secondary">Reset</button>' +
+      '</div>' +
+      errorHtml +
+      resultHtml;
+    root.appendChild(wrap);
+
+    on('btn-copy-guide', 'click', doCopyGuide);
+    on('btn-download-kit', 'click', doDownloadKit);
+    on('btn-import', 'click', doImport);
+    on('btn-import-reset', 'click', () => {
+      state.importTab.jsonText = '';
+      state.importTab.filename = null;
+      state.importTab.result = null;
+      state.importTab.error = null;
+      render();
+    });
+    on('i-guide-agent', 'change', (e) => { state.importTab.guideAgent = e.target.value.trim(); });
+    on('i-json-text', 'change', (e) => { state.importTab.jsonText = e.target.value; });
+    on('i-json-text', 'input', (e) => { state.importTab.jsonText = e.target.value; });
+    on('cb-auto-seq', 'change', (e) => { state.importTab.autoSeq = e.target.checked; });
+    on('cb-dry-run', 'change', (e) => { state.importTab.dryRun = e.target.checked; });
+
+    const dz = document.getElementById('json-drop');
+    const picker = document.getElementById('json-picker');
+    const pickLink = document.getElementById('json-pick');
+    if (pickLink) pickLink.addEventListener('click', (e) => { e.preventDefault(); picker.click(); });
+    if (picker) picker.addEventListener('change', () => {
+      if (picker.files && picker.files[0]) acceptJsonFile(picker.files[0]);
+    });
+    if (dz) {
+      dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('hover'); });
+      dz.addEventListener('dragleave', () => dz.classList.remove('hover'));
+      dz.addEventListener('drop', (e) => {
+        e.preventDefault(); dz.classList.remove('hover');
+        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) acceptJsonFile(f);
+      });
+    }
+  }
+
+  function acceptJsonFile(file){
+    const reader = new FileReader();
+    reader.onload = () => {
+      state.importTab.jsonText = String(reader.result || '');
+      state.importTab.filename = file.name;
+      state.importTab.error = null;
+      render();
+    };
+    reader.onerror = () => {
+      state.importTab.error = 'Failed to read file: ' + (reader.error && reader.error.message || 'unknown');
+      render();
+    };
+    reader.readAsText(file);
+  }
+
+  async function doCopyGuide(){
+    state.importTab.copying = true;
+    state.importTab.error = null;
+    render();
+    try {
+      const agentType = state.importTab.guideAgent || null;
+      const resp = await rpc('getIngestGuideRequest', { agentType, format: 'markdown' });
+      const text = (resp && resp.text) || '';
+      if (!text) throw new Error('empty guide response');
+      // copy via callback-style dispatch (matches copyToClipboardResponse branch).
+      const copyOk = await new Promise((resolve) => {
+        const rid = _reqIdSeq++;
+        _pendingReq.set(rid, function(msg){ resolve(msg); });
+        _pendTimeout(rid);
+        send({ type: 'copyToClipboardRequest', reqId: rid, text: text, label: 'LLM Ingest Guide' });
+      });
+      if (copyOk && copyOk.ok === false) {
+        throw new Error(copyOk.error || 'clipboard copy failed');
+      }
+      state.importTab.copying = false;
+      state.importTab.error = null;
+      state.importTab.result = { _info: 'LLM Instructions copied to clipboard (' + text.length + ' chars).' };
+      render();
+    } catch (err) {
+      state.importTab.copying = false;
+      state.importTab.error = 'Failed to copy guide: ' + (err && err.message || String(err));
+      render();
+    }
+  }
+
+  async function doDownloadKit(){
+    state.importTab.kitDownloading = true;
+    state.importTab.error = null;
+    render();
+    try {
+      const agentType = state.importTab.guideAgent || null;
+      const resp = await rpc('downloadIngestKitRequest', { agentType });
+      state.importTab.kitDownloading = false;
+      if (resp && resp.savedPath) {
+        state.importTab.result = { _info: 'Ingest Kit saved: ' + resp.savedPath + ' — unzip and read README.md for the next step.' };
+      } else {
+        state.importTab.error = 'Kit download cancelled or no path returned.';
+      }
+      render();
+    } catch (err) {
+      state.importTab.kitDownloading = false;
+      const m = (err && err.message) || String(err);
+      // cancellation 은 에러로 띄우지 않는다.
+      state.importTab.error = /cancel/i.test(m) ? null : 'Failed to download kit: ' + m;
+      render();
+    }
+  }
+
+  async function doImport(){
+    const raw = (state.importTab.jsonText || '').trim();
+    if (!raw){
+      state.importTab.error = 'No JSON to import.';
+      render();
+      return;
+    }
+    let body;
+    try { body = JSON.parse(raw); }
+    catch (e) {
+      state.importTab.error = 'Invalid JSON: ' + e.message;
+      render();
+      return;
+    }
+    state.importTab.busy = true;
+    state.importTab.error = null;
+    state.importTab.result = null;
+    render();
+    try {
+      const result = await rpc('importRecordsRequest', {
+        body, autoSeq: state.importTab.autoSeq, dryRun: state.importTab.dryRun,
+      });
+      state.importTab.busy = false;
+      state.importTab.result = result;
+      render();
+    } catch (err) {
+      state.importTab.busy = false;
+      state.importTab.error = 'Import failed: ' + (err && err.message || String(err));
+      render();
+    }
+  }
+
+  function renderImportResult(r){
+    if (!r) return '';
+    if (r._info) {
+      return '<div class="status ok" style="margin-top:12px">' + escapeHtml(r._info) + '</div>';
+    }
+    const head = '<div class="status ' + (r.failed > 0 ? 'err' : 'ok') + '" style="margin-top:12px">' +
+      'count=' + r.count + ' · ok=' + r.ok + ' · failed=' + r.failed + ' · warnings=' + r.warnings +
+      (r.dry_run ? ' · DRY-RUN' : '') + (r.auto_seq ? ' · auto_seq' : '') +
+      '</div>';
+    const rows = (r.results || []).map((row, idx) => {
+      const id = row.id || row.input_id || row.input_title || '(no id)';
+      const action = row.error
+        ? '<span style="color:var(--vscode-errorForeground)">ERROR: ' + escapeHtml(String(row.error)) + '</span>'
+        : (row.action || 'unknown') + (row.would ? ' → ' + row.would : '');
+      const warnings = (row.warnings || []).length
+        ? '<div class="hint" style="margin-top:2px">' + (row.warnings || []).map(escapeHtml).join('; ') + '</div>'
+        : '';
+      return '<tr><td>' + (idx + 1) + '</td><td><code>' + escapeHtml(String(id)) + '</code></td><td>' + action + warnings + '</td></tr>';
+    }).join('');
+    return head +
+      '<table class="agents-table" style="margin-top:8px;width:100%">' +
+        '<thead><tr><th style="width:32px">#</th><th>id</th><th>action / error</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>';
   }
 
   // ====================================================================
@@ -3702,7 +3934,9 @@ function clientScript(): string {
                || m.type === 'downloadAgentTemplateResponse'
                || m.type === 'draftAgentResponse' || m.type === 'bindMatchingResponse'
                || m.type === 'suggestParentResponse' || m.type === 'patchRecordResponse'
-               || m.type === 'listDocTypesResponse' || m.type === 'createDocTypeResponse') {
+               || m.type === 'listDocTypesResponse' || m.type === 'createDocTypeResponse'
+               || m.type === 'getIngestGuideResponse' || m.type === 'importRecordsResponse'
+               || m.type === 'downloadIngestKitResponse') {
       const p = _pendingReq.get(m.reqId);
       if (!p) return;
       _pendingReq.delete(m.reqId);

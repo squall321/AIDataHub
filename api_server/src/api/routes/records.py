@@ -21,11 +21,12 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.auth.dependencies import Principal, require_api_key
 from api.db.base import SessionLocal, get_session
 from api.db.models import Record
 from api.services.audit import compute_diff, log_action, record_snapshot
@@ -666,6 +667,359 @@ def _unified_diff(a: str, b: str, label: str) -> str:
         n=2,
     )
     return "".join(diff_lines)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/records/import — JSON 일괄 임포트 (auto_seq + UPSERT + dry_run)
+# ---------------------------------------------------------------------------
+async def _import_one(
+    session: AsyncSession,
+    *,
+    raw: dict[str, Any],
+    auto_seq: bool,
+    dry_run: bool,
+    actor: str,
+    request_id: str | None,
+    external_source: str | None = None,
+) -> dict[str, Any]:
+    """단일 record dict 를 import. INSERT 또는 UPSERT.
+
+    ``external_source`` 가 지정되고 record dict 에 ``_external_id`` 키가 있으면
+    ``external_id_map`` 을 통해 기존 record_id 로 UPSERT 한다.
+
+    Returns:
+        {"id", "action": "inserted|updated|skipped|dry_run", "warnings": [...]}
+        또는 실패 시 {"error": str, "input_title": ...}
+    """
+    from api.db.models import ExternalIdMap
+    from api.schemas.id_format import format_id, parse_id
+    from api.services.seq import next_seq
+
+    warnings: list[str] = []
+    if not isinstance(raw, dict):
+        return {"error": "record must be a JSON object", "input": str(raw)[:80]}
+
+    rec = dict(raw)  # 변경 가능 copy
+
+    # ----- 외부 ID 매핑 (push/pull 양방향에서 사용) -----
+    external_id = rec.pop("_external_id", None)
+    if external_source and external_id in (0, "", False):
+        warnings.append(
+            f"falsy _external_id {external_id!r} ignored — provide non-empty string"
+        )
+        external_id = None
+    mapped_record_id: str | None = None
+    user_supplied_id = rec.get("id")
+    if external_source and external_id:
+        try:
+            # 매핑 + record.deleted_at 함께 확인 — soft-delete 된 record 는
+            # 외부 sync 의 의도치 않은 부활을 막고 명시적 restore 를 요구한다.
+            from sqlalchemy import and_
+
+            row = (
+                await session.execute(
+                    select(ExternalIdMap.record_id, Record.deleted_at)
+                    .join(Record, Record.id == ExternalIdMap.record_id, isouter=True)
+                    .where(
+                        and_(
+                            ExternalIdMap.source == external_source,
+                            ExternalIdMap.external_id == str(external_id),
+                        )
+                    )
+                )
+            ).first()
+            if row is not None:
+                existing_id, existing_deleted = row
+                if existing_deleted is not None:
+                    return {
+                        "id": existing_id,
+                        "error": (
+                            f"refusing to UPSERT into soft-deleted record "
+                            f"(external_id={external_id}, source={external_source}). "
+                            "Call POST /api/records/{id}/restore first."
+                        ),
+                        "external_id": external_id,
+                    }
+                mapped_record_id = existing_id
+                # 사용자가 명시한 id 와 매핑된 id 가 다르면 명시적으로 경고.
+                if user_supplied_id and user_supplied_id != existing_id:
+                    warnings.append(
+                        f"explicit id {user_supplied_id!r} overridden by external_id_map → {existing_id!r}"
+                    )
+                rec["id"] = existing_id  # 기존 매핑 record 로 UPSERT
+        except Exception as exc:  # pragma: no cover
+            warnings.append(f"external_id lookup failed: {exc}")
+
+    # 1) id 채번 (auto_seq)
+    if not rec.get("id"):
+        if not auto_seq:
+            return {
+                "error": "id missing (set auto_seq=true to auto-generate)",
+                "input_title": rec.get("title"),
+            }
+        for k in ("data_type", "team", "group", "year"):
+            if not rec.get(k):
+                return {
+                    "error": f"auto_seq needs '{k}' (along with data_type/team/group/year)",
+                    "input_title": rec.get("title"),
+                }
+        seq = await next_seq(
+            session,
+            data_type=str(rec["data_type"]).upper(),
+            team=str(rec["team"]).upper(),
+            group=str(rec["group"]).upper(),
+            year=int(rec["year"]),
+        )
+        rec["data_type"] = str(rec["data_type"]).upper()
+        rec["team"] = str(rec["team"]).upper()
+        rec["group"] = str(rec["group"]).upper()
+        rec["year"] = int(rec["year"])
+        rec["seq"] = seq
+        rec["id"] = format_id(
+            rec["data_type"], rec["team"], rec["group"], rec["year"], seq
+        )
+    else:
+        # id 가 주어졌으면 거기서 파트를 파싱해 다른 필드와 동기화
+        try:
+            parts = parse_id(rec["id"])
+        except ValueError as exc:
+            return {"error": f"invalid id: {exc}", "input_title": rec.get("title")}
+        for k, v in parts.items():
+            existing = rec.get(k)
+            if existing is None or existing == "":
+                rec[k] = v
+            elif (
+                str(existing).upper() != str(v).upper()
+                if isinstance(v, str)
+                else int(existing) != int(v)
+            ):
+                warnings.append(
+                    f"{k}={existing!r} from body overridden by id parts ({v!r})"
+                )
+                rec[k] = v
+
+    # 2) 필수 검증
+    if not rec.get("title"):
+        return {"error": "title is required", "input_id": rec.get("id")}
+    if rec.get("content") is None:
+        rec["content"] = {}
+
+    # 3) dry_run 이면 정규화 결과만 리포트
+    if dry_run:
+        existing = (
+            await session.execute(select(Record.id).where(Record.id == rec["id"]))
+        ).scalar_one_or_none()
+        return {
+            "id": rec["id"],
+            "action": "dry_run",
+            "would": "update" if existing else "create",
+            "warnings": warnings,
+        }
+
+    # 4) team/group strict 검증
+    from api.services.org_svc import validate_team_group
+
+    try:
+        await validate_team_group(session, rec["team"], rec["group"])
+    except HTTPException as exc:
+        return {
+            "id": rec.get("id"),
+            "error": exc.detail if hasattr(exc, "detail") else str(exc),
+        }
+
+    # 5) RecordIn(full schema, common.py) 으로 변환 → write_record (audit log 까지 처리)
+    from api.ingest.db_writer import write_record
+    from api.schemas import RecordIn as FullRecordIn
+
+    try:
+        record_in = FullRecordIn(
+            **{k: v for k, v in rec.items() if k in FullRecordIn.model_fields}
+        )
+    except Exception as exc:
+        return {"id": rec.get("id"), "error": f"validation failed: {exc}"}
+
+    try:
+        result = await write_record(
+            session, record_in, actor=actor, request_id=request_id
+        )
+
+        # 외부 ID 매핑 등록 (신규 매핑 시 — 기존 매핑은 lookup 단계에서 해결).
+        if external_source and external_id and mapped_record_id is None:
+            session.add(
+                ExternalIdMap(
+                    source=external_source,
+                    external_id=str(external_id),
+                    record_id=result.record.id,
+                )
+            )
+
+        await session.commit()
+        # commit 성공 후에만 embed schedule (ghost 잡 방지)
+        if getattr(result, "should_embed", False):
+            try:
+                from api.services.jobs import maybe_schedule_auto_embed
+
+                maybe_schedule_auto_embed(result.record.id)
+            except Exception as exc:  # noqa: BLE001
+                log.debug("auto-embed schedule skipped post-commit: %s", exc)
+        return {
+            "id": result.record.id,
+            "action": result.action,  # 'inserted' / 'updated' / 'skipped'
+            "external_id": external_id if external_source else None,
+            "warnings": warnings,
+        }
+    except IntegrityError as exc:
+        await session.rollback()
+        # Race: 다른 parallel import 가 같은 (source, external_id) 를 먼저 등록한 경우
+        # — 재조회해서 기존 record 로 UPSERT 재시도.
+        orig_msg = str(getattr(exc, "orig", exc))
+        if external_source and external_id and "external_id_map" in orig_msg:
+            try:
+                existing_id = (
+                    await session.execute(
+                        select(ExternalIdMap.record_id).where(
+                            (ExternalIdMap.source == external_source)
+                            & (ExternalIdMap.external_id == str(external_id))
+                        )
+                    )
+                ).scalar_one_or_none()
+                if existing_id:
+                    # 기존 record 로 UPSERT 재시도 (한 번만 — 무한루프 방지).
+                    rec["id"] = existing_id
+                    from api.schemas import RecordIn as FullRecordIn2
+
+                    retry_in = FullRecordIn2(
+                        **{k: v for k, v in rec.items() if k in FullRecordIn2.model_fields}
+                    )
+                    retry_result = await write_record(
+                        session, retry_in, actor=actor, request_id=request_id
+                    )
+                    await session.commit()
+                    # commit 성공 후 embed schedule
+                    if getattr(retry_result, "should_embed", False):
+                        try:
+                            from api.services.jobs import maybe_schedule_auto_embed
+
+                            maybe_schedule_auto_embed(retry_result.record.id)
+                        except Exception as exc2_embed:  # noqa: BLE001
+                            log.debug("auto-embed schedule skipped post-commit (race retry): %s", exc2_embed)
+                    return {
+                        "id": retry_result.record.id,
+                        "action": retry_result.action,
+                        "external_id": external_id,
+                        "warnings": warnings + ["race_resolved: external_id was concurrently mapped"],
+                    }
+            except Exception as exc2:  # pragma: no cover
+                await session.rollback()
+                return {"id": rec.get("id"), "error": f"race retry failed: {exc2}"}
+        return {"id": rec.get("id"), "error": f"integrity error: {orig_msg}"}
+    except Exception as exc:
+        await session.rollback()
+        return {"id": rec.get("id"), "error": f"write failed: {exc}"}
+
+
+@router.post("/import", summary="JSON 일괄 임포트 (auto_seq + UPSERT + dry_run + external_id 매핑)")
+async def import_records(
+    request: Request,
+    payload: Any = Body(..., description="record dict / list / {records:[...]} wrapped"),
+    auto_seq: bool = Query(
+        False, description="True 면 id 없을 때 서버가 (data_type,team,group,year) 로 seq 자동 부여"
+    ),
+    dry_run: bool = Query(
+        False, description="True 면 저장하지 않고 검증/정규화 결과만 반환"
+    ),
+    external_source: str | None = Query(
+        None,
+        description=(
+            "외부 시스템 식별자 (e.g. 'signalforge', 'mxwp'). 지정 시 각 record 의 "
+            "`_external_id` 키가 external_id_map 에 등록되어 후속 sync 시 동일 외부 ID "
+            "는 같은 record 로 UPSERT 된다."
+        ),
+    ),
+    session: AsyncSession = Depends(get_session),
+    _principal: Principal = Depends(require_api_key),
+) -> dict[str, Any]:
+    """LLM 이 만든 규격 JSON 을 한 번에 일괄 등록한다.
+
+    Body 형태 3가지 모두 허용:
+        1. **단일 record**: ``{title: "...", content: {...}, ...}``
+        2. **배열**: ``[{...}, {...}]``
+        3. **wrapped**: ``{auto_seq: true, dry_run: false, records: [...]}``
+            wrapped 형태의 ``auto_seq``/``dry_run`` 은 쿼리스트링보다 우선.
+
+    동작:
+        - ``id`` 가 있으면 UPSERT (기존 record 는 PATCH 처리, audit_log 기록).
+        - ``id`` 가 없으면 ``auto_seq=true`` 일 때만 자동 채번 (안전).
+        - 한 record 가 실패해도 다른 record 는 계속 처리 (best-effort).
+        - 마지막에 ``ok / failed / warnings`` 카운트와 per-row 결과 반환.
+    """
+    # ----- body normalization -----
+    if isinstance(payload, dict) and "records" in payload:
+        records_in = payload.get("records") or []
+        # body 의 옵션이 query param 보다 우선
+        if "auto_seq" in payload:
+            auto_seq = bool(payload["auto_seq"])
+        if "dry_run" in payload:
+            dry_run = bool(payload["dry_run"])
+        if "external_source" in payload:
+            external_source = str(payload["external_source"]) or None
+    elif isinstance(payload, list):
+        records_in = payload
+    elif isinstance(payload, dict):
+        # 단일 record dict 로 간주
+        records_in = [payload]
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="body must be a record dict, a list of records, or {records:[...]}",
+        )
+
+    if not records_in:
+        raise HTTPException(status_code=400, detail="records is empty")
+    if len(records_in) > 1000:
+        raise HTTPException(
+            status_code=413,
+            detail=f"too many records in one import: {len(records_in)} (max 1000)",
+        )
+
+    actor = _principal_name(request)
+    rid = _request_id(request)
+
+    results: list[dict[str, Any]] = []
+    ok = 0
+    failed = 0
+    warn_total = 0
+    for raw in records_in:
+        outcome = await _import_one(
+            session,
+            raw=raw,
+            auto_seq=auto_seq,
+            dry_run=dry_run,
+            actor=actor,
+            request_id=rid,
+            external_source=external_source,
+        )
+        results.append(outcome)
+        if outcome.get("error"):
+            failed += 1
+        else:
+            ok += 1
+        warn_total += len(outcome.get("warnings", []) or [])
+
+    log.info(
+        "import_records: count=%s ok=%s failed=%s warnings=%s auto_seq=%s dry_run=%s source=%s",
+        len(records_in), ok, failed, warn_total, auto_seq, dry_run, external_source,
+    )
+    return {
+        "count": len(records_in),
+        "ok": ok,
+        "failed": failed,
+        "warnings": warn_total,
+        "auto_seq": auto_seq,
+        "dry_run": dry_run,
+        "external_source": external_source,
+        "results": results,
+    }
 
 
 __all__ = ["router"]

@@ -111,10 +111,12 @@ fi
 echo "[4/4] API 기동"
 bash "$APPT_DIR/start_api.sh"
 
-# 헬스체크 대기
-echo "  · API health 대기 (10초)..."
+# 헬스체크 대기 — alembic + 의존 로딩 시간 고려해 기본 120s 까지 허용.
+# 환경변수 AIDH_BOOT_HEALTH_TIMEOUT (초) 로 조정 가능.
+HEALTH_TIMEOUT="${AIDH_BOOT_HEALTH_TIMEOUT:-120}"
+echo "  · API health 대기 (최대 ${HEALTH_TIMEOUT}초)..."
 OK=0
-for i in $(seq 1 10); do
+for i in $(seq 1 "$HEALTH_TIMEOUT"); do
   if curl -s --max-time 2 "http://127.0.0.1:${API_PORT}/api/system/health" >/dev/null 2>&1; then
     echo "  ✓ api health 200 OK (${i}s)"
     OK=1; break
@@ -123,7 +125,8 @@ for i in $(seq 1 10); do
 done
 
 if [[ $OK -eq 0 ]]; then
-  echo "  ✗ API 응답 없음 (10초 timeout)"
+  echo "  ✗ API 응답 없음 (${HEALTH_TIMEOUT}초 timeout)"
+  echo "    alembic 마이그레이션이 길거나 부팅 실패 가능. 늘리려면 AIDH_BOOT_HEALTH_TIMEOUT=300 bash boot.sh"
   echo "    로그: tail -30 $LOG_DIR/api.log"
   echo "    또는 bash deploy/apptainer/diag.sh --tail-logs"
   exit 1

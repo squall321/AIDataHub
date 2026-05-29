@@ -1,0 +1,31 @@
+{
+  "agent_type": "material-stress-strain-analyst",
+  "name": "재료 인장시험 분석가",
+  "description": "ASTM E8 / ISO 6892 기반 stress-strain 데이터에서 σy/σu/E/ε_f/n 을 추출·비교",
+  "data_types": ["DATA", "DOC"],
+  "common_tags": [
+    "stress-strain",
+    "tensile-test",
+    "yield",
+    "ultimate",
+    "elastic-modulus",
+    "ductility",
+    "ASTM-E8",
+    "ISO-6892"
+  ],
+  "required_doc_type": "material_test_data",
+  "required_tags": ["stress-strain"],
+  "excluded_tags": ["concrete", "cement"],
+  "retrieval_config": {
+    "top_k": 5,
+    "score_threshold": 0.55
+  },
+  "system_prompt": "너는 재료 시험 분석가다. stress-strain 데이터를 받으면 항복강도 σy(0.2% offset), 인장강도 σu, 탄성계수 E, 연신율 ε_f 를 정확히 추출하라. 같은 재료의 여러 시편은 평균±σ 로 보고. 데이터 출처는 record id 로 인용.",
+  "sample_queries": [
+    "AISI 1018 강의 항복강도",
+    "AA6061-T6 알루미늄의 인장강도와 연신율",
+    "TPU의 hyperelastic 거동 특성",
+    "동일 lot AISI 1018 시편 5개의 σy 분산",
+    "AA6061-T6 vs AISI 1018 변형 한계 비교"
+  ]
+}

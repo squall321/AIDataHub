@@ -1,0 +1,192 @@
+[
+  {
+    "data_type": "DATA",
+    "team": "HE",
+    "group": "CAE",
+    "year": 2026,
+    "title": "AISI 1018 carbon steel — uniaxial tensile test (representative)",
+    "summary": "ASTM E8, E=205 GPa, σy≈370 MPa, σu≈440 MPa, ε_f≈15% (NIST/ASM/MatWeb 공개 자료 representative)",
+    "doc_type": "material_test_data",
+    "tags": ["stress-strain", "tensile-test", "steel", "AISI-1018", "carbon-steel"],
+    "agents": ["material-stress-strain-analyst"],
+    "author": "NIST / ASM Handbook / MatWeb (representative)",
+    "department": "HE/CAE",
+    "language": "ko",
+    "classification": "public",
+    "subject_keywords": ["1018", "carbon-steel", "tensile", "yield", "ultimate"],
+    "content": {
+      "sections": [
+        {
+          "section_id": "1",
+          "level": 1,
+          "title": "시험 조건",
+          "content_text": "ASTM E8 / E8M 표준 인장시험. 시편: standard round bar. strain rate 0.005/s. 상온 23°C."
+        },
+        {
+          "section_id": "2",
+          "level": 1,
+          "title": "물성 요약",
+          "content_text": "E=205 GPa · σy=370 MPa (0.2% offset) · σu=440 MPa · ε_f=15% · n≈0.26"
+        },
+        {
+          "section_id": "3",
+          "level": 1,
+          "title": "비고",
+          "content_text": "Representative public data. 실제 lot 별 변동 가능. raw 곡선은 attachment 참조."
+        }
+      ]
+    }
+  },
+  {
+    "data_type": "DATA",
+    "team": "HE",
+    "group": "CAE",
+    "year": 2026,
+    "title": "AA6061-T6 aluminum — uniaxial tensile test (representative)",
+    "summary": "ASTM E8, E=68.9 GPa, σy≈276 MPa, σu≈310 MPa, ε_f≈12% (NIST/ASM/MatWeb 공개 자료 representative)",
+    "doc_type": "material_test_data",
+    "tags": ["stress-strain", "tensile-test", "aluminum", "AA6061", "T6"],
+    "agents": ["material-stress-strain-analyst"],
+    "author": "NIST / ASM Handbook / MatWeb (representative)",
+    "department": "HE/CAE",
+    "language": "ko",
+    "classification": "public",
+    "subject_keywords": ["6061", "aluminum", "T6", "tensile", "yield"],
+    "content": {
+      "sections": [
+        {
+          "section_id": "1",
+          "level": 1,
+          "title": "시험 조건",
+          "content_text": "ASTM E8 / E8M 표준 인장시험. 시편: standard round bar. strain rate 0.005/s. 상온 23°C. 열처리: T6 (solution + 인공 시효)."
+        },
+        {
+          "section_id": "2",
+          "level": 1,
+          "title": "물성 요약",
+          "content_text": "E=68.9 GPa · σy=276 MPa (0.2% offset) · σu=310 MPa · ε_f=12% · n≈0.05"
+        },
+        {
+          "section_id": "3",
+          "level": 1,
+          "title": "비고",
+          "content_text": "Representative public data. 실제 lot 별 변동 가능. raw 곡선은 attachment 참조."
+        }
+      ]
+    }
+  },
+  {
+    "data_type": "DATA",
+    "team": "HE",
+    "group": "CAE",
+    "year": 2026,
+    "title": "AA7075-T6 aluminum — uniaxial tensile test (representative)",
+    "summary": "ASTM E8, E=71.7 GPa, σy≈503 MPa, σu≈572 MPa, ε_f≈11% (NIST/ASM/MatWeb 공개 자료 representative)",
+    "doc_type": "material_test_data",
+    "tags": ["stress-strain", "tensile-test", "aluminum", "AA7075", "T6", "high-strength"],
+    "agents": ["material-stress-strain-analyst"],
+    "author": "NIST / ASM Handbook / MatWeb (representative)",
+    "department": "HE/CAE",
+    "language": "ko",
+    "classification": "public",
+    "subject_keywords": ["7075", "aluminum", "T6", "high-strength", "aerospace"],
+    "content": {
+      "sections": [
+        {
+          "section_id": "1",
+          "level": 1,
+          "title": "시험 조건",
+          "content_text": "ASTM E8 / E8M 표준 인장시험. 시편: standard round bar. strain rate 0.005/s. 상온 23°C. 열처리: T6 (solution + 인공 시효)."
+        },
+        {
+          "section_id": "2",
+          "level": 1,
+          "title": "물성 요약",
+          "content_text": "E=71.7 GPa · σy=503 MPa (0.2% offset) · σu=572 MPa · ε_f=11% · n≈0.10"
+        },
+        {
+          "section_id": "3",
+          "level": 1,
+          "title": "비고",
+          "content_text": "Representative public data. 항공/방산 구조재로 광범위 사용. 실제 lot 별 변동 가능. raw 곡선은 attachment 참조."
+        }
+      ]
+    }
+  },
+  {
+    "data_type": "DATA",
+    "team": "HE",
+    "group": "CAE",
+    "year": 2026,
+    "title": "TPU Shore A85 — hyperelastic tensile test (representative)",
+    "summary": "ISO 37 (rubber tensile), σu≈30 MPa @ ε≈600%, hyperelastic 비선형 거동 (NIST/MatWeb 공개 자료 representative)",
+    "doc_type": "material_test_data",
+    "tags": ["stress-strain", "tensile-test", "rubber", "TPU", "hyperelastic", "polymer"],
+    "agents": ["material-stress-strain-analyst"],
+    "author": "NIST / MatWeb (representative)",
+    "department": "HE/CAE",
+    "language": "ko",
+    "classification": "public",
+    "subject_keywords": ["TPU", "hyperelastic", "rubber", "Shore-A85", "polymer"],
+    "content": {
+      "sections": [
+        {
+          "section_id": "1",
+          "level": 1,
+          "title": "시험 조건",
+          "content_text": "ISO 37 표준 인장시험 (dumbbell). strain rate 500 mm/min. 상온 23°C. Hardness Shore A 85."
+        },
+        {
+          "section_id": "2",
+          "level": 1,
+          "title": "물성 요약",
+          "content_text": "선형 E 없음 (hyperelastic). σu≈30 MPa @ ε_f≈600%+ · 변곡: ε≈300% 부근부터 strain stiffening. Ogden/Mooney-Rivlin 적합 권장."
+        },
+        {
+          "section_id": "3",
+          "level": 1,
+          "title": "비고",
+          "content_text": "Representative public data. 고무 계열은 lot/sample 변동 큼. raw 곡선은 attachment 참조."
+        }
+      ]
+    }
+  },
+  {
+    "data_type": "DATA",
+    "team": "HE",
+    "group": "CAE",
+    "year": 2026,
+    "title": "316L stainless steel — uniaxial tensile test (representative)",
+    "summary": "ASTM E8, E=193 GPa, σy≈290 MPa, σu≈579 MPa, ε_f≈50% (NIST/ASM/MatWeb 공개 자료 representative)",
+    "doc_type": "material_test_data",
+    "tags": ["stress-strain", "tensile-test", "steel", "316L", "stainless", "austenitic"],
+    "agents": ["material-stress-strain-analyst"],
+    "author": "NIST / ASM Handbook / MatWeb (representative)",
+    "department": "HE/CAE",
+    "language": "ko",
+    "classification": "public",
+    "subject_keywords": ["316L", "stainless", "austenitic", "tensile", "ductility"],
+    "content": {
+      "sections": [
+        {
+          "section_id": "1",
+          "level": 1,
+          "title": "시험 조건",
+          "content_text": "ASTM E8 / E8M 표준 인장시험. 시편: standard round bar. strain rate 0.005/s. 상온 23°C. annealed condition."
+        },
+        {
+          "section_id": "2",
+          "level": 1,
+          "title": "물성 요약",
+          "content_text": "E=193 GPa · σy=290 MPa (0.2% offset) · σu=579 MPa · ε_f=50% · austenitic, 가공경화율 높음"
+        },
+        {
+          "section_id": "3",
+          "level": 1,
+          "title": "비고",
+          "content_text": "Representative public data. 의료/식품 등급 광범위 사용. 실제 lot 별 변동 가능. raw 곡선은 attachment 참조."
+        }
+      ]
+    }
+  }
+]

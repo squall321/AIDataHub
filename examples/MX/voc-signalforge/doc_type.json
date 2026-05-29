@@ -1,0 +1,27 @@
+[
+  {
+    "code": "voc_report",
+    "name": "VOC Report",
+    "description": "시장 VOC 1건 (리뷰/SNS/콜센터/클레임 등) — 본문 텍스트 중심, LLM context 용.",
+    "mode": "llm_context",
+    "default_data_type": "DOC",
+    "expected_schema": {
+      "required_fields": ["title", "content"],
+      "recommended_tags": ["voc"],
+      "subject_keywords_hint": ["product_code", "product_name"]
+    },
+    "is_active": true
+  },
+  {
+    "code": "voc_metrics",
+    "name": "VOC Metrics",
+    "description": "VOC 집계 수치 (제품별/기간별/카테고리별 count, sentiment 비율) — data_extract 용.",
+    "mode": "data_extract",
+    "default_data_type": "DATA",
+    "expected_schema": {
+      "required_fields": ["product_code", "period_start", "period_end"],
+      "numeric_fields": ["total_count", "negative_rate", "avg_sentiment"]
+    },
+    "is_active": true
+  }
+]

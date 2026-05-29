@@ -85,6 +85,16 @@ export type WebviewToHost =
   // ---- v0.7.0 Doc-types ----
   | { type: 'listDocTypesRequest'; reqId: number }
   | { type: 'createDocTypeRequest'; reqId: number; payload: DocTypeInT }
+  // ---- v0.9.0 LLM-assisted ingest ----
+  | { type: 'getIngestGuideRequest'; reqId: number; agentType?: string | null; format?: 'markdown' | 'json' }
+  | {
+      type: 'importRecordsRequest';
+      reqId: number;
+      body: unknown;             // record dict / list / wrapped
+      autoSeq?: boolean;
+      dryRun?: boolean;
+    }
+  | { type: 'downloadIngestKitRequest'; reqId: number; agentType?: string | null }
   // ---- File picker / drop fallback ----
   /** Webview asks host to open OS file picker when drag-drop yields no File. */
   | { type: 'openFilePicker'; reqId: number; target: 'upload' | 'bundle' }
@@ -197,6 +207,31 @@ export type HostToWebview =
   // ---- v0.7.0 Doc-types responses ----
   | { type: 'listDocTypesResponse'; reqId: number; ok: boolean; payload?: DocTypeOutT[]; error?: string }
   | { type: 'createDocTypeResponse'; reqId: number; ok: boolean; payload?: DocTypeOutT; error?: string; httpStatus?: number }
+  // ---- v0.9.0 LLM-assisted ingest responses ----
+  | { type: 'getIngestGuideResponse'; reqId: number; ok: boolean; text?: string; payload?: unknown; error?: string }
+  | {
+      type: 'importRecordsResponse';
+      reqId: number;
+      ok: boolean;
+      payload?: {
+        count: number;
+        ok: number;
+        failed: number;
+        warnings: number;
+        auto_seq: boolean;
+        dry_run: boolean;
+        results: Array<Record<string, unknown>>;
+      };
+      error?: string;
+    }
+  | {
+      type: 'downloadIngestKitResponse';
+      reqId: number;
+      ok: boolean;
+      savedPath?: string;
+      filename?: string;
+      error?: string;
+    }
   // ---- v0.6.0 cache invalidation hint ----
   | { type: 'optionsInvalidated' }
   // ---- File loaded from host ----

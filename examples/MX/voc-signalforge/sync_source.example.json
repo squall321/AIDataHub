@@ -1,0 +1,62 @@
+{
+  "name": "signalforge-gs",
+  "description": "SignalForge VOC pull (Galaxy S 시리즈만). SF API 는 product 별 endpoint 분할 — 전체 6개(GS/GZ/GA/GW/GB/GR) 동기화는 push 모드 권장 또는 본 파일을 복사해서 6개 source 등록.",
+  "base_url": "http://signalforge-backend:8000",
+  "api_key": "REPLACE_AT_SETUP",
+  "auth_header": "X-API-Key",
+  "list_endpoint": "/api/v1/products/GS/voc",
+  "list_method": "GET",
+  "cursor_param": "offset",
+  "since_param": "from",
+  "limit_param": "limit",
+  "page_size": 100,
+  "max_rps": 4.0,
+  "retry_max": 3,
+  "retry_backoff_sec": 2.0,
+  "_note_trust_pii_masked": "false 시 transform_record 가 classification 을 강제로 'confidential' 로 덮어쓴다 (= rules.classification='internal' 이 무시됨). SF 측이 pii_masked=true 를 보증한다고 신뢰할 수 있다면 true 로 설정해 rules.classification 을 그대로 사용.",
+  "trust_pii_masked": false,
+  "schedule_cron": "*/30 * * * *",
+  "enabled": true,
+  "mapping_rules": {
+    "id_field": "id",
+    "title_template": "{content_original|truncate:80}",
+    "body_field": "content_original",
+    "summary_template": "{product.code} VOC — {sentiment_label} ({platform.code}, {country_code})",
+    "tags_fields": ["categories", "country_code", "platform.code", "sentiment_label"],
+    "tags_prefix": {
+      "country_code": "country:",
+      "platform.code": "channel:",
+      "sentiment_label": "sentiment:",
+      "categories": "voc:"
+    },
+    "subject_keywords_fields": ["product.code", "product.name_en"],
+    "valid_from_field": "processed_at",
+    "year_field": "processed_at",
+    "data_type": "DOC",
+    "team": "MX",
+    "group": "VOC",
+    "doc_type": "voc_report",
+    "agents": ["market-voc-analyst"],
+    "classification": "internal",
+    "language": "ko",
+    "sentiment_field": "sentiment_label",
+    "transform": {
+      "sentiment_to_severity": {
+        "very_negative": "critical",
+        "negative": "major",
+        "neutral": "info",
+        "positive": "info"
+      },
+      "severity_to_quality_score": {
+        "critical": 100,
+        "major": 75,
+        "minor": 50,
+        "info": 25
+      }
+    },
+    "filter": {
+      "require_processed_at": true,
+      "pii_masked": true
+    }
+  }
+}
