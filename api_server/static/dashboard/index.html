@@ -35,7 +35,8 @@
   <button data-tab="analytics"><span class="tab-num">06</span>분석</button>
   <button data-tab="org"><span class="tab-num">07</span>조직 관리</button>
   <button data-tab="tools"><span class="tab-num">08</span>MCP 도구</button>
-  <button data-tab="docs"><span class="tab-num">09</span>API 가이드</button>
+  <button data-tab="sources"><span class="tab-num">09</span>연결 소스</button>
+  <button data-tab="docs"><span class="tab-num">10</span>API 가이드</button>
 </nav>
 
 <main>
@@ -490,6 +491,43 @@
         <div class="state">[조회] 새로고침으로 로드.</div>
       </div>
     </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- Section 9: 연결 소스 (sync_sources) -->
+  <!-- ============================================================ -->
+  <section class="panel" data-panel="sources">
+    <div class="panel-head">
+      <div>
+        <h2>연결 소스 (Connected Sources)</h2>
+        <p class="panel-sub">
+          외부 시스템(SignalForge / MX White Paper 등) 과 AX Hub 사이의 동기화 등록 상태.
+          <code>config/sync_sources.yml</code> 또는 <code>POST /api/sync/sources</code> 로 관리.
+        </p>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button id="sources-reload" class="btn">새로고침</button>
+      </div>
+    </div>
+
+    <div id="sources-summary" style="margin-bottom:12px"></div>
+    <div id="sources-list-wrap">
+      <div class="state">[조회] 새로고침으로 로드.</div>
+    </div>
+
+    <details style="margin-top:18px">
+      <summary><b>설정 파일에서 일괄 등록</b> (옵션 A — config/sync_sources.yml)</summary>
+      <p class="panel-sub" style="margin-top:8px">
+        repo 의 <code>config/sync_sources.yml</code> 에 source 들을 yaml 로 선언 →
+        서버 부팅 시 자동 idempotent 등록·갱신.
+        <code>api_key</code> 는 yaml 에 평문 X — <code>api_key_env: SF_API_KEY</code>
+        같이 환경변수 이름만 명시. 부팅 시 그 환경변수의 값을 읽어 등록.
+        DB 에만 있고 yaml 에 없는 source 는 그대로 유지.
+      </p>
+      <p class="panel-sub">
+        비활성: <code>AIDH_SYNC_BOOTSTRAP=false</code>. 경로 변경: <code>AIDH_SYNC_CONFIG_FILE=...</code>.
+      </p>
+    </details>
   </section>
 
   <section class="panel docs-panel" data-panel="docs">

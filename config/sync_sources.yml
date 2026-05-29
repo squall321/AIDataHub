@@ -1,0 +1,141 @@
+# AX Hub — 연결된 외부 데이터 소스 통합 설정.
+#
+# 부팅 시 services.sync_bootstrap.bootstrap_sync_sources() 가 이 파일을 읽어
+# sync_sources 테이블에 idempotent 하게 등록/갱신한다.
+#
+# - api_key 는 yaml 에 평문으로 두지 마라. 환경변수 이름을 api_key_env 로 명시.
+# - mapping_rules 변경 → 해당 source 의 cursor 가 자동 리셋되지 않는다. 필요시
+#   reset_cursor_on_mapping_change: true 옵션 추가.
+# - name 이 같은 행이 DB 에 있으면 PATCH (mapping_rules / base_url / api_key 등 갱신).
+#   DB 에만 있고 yaml 에 없는 source 는 건드리지 않음 (수동 등록 보존).
+#
+# 환경변수:
+#   AIDH_SYNC_CONFIG_FILE=/path/to/sync_sources.yml  (생략 시 config/sync_sources.yml)
+#   AIDH_SYNC_BOOTSTRAP=false                          (생략 시 true — 파일 있으면 적용)
+
+sources:
+  # ---------------------------------------------------------------------------
+  # SignalForge VOC (Galaxy S 시리즈) — 다른 제품 라인은 본 항목 복사 후
+  # name 과 list_endpoint 만 변경 (예: signalforge-gz, /api/v1/products/GZ/voc).
+  # ---------------------------------------------------------------------------
+  - name: signalforge-gs
+    description: "SignalForge VOC pull — Galaxy S 시리즈"
+    base_url: "http://signalforge-backend:8000"
+    api_key_env: SF_API_KEY          # 환경변수에서 키 읽음 (yaml 에 평문 X)
+    auth_header: "X-API-Key"
+    list_endpoint: "/api/v1/products/GS/voc"
+    list_method: GET
+    cursor_param: offset             # SF 는 limit/offset 페이지네이션
+    since_param: from                # SF 는 published_at 기준 server-side
+    limit_param: limit
+    page_size: 100
+    max_rps: 4.0
+    retry_max: 3
+    retry_backoff_sec: 2.0
+    trust_pii_masked: false
+    schedule_cron: "*/30 * * * *"
+    enabled: true
+    mapping_rules:
+      id_field: id
+      title_template: "{content_original|truncate:80}"
+      body_field: content_original
+      summary_template: "{product.code} VOC — {sentiment_label} ({platform.code}, {country_code})"
+      tags_fields:
+        - categories
+        - country_code
+        - platform.code
+        - sentiment_label
+      tags_prefix:
+        country_code: "country:"
+        platform.code: "channel:"
+        sentiment_label: "sentiment:"
+        categories: "voc:"
+      subject_keywords_fields:
+        - product.code
+        - product.name_en
+      valid_from_field: processed_at
+      year_field: processed_at
+      data_type: DOC
+      team: MX
+      group: VOC
+      doc_type: voc_report
+      agents:
+        - market-voc-analyst
+      classification: internal
+      language: ko
+      sentiment_field: sentiment_label
+      transform:
+        sentiment_to_severity:
+          very_negative: critical
+          negative: major
+          neutral: info
+          positive: info
+        severity_to_quality_score:
+          critical: 100
+          major: 75
+          minor: 50
+          info: 25
+      filter:
+        require_processed_at: true
+        pii_masked: true
+
+  # ---------------------------------------------------------------------------
+  # MX White Paper — Sprint 3 offset 페이지네이션 사용.
+  # ---------------------------------------------------------------------------
+  - name: mxwp
+    description: "MX White Paper 위키 (DocumentJSON v1.0) — published 미러"
+    base_url: "http://mxwp-api:8000"
+    api_key_env: MXWP_INTERNAL_KEY
+    auth_header: "X-API-Key"
+    list_endpoint: "/api/v1/documents"
+    list_method: GET
+    detail_endpoint: "/api/v1/documents/{slug}"
+    cursor_param: offset
+    since_param: "_unsupported_updated_since"   # 서버 미지원 — sync_svc 가 자동 skip
+    limit_param: limit
+    page_size: 100
+    max_rps: 2.0
+    retry_max: 3
+    retry_backoff_sec: 2.0
+    trust_pii_masked: false
+    schedule_cron: "*/30 * * * *"
+    enabled: true
+    mapping_rules:
+      id_field: document_id
+      title_field: title
+      body_field: body_text
+      summary_field: summary
+      tags_fields:
+        - tags
+        - authors
+        - status
+      subject_keywords_fields:
+        - keywords
+      valid_from_field: created_at
+      year_field: created_at
+      data_type: DOC
+      team: MX
+      group: WP
+      doc_type: whitepaper
+      agents:
+        - mx-whitepaper-analyst
+      classification: internal
+      language: ko
+      list_filter:
+        status: published
+      attachments_field: "content.attachments"
+      attachment_mode: url_ref
+      attachment_url_template: "{base_url}/api/v1/files/{image_id}"
+      sections_field: "content.sections"
+
+# ---------------------------------------------------------------------------
+# 추가 옵션 (모두 선택):
+#
+# defaults:
+#   max_rps: 2.0              # sources 가 명시 안 했을 때 기본
+#   retry_max: 3
+#   trust_pii_masked: false
+#
+# preserve_unknown: true      # yaml 에 없는 DB source 도 enabled=true 유지 (기본)
+# reset_cursor_on_mapping_change: false  # mapping 룰 변경 시 cursor 자동 리셋
+# ---------------------------------------------------------------------------

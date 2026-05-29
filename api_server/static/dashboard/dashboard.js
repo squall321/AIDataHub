@@ -1313,6 +1313,155 @@ function initToolsTab() {
 
 LOADERS["tools"] = initToolsTab;
 
+// ============================================================================
+// Section 9: Connected Sources (sync_sources)
+// ============================================================================
+async function loadConnectedSources() {
+  const wrap = document.getElementById("sources-list-wrap");
+  const summary = document.getElementById("sources-summary");
+  if (!wrap || !summary) return;
+  wrap.innerHTML = '<div class="state">불러오는 중…</div>';
+  summary.innerHTML = "";
+
+  let sources;
+  try {
+    sources = await apiFetch("/api/sync/sources");
+  } catch (err) {
+    wrap.innerHTML = `<div class="state error">조회 실패: ${escapeHtml(String(err.message || err))} — API 키가 필요합니다 (상단 ⚙ Settings).</div>`;
+    return;
+  }
+  if (!Array.isArray(sources)) {
+    wrap.innerHTML = `<div class="state error">예상치 못한 응답 형식.</div>`;
+    return;
+  }
+
+  const enabled = sources.filter(s => s.enabled).length;
+  const okN = sources.filter(s => s.last_status === "ok").length;
+  const errN = sources.filter(s => s.last_status === "error").length;
+  const neverN = sources.filter(s => s.last_status === "never").length;
+
+  summary.innerHTML = `
+    <div class="kpi-row">
+      <div class="kpi"><div class="kpi-label">등록</div><div class="kpi-value">${sources.length}</div></div>
+      <div class="kpi"><div class="kpi-label">활성</div><div class="kpi-value">${enabled}</div></div>
+      <div class="kpi"><div class="kpi-label">정상</div><div class="kpi-value">${okN}</div></div>
+      <div class="kpi"><div class="kpi-label">에러</div><div class="kpi-value">${errN}</div></div>
+      <div class="kpi"><div class="kpi-label">미실행</div><div class="kpi-value">${neverN}</div></div>
+    </div>
+  `;
+
+  if (sources.length === 0) {
+    wrap.innerHTML = `
+      <div class="state">
+        등록된 외부 소스가 없습니다.<br><br>
+        등록 방법:
+        <ul style="margin-top:8px;line-height:1.6">
+          <li><b>yaml 일괄</b>: <code>config/sync_sources.yml</code> 에 선언 → 재시작</li>
+          <li><b>REST</b>: <code>POST /api/sync/sources</code> 에 JSON 페이로드</li>
+        </ul>
+      </div>
+    `;
+    return;
+  }
+
+  const rows = sources.map(s => {
+    const status = s.last_status || "never";
+    const statusClass = {
+      ok: "status-ok", partial: "status-warn",
+      error: "status-err", never: "status-muted",
+      running: "status-warn",
+    }[status] || "status-muted";
+    const lastSync = s.last_sync_at
+      ? new Date(s.last_sync_at).toLocaleString()
+      : "(미실행)";
+    const rules = s.mapping_rules || {};
+    const docType = rules.doc_type || "—";
+    const teamGroup = (rules.team || "?") + "/" + (rules.group || "?");
+    const cron = s.schedule_cron || "(수동)";
+
+    return `
+      <tr data-source-id="${s.id}">
+        <td><b>${escapeHtml(s.name)}</b><div class="muted-sm">${escapeHtml(s.description || "")}</div></td>
+        <td><code>${escapeHtml(s.base_url)}</code><div class="muted-sm">${escapeHtml(s.list_endpoint)}</div></td>
+        <td>${escapeHtml(docType)}<div class="muted-sm">${escapeHtml(teamGroup)}</div></td>
+        <td class="${statusClass}">${escapeHtml(status)}<div class="muted-sm">${escapeHtml(lastSync)}</div></td>
+        <td>${s.last_fetched_count || 0} / ${s.last_imported_count || 0}<div class="muted-sm">fetched / imported</div></td>
+        <td><code>${escapeHtml(cron)}</code></td>
+        <td>${s.has_api_key ? '<span class="status-ok">●</span> 있음' : '<span class="status-err">○</span> 없음'}</td>
+        <td>${s.enabled ? '<span class="status-ok">활성</span>' : '<span class="status-muted">비활성</span>'}</td>
+        <td>
+          <button class="btn btn-sm" data-action="verify" data-id="${s.id}">Verify</button>
+          <button class="btn btn-sm" data-action="run" data-id="${s.id}">Run</button>
+          <button class="btn btn-sm ghost" data-action="runs" data-id="${s.id}">이력</button>
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  wrap.innerHTML = `
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>이름</th><th>base_url</th><th>doc_type / team-group</th>
+            <th>상태</th><th>last fetched/imported</th><th>schedule</th>
+            <th>API key</th><th>활성</th><th>액션</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div id="sources-action-result" style="margin-top:12px"></div>
+  `;
+
+  // 액션 핸들러 위임
+  wrap.querySelectorAll("button[data-action]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-id");
+      const action = btn.getAttribute("data-action");
+      const result = document.getElementById("sources-action-result");
+      if (!id || !action) return;
+      btn.disabled = true;
+      result.innerHTML = `<div class="state">${action} 중…</div>`;
+      try {
+        let res;
+        if (action === "verify") {
+          res = await apiFetch(`/api/sync/sources/${id}/verify`, { method: "POST" });
+        } else if (action === "run") {
+          if (!confirm("동기화를 즉시 실행할까요?")) {
+            btn.disabled = false;
+            result.innerHTML = "";
+            return;
+          }
+          res = await apiFetch(`/api/sync/sources/${id}/run`, { method: "POST" });
+        } else if (action === "runs") {
+          res = await apiFetch(`/api/sync/sources/${id}/runs?limit=10`);
+        }
+        result.innerHTML = `
+          <h4 style="margin:0 0 8px">${escapeHtml(action)} 결과</h4>
+          <pre style="background:#0f1115;color:#d6deeb;padding:12px;border-radius:6px;overflow:auto;max-height:320px">${escapeHtml(JSON.stringify(res, null, 2))}</pre>
+        `;
+        // run / verify 후 목록 자동 새로고침
+        if (action === "run" || action === "verify") {
+          setTimeout(loadConnectedSources, 800);
+        }
+      } catch (err) {
+        result.innerHTML = `<div class="state error">${action} 실패: ${escapeHtml(String(err.message || err))}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+function initSourcesTab() {
+  const reloadBtn = document.getElementById("sources-reload");
+  if (reloadBtn) reloadBtn.addEventListener("click", loadConnectedSources);
+  loadConnectedSources();
+}
+
+LOADERS["sources"] = initSourcesTab;
+
 function flattenEndpoints(spec) {
   const out = [];
   const paths = spec.paths || {};

@@ -29,6 +29,10 @@ async def lifespan(app: FastAPI):
     # 불일치 시 sample_embedding sync 가 런타임에 실패하므로 부팅 단계에서 경고.
     await _check_embedding_dim_consistency()
 
+    # v0.8 — config/sync_sources.yml 부팅 일괄 등록 (옵션 A).
+    # AIDH_SYNC_BOOTSTRAP=false 로 비활성. 파일 없으면 silent skip.
+    await _bootstrap_sync_sources()
+
     # MCP streamable_http_app 은 자체 lifespan(task group)이 있어야 동작한다.
     # FastAPI 의 mount() 는 sub-app 의 lifespan 을 자동 전파하지 않으므로,
     # 우리 lifespan 에서 명시적으로 enter / exit 한다.
@@ -38,6 +42,37 @@ async def lifespan(app: FastAPI):
     else:
         yield
     await engine.dispose()
+
+
+async def _bootstrap_sync_sources() -> None:
+    """``config/sync_sources.yml`` 을 읽어 sync_sources 자동 등록·갱신.
+
+    옵션 A 핵심:
+        - yaml 1개에 모든 외부 연결 선언 → 재현 가능한 배포.
+        - api_key 는 ``api_key_env`` 로 환경변수에서 읽음 (yaml 평문 X).
+        - DB 에만 있는 source 는 그대로 유지 (수동 등록 보존).
+    """
+    import logging
+    log = logging.getLogger("api.main")
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from .services import sync_bootstrap
+
+        async with AsyncSession(engine) as session:
+            result = await sync_bootstrap.bootstrap_sync_sources(session)
+        if result.get("skipped"):
+            return
+        log.info(
+            "sync_sources bootstrap — created=%s updated=%s unchanged=%s errors=%s file=%s",
+            len(result.get("created") or []),
+            len(result.get("updated") or []),
+            len(result.get("unchanged") or []),
+            len(result.get("errors") or []),
+            result.get("config_file"),
+        )
+    except Exception as exc:  # pragma: no cover — best-effort
+        log.warning("sync_sources bootstrap failed: %s", exc)
 
 
 async def _check_embedding_dim_consistency() -> None:
