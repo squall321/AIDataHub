@@ -490,6 +490,22 @@ async def _fetch_page(
     if src.api_key:
         headers[src.auth_header] = src.api_key
 
+    # list_endpoint sanity — '/' 로 시작해야 하고 url-prefix 토큰 없어야 함
+    le = src.list_endpoint or ""
+    if not le.startswith("/"):
+        raise httpx.RequestError(
+            f"list_endpoint must start with '/' (got {le!r}) — bare host or absolute URL not allowed"
+        )
+    if "://" in le or le.startswith("@") or le.startswith("//"):
+        raise httpx.RequestError(f"list_endpoint contains url-prefix tokens: {le!r}")
+
+    # DNS rebinding 완화 — 매 fetch 직전 base_url 재검증 (defense-in-depth).
+    # 완전한 IP-pinning 은 transport 레벨이지만, 이 단계에서도 두 번째 resolve
+    # 결과가 private/metadata 로 바뀌면 일찍 차단된다.
+    ok, reason = validate_external_url(src.base_url)
+    if not ok:
+        raise httpx.RequestError(f"base_url revalidate failed: {reason}")
+
     for attempt in range(src.retry_max + 1):
         try:
             resp = await client.request(
