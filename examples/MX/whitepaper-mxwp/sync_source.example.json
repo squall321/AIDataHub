@@ -19,12 +19,16 @@
   "schedule_cron": "*/30 * * * *",
   "enabled": true,
   "mapping_rules": {
-    "id_field": "document_id",
+    "_note": "MXWP DocumentJSON v1.0 응답 검증된 매핑. list 응답엔 메타만 → sync_svc 가 detail_endpoint 로 GET 후 content.metadata/content.sections 를 top-level 로 평탄화 후 transform.",
+    "id_field": "id",
     "title_field": "title",
-    "body_field": "body_text",
     "summary_field": "summary",
-    "tags_fields": ["tags", "authors", "status"],
-    "subject_keywords_fields": ["keywords"],
+    "tags_fields": ["metadata.tags", "metadata.owners", "status"],
+    "tags_prefix": {
+      "metadata.owners": "author:",
+      "status": "status:"
+    },
+    "subject_keywords_fields": ["metadata.tags", "metadata.keywords"],
     "valid_from_field": "created_at",
     "year_field": "created_at",
     "data_type": "DOC",
@@ -35,9 +39,9 @@
     "classification": "internal",
     "language": "ko",
     "list_filter": { "status": "published" },
+    "sections_field": "sections",
+    "attachments_field": "content.attachments",
     "attachment_mode": "url_ref",
-    "attachment_url_template": "{base_url}/api/v1/files/{image_id}",
-    "sections_field": "content.sections",
-    "external_source": "mxwp"
+    "attachment_url_template": "{base_url}/api/v1/files/{image_id}"
   }
 }

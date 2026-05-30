@@ -436,6 +436,31 @@ def _redact_for_dead_letter(obj: Any, depth: int = 0) -> Any:
 
 
 # ===========================================================================
+# detail_endpoint placeholder 치환
+# ===========================================================================
+_DETAIL_PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
+
+
+def _resolve_detail_url(src: "SyncSource", template: str, item: dict[str, Any]) -> str:
+    """detail_endpoint template 의 {field} 를 item 값으로 치환.
+
+    예: '/api/v1/documents/{slug}' + item['slug']='abc' → '/api/v1/documents/abc'
+    fallback: slug 없으면 id 사용.
+    """
+    def _sub(m: re.Match) -> str:
+        key = m.group(1)
+        v = item.get(key)
+        if v is None and key == "slug":
+            v = item.get("id")  # slug 미존재 시 id 폴백
+        return str(v) if v is not None else ""
+
+    path = _DETAIL_PLACEHOLDER_RE.sub(_sub, template)
+    if not path.startswith("/"):
+        path = "/" + path
+    return src.base_url.rstrip("/") + path
+
+
+# ===========================================================================
 # Throttle (자체 rate limit)
 # ===========================================================================
 class _Throttle:
@@ -585,6 +610,11 @@ async def run_sync(
     Returns:
         {run_id, status, fetched, imported, failed, ...}
     """
+    # session 의 commit 후 ORM attribute lazy reload 가 async I/O 를
+    # 트리거해 MissingGreenlet 에러를 일으킨다. _import_one 의 record-별
+    # commit 사이에 src.name / run.id 같은 attribute 를 안전하게 쓰려면 expire 비활성.
+    session.expire_on_commit = False
+
     src = (await session.execute(select(SyncSource).where(SyncSource.id == source_id))).scalar_one_or_none()
     if src is None:
         raise ValueError(f"sync_source not found: id={source_id}")
@@ -645,15 +675,29 @@ async def run_sync(
     await session.commit()
     logger.info("sync_run started: source=%s run_id=%s trigger=%s", src.name, run.id, trigger)
 
-    throttle = _Throttle(src.max_rps)
+    # src 의 필요 attribute 들을 변수로 캐시.
+    # 이유: _import_one 의 session.commit() 이후 SQLAlchemy 가 src 를 expire 시켜
+    # 다음 attribute access 가 async lazy reload 시도 → MissingGreenlet 에러.
+    src_name = src.name
+    src_max_rps = src.max_rps
+    src_trust_pii = bool(src.trust_pii_masked)
+    src_detail_endpoint = (src.detail_endpoint or "").strip()
+    src_cursor_param = src.cursor_param
+    src_initial_cursor = src.cursor
+
+    throttle = _Throttle(src_max_rps)
     rules = dict(src.mapping_rules or {})
     fetched = imported = updated_cnt = failed = 0
     dead_letter: list[dict[str, Any]] = []
-    next_cursor = src.cursor
+    next_cursor = src_initial_cursor
     since_iso = src.last_sync_at.isoformat() if src.last_sync_at else None
     error_str: str | None = None
     started_now = datetime.now(timezone.utc)
     drained = False  # True 면 모든 페이지 끝까지 다 가져옴 — cursor 리셋 가능
+    # run 도 첫 commit 후 expired 가능 — id 만 캐시하고 이후 UPDATE statement 로.
+    run_id = run.id
+    run_status_override: str | None = None
+    run_error_override: str | None = None
 
     try:
         async with httpx.AsyncClient() as client:
@@ -677,13 +721,67 @@ async def run_sync(
                 # 매핑 + import (페이지 단위)
                 from ..routes.records import _import_one
 
+                # detail_endpoint 가 설정돼 있고 list 응답이 메타만 (sections/metadata 등
+                # 없음) 인 시스템 (MXWP 등) 은 각 item 의 slug/id 로 detail GET 후
+                # 그 응답으로 transform. detail_endpoint 안의 {slug}/{id} placeholder
+                # 는 item 의 동일 키 값으로 치환.
+                detail_tmpl = src_detail_endpoint
+                use_detail = bool(detail_tmpl) and (
+                    "{" in detail_tmpl and "}" in detail_tmpl
+                )
+                # detail fetch 용 headers (loop 진입 전 1회만 캐시)
+                detail_headers = (
+                    {src.auth_header: src.api_key} if src.api_key else {}
+                )
+                src_base_url = src.base_url
+
                 for raw in items:
                     if not isinstance(raw, dict):
                         failed += 1
                         dead_letter.append({"raw": str(raw)[:200], "error": "not a dict"})
                         continue
+
+                    # detail fetch (필요 시) — MXWP envelope (data 키) 자동 unwrap.
+                    if use_detail:
+                        try:
+                            await throttle.wait()
+                            detail_url = src_base_url.rstrip("/") + (
+                                _DETAIL_PLACEHOLDER_RE.sub(
+                                    lambda m, _it=raw: str(_it.get(m.group(1)) or _it.get("id") or ""),
+                                    detail_tmpl,
+                                )
+                            )
+                            d_resp = await client.get(
+                                detail_url,
+                                headers=detail_headers,
+                                timeout=30.0,
+                            )
+                            if d_resp.status_code == 200:
+                                d_body = d_resp.json()
+                                # envelope unwrap
+                                if isinstance(d_body, dict) and "data" in d_body and isinstance(d_body["data"], dict):
+                                    d_data = d_body["data"]
+                                    # MXWP: content.metadata / content.sections 를 top-level 로도 흡수
+                                    content = d_data.get("content") or {}
+                                    if isinstance(content, dict):
+                                        if "metadata" in content and "metadata" not in d_data:
+                                            d_data["metadata"] = content["metadata"]
+                                        if "sections" in content and "sections" not in d_data:
+                                            d_data["sections"] = content["sections"]
+                                    # raw 의 list-only 필드와 detail 병합 (detail 우선)
+                                    raw = {**raw, **d_data}
+                                else:
+                                    raw = {**raw, **(d_body if isinstance(d_body, dict) else {})}
+                            else:
+                                logger.warning(
+                                    "detail fetch %s → %s — skipping enrichment",
+                                    detail_url, d_resp.status_code,
+                                )
+                        except Exception as exc:  # noqa: BLE001
+                            logger.warning("detail fetch failed: %s — using list-only", exc)
+
                     transformed = transform_record(
-                        raw, rules, trust_pii=bool(src.trust_pii_masked)
+                        raw, rules, trust_pii=src_trust_pii,
                     )
                     if "_reject_reason" in transformed:
                         failed += 1
@@ -701,9 +799,9 @@ async def run_sync(
                         raw=transformed,
                         auto_seq=True,
                         dry_run=False,
-                        actor=f"sync:{src.name}",
+                        actor=f"sync:{src_name}",
                         request_id=None,
-                        external_source=src.name,
+                        external_source=src_name,
                     )
                     if outcome.get("error"):
                         failed += 1
@@ -734,7 +832,7 @@ async def run_sync(
                 logger.warning(
                     "sync_source %s hit max_pages=%s before draining — cursor NOT persisted "
                     "to avoid offset drift on next run. Increase max_pages or run again.",
-                    src.name, max_pages,
+                    src_name, max_pages,
                 )
 
         # 성공 — sync_source 상태 갱신
@@ -746,36 +844,44 @@ async def run_sync(
             # 진짜 cursor 모드 (cursor_param='cursor' 또는 'id-token') 는
             # drained 시에만 None (정상 종료), drained 아니면 stale cursor 보존
             # X — 다음 run 도 처음부터.
-            offset_mode = (src.cursor_param or "").lower() == "offset"
-            if offset_mode or not drained:
-                src.cursor = None
-            else:
-                src.cursor = next_cursor
-            src.last_sync_at = started_now
-            src.last_status = "ok" if failed == 0 else "partial"
-            src.last_fetched_count = fetched
-            src.last_imported_count = imported + updated_cnt
-            src.last_error = None
+            # src 가 expired 됐을 가능성 → DB 에서 다시 SELECT 해서 fresh 객체에 쓰기
+            from sqlalchemy import update as _update
+            offset_mode = (src_cursor_param or "").lower() == "offset"
+            new_cursor = None if (offset_mode or not drained) else next_cursor
+            last_status = "ok" if failed == 0 else "partial"
+            await session.execute(
+                _update(SyncSource)
+                .where(SyncSource.id == source_id)
+                .values(
+                    cursor=new_cursor,
+                    last_sync_at=started_now,
+                    last_status=last_status,
+                    last_fetched_count=fetched,
+                    last_imported_count=imported + updated_cnt,
+                    last_error=None,
+                )
+            )
 
-        run.status = "ok" if failed == 0 else "partial"
+        run_status_override = "ok" if failed == 0 else "partial"
 
     except Exception as exc:
         error_str = f"{type(exc).__name__}: {exc}"
-        logger.exception("sync_run failed: source=%s", src.name)
-        run.status = "error"
-        run.error = error_str
+        logger.exception("sync_run failed: source=%s", src_name)
+        # SyncRun row 의 상태는 finally 직전에 ORM update — 여기선 변수만 갱신.
+        run_status_override = "error"
+        run_error_override = error_str
         if not dry_run:
-            src.last_status = "error"
-            src.last_error = error_str
+            from sqlalchemy import update as _update_err
+            try:
+                await session.execute(
+                    _update_err(SyncSource)
+                    .where(SyncSource.id == source_id)
+                    .values(last_status="error", last_error=error_str)
+                )
+            except Exception:  # pragma: no cover
+                pass
     finally:
-        run.finished_at = datetime.now(timezone.utc)
-        run.fetched_count = fetched
-        run.imported_count = imported
-        run.updated_count = updated_cnt
-        run.failed_count = failed
-        run.cursor_after = next_cursor
-        # dead_letter truncation 이 silent loss 가 되지 않도록 카운트와 함께
-        # 별도 컬럼 같은 게 없으므로 첫 entry 에 'truncated' 마커를 박는다.
+        # dead_letter truncation marker
         kept = dead_letter[:200]
         if len(dead_letter) > 200:
             kept.insert(0, {
@@ -786,9 +892,32 @@ async def run_sync(
             })
             logger.warning(
                 "sync_run %s dead_letter truncated: %s → 200",
-                run.id, len(dead_letter),
+                run_id, len(dead_letter),
             )
-        run.dead_letter = kept
+
+        # SyncRun row 갱신 — ORM expired 가능성 회피로 UPDATE statement 사용
+        try:
+            from sqlalchemy import update as _update_run
+            final_status = run_status_override or (
+                "ok" if failed == 0 else "partial"
+            )
+            await session.execute(
+                _update_run(SyncRun)
+                .where(SyncRun.id == run_id)
+                .values(
+                    finished_at=datetime.now(timezone.utc),
+                    fetched_count=fetched,
+                    imported_count=imported,
+                    updated_count=updated_cnt,
+                    failed_count=failed,
+                    cursor_after=next_cursor,
+                    dead_letter=kept,
+                    status=final_status,
+                    error=run_error_override,
+                )
+            )
+        except Exception as exc:  # pragma: no cover
+            logger.warning("sync_run %s state update failed: %s", run_id, exc)
 
         # advisory lock 해제 (best-effort)
         try:
@@ -806,15 +935,15 @@ async def run_sync(
         await session.commit()
 
     return {
-        "run_id": run.id,
-        "source_name": src.name,
-        "status": run.status,
+        "run_id": run_id,
+        "source_name": src_name,
+        "status": run_status_override or ("ok" if failed == 0 else "partial"),
         "fetched": fetched,
         "imported": imported,
         "updated": updated_cnt,
         "failed": failed,
-        "cursor_before": run.cursor_before,
-        "cursor_after": run.cursor_after,
+        "cursor_before": src_initial_cursor,
+        "cursor_after": next_cursor,
         "dry_run": dry_run,
         "error": error_str,
         "dead_letter_count": len(dead_letter),

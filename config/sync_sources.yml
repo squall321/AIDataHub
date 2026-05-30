@@ -101,16 +101,22 @@ sources:
     schedule_cron: "*/30 * * * *"
     enabled: true
     mapping_rules:
-      id_field: document_id
+      # MXWP 응답은 list 도 detail 도 모두 'id' 키 (UUID) — 'document_id' 키 없음.
+      id_field: id
       title_field: title
-      body_field: body_text
       summary_field: summary
+      # tags 는 detail 의 content.metadata.tags 에 — sync_svc 가 detail fetch
+      # 후 content.metadata 를 doc.metadata 로 평탄화하므로 'metadata.tags' 접근.
       tags_fields:
-        - tags
-        - authors
+        - metadata.tags
+        - metadata.owners
         - status
+      tags_prefix:
+        metadata.owners: "author:"
+        status: "status:"
       subject_keywords_fields:
-        - keywords
+        - metadata.tags
+        - metadata.keywords
       valid_from_field: created_at
       year_field: created_at
       data_type: DOC
@@ -119,14 +125,16 @@ sources:
       doc_type: whitepaper
       agents:
         - mx-whitepaper-analyst
+      # confidentiality 는 매핑 룰만으론 표현 어려움 — sync_svc 자체 변환 추가
+      # 필요. 기본 internal 유지.
       classification: internal
       language: ko
       list_filter:
         status: published
+      sections_field: sections
       attachments_field: "content.attachments"
       attachment_mode: url_ref
       attachment_url_template: "{base_url}/api/v1/files/{image_id}"
-      sections_field: "content.sections"
 
 # ---------------------------------------------------------------------------
 # 추가 옵션 (모두 선택):

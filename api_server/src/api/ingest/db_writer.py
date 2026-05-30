@@ -121,7 +121,19 @@ def _flatten_sections(
         if not isinstance(node, dict):
             return
         level = int(node.get("level", depth) or depth)
-        sid = str(node.get("id", ""))
+        # section_id 컬럼은 VARCHAR(20) — 짧은 식별자 우선:
+        # 1) number ("1.0", "1.1.2" 같은 hierarchical) 2) section_id 3) id (ULID 26 chars)
+        # ULID 류는 마지막 8자만 잘라 사용 (충돌 위험 낮음, 길이 한도 안전).
+        raw_sid = (
+            node.get("number")
+            or node.get("section_id")
+            or node.get("id")
+            or ""
+        )
+        sid = str(raw_sid)
+        if len(sid) > 20:
+            # 길면 마지막 18자 + '~' prefix 로 truncate marker — 충돌 가능성 낮춤
+            sid = "~" + sid[-18:]
         title = str(node.get("title", ""))
         next_path = path + [title] if title else path
         if level <= max_level and sid and sid not in seen:
