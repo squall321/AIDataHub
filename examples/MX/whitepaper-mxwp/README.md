@@ -1,5 +1,8 @@
 # MX White Paper × MXWhitePaper 양방향 연동 예제
 
+> **새 외부 시스템 통합 표준 절차는 [docs/INTEGRATION_GUIDE.md](../../../docs/INTEGRATION_GUIDE.md) 참조.**
+> 이 폴더는 MXWhitePaper 한정 검증된 예시 (mapping_rules + setup.sh + Sprint 3 offset 패치).
+
 AX Hub (Mobile eXperience AI Data Hub) ↔ MXWhitePaper (사내 문서 위키 + 풀스택)
 
 - AX Hub: 사업부 전체 데이터(설계/CAE/품질/측정/VOC/문서) 통합 카탈로그

@@ -1,5 +1,8 @@
 # MX VOC × SignalForge 양방향 연동 예제
 
+> **새 외부 시스템 통합 표준 절차는 [docs/INTEGRATION_GUIDE.md](../../../docs/INTEGRATION_GUIDE.md) 참조.**
+> 이 폴더는 SignalForge 한정 검증된 예시 (mapping_rules + setup.sh).
+
 AX Hub (Mobile eXperience AI Data Hub) ↔ SignalForge (사내 VOC Intelligence Platform)
 - AX Hub: 사업부 전체 데이터(설계/CAE/품질/측정/VOC) 통합 카탈로그
 - SignalForge: 외부 채널 VOC(리뷰/SNS/콜센터/클레임) 수집·분류·감성분석 전문 시스템
