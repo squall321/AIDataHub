@@ -76,8 +76,9 @@ sources:
           minor: 50
           info: 25
       filter:
+        # SF VOC schema 에 pii_masked 컬럼 없음 (2026-05 확인) → processed_at 만 강제.
+        # PII 보호는 trust_pii_masked=false 로 classification='confidential' 강제로 달성.
         require_processed_at: true
-        pii_masked: true
 
   # ---------------------------------------------------------------------------
   # MX White Paper — Sprint 3 offset 페이지네이션 사용.

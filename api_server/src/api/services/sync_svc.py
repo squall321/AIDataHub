@@ -626,42 +626,47 @@ async def run_sync(
     if not ok:
         raise ValueError(f"sync_source base_url unsafe: {reason}")
 
-    # 동시 실행 차단 — 같은 source_id 의 run 이 이미 진행 중이면 거부.
-    # 1) DB 의 sync_runs.status='running' 검사 (단순/이식성)
-    # 2) PG 환경에서는 advisory lock 으로 race-free 강화
+    # 동시 실행 차단 — sync_runs.status='running' + heartbeat 기반.
+    # advisory lock 대신 status 행 검사로 단순화 (asyncpg pool connection 재사용
+    # 시 session-level advisory lock leak / xact_lock 은 매 commit 시 해제 모두 부적합).
+    # stale 보호: started_at 이 STALE_AFTER_MIN 분 이상이면 자동 partial 처리 후 진행.
+    from datetime import timedelta as _td
+
+    STALE_AFTER_MIN = 30
+    stale_cutoff = datetime.now(timezone.utc) - _td(minutes=STALE_AFTER_MIN)
+
+    # stale 자동 정리
+    from sqlalchemy import update as _update_stale
+    await session.execute(
+        _update_stale(SyncRun)
+        .where(
+            (SyncRun.source_id == source_id)
+            & (SyncRun.status == "running")
+            & (SyncRun.started_at < stale_cutoff)
+        )
+        .values(
+            status="error",
+            error=f"stale — exceeded {STALE_AFTER_MIN} min without finish",
+            finished_at=datetime.now(timezone.utc),
+        )
+    )
+    await session.commit()
+
+    # 실제 동시 실행 검사
     running = (
         await session.execute(
-            select(SyncRun.id).where(
+            select(SyncRun.id, SyncRun.started_at).where(
                 (SyncRun.source_id == source_id) & (SyncRun.status == "running")
             ).limit(1)
         )
-    ).scalar_one_or_none()
+    ).first()
     if running is not None:
+        run_id_busy, started = running
         raise ValueError(
-            f"sync_source busy: another run is in progress (run_id={running}). "
-            "Wait for it to finish or mark it failed manually."
+            f"sync_source busy: another run is in progress (run_id={run_id_busy}, "
+            f"started={started.isoformat() if started else 'unknown'}). "
+            f"Auto-clear in {STALE_AFTER_MIN}min from start, or manually update sync_runs."
         )
-    # advisory lock (best-effort — non-PG 에서는 무시)
-    try:
-        from sqlalchemy import text as _text
-
-        dialect = session.bind.dialect.name if session.bind else ""
-        if dialect == "postgresql":
-            # pg_try_advisory_lock returns boolean — if False, another session holds it
-            acquired = (
-                await session.execute(
-                    _text("SELECT pg_try_advisory_lock(:k1, :k2)"),
-                    {"k1": 0x41584834, "k2": source_id},  # 'AXH4' magic + source_id
-                )
-            ).scalar()
-            if not acquired:
-                raise ValueError(
-                    f"sync_source busy: advisory lock held by another worker (source_id={source_id})"
-                )
-    except ValueError:
-        raise
-    except Exception as exc:  # pragma: no cover — best-effort lock
-        logger.debug("advisory lock skipped: %s", exc)
 
     # SyncRun 행 생성
     run = SyncRun(
@@ -919,18 +924,8 @@ async def run_sync(
         except Exception as exc:  # pragma: no cover
             logger.warning("sync_run %s state update failed: %s", run_id, exc)
 
-        # advisory lock 해제 (best-effort)
-        try:
-            from sqlalchemy import text as _text
-
-            dialect = session.bind.dialect.name if session.bind else ""
-            if dialect == "postgresql":
-                await session.execute(
-                    _text("SELECT pg_advisory_unlock(:k1, :k2)"),
-                    {"k1": 0x41584834, "k2": source_id},
-                )
-        except Exception:
-            pass
+        # advisory lock 은 더 이상 사용하지 않음 — sync_runs.status='running'
+        # + heartbeat 기반으로 단순화 (lock leak 위험 제거).
 
         await session.commit()
 
