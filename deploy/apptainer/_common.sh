@@ -169,6 +169,8 @@ export_proxy() {
 
 # ── 사전 검증 ────────────────────────────────────────────────────────────
 require_apptainer() {
+  # 부팅 직후 / SSH 환경에서 흔한 dbus/AppArmor 문제 자동 처리
+  _aidh_runtime_autotune
   # 핀버전이 없으면 프로젝트 내부로 자동 설치 후 그걸 쓴다 (알아서 됨).
   ensure_apptainer
   if ! command "$_AIDH_APPT" --version >/dev/null 2>&1; then
@@ -185,6 +187,94 @@ require_apptainer() {
     echo "[WARN] 핀버전(v${APPTAINER_VERSION}) 자동설치 실패 → 시스템 apptainer 폴백." >&2
     echo "       권장: 네트워크/프록시 확인 후 또는 .deb 반입 후 재실행." >&2
   fi
+}
+
+# ── rootless apptainer 런타임 자동 튜닝 ─────────────────────────────────
+# 부팅 직후 / SSH 접속 환경에서 흔한 3가지 문제 자동 처리:
+#   1. XDG_RUNTIME_DIR / DBUS_SESSION_BUS_ADDRESS 미설정
+#      → /run/user/$UID 가 있으면 자동 export
+#   2. AppArmor unprivileged_userns_restriction=1 (Ubuntu 24.04 default)
+#      → 사용자에게 영구 해제 명령 안내 (sudo 권한 필요 → 자동 수정 X)
+#   3. dbus user session 없음 → instance start 실패 시 호출자가
+#      AIDH_APPT_NO_CGROUPS=1 폴백을 자동 시도
+_aidh_runtime_autotune() {
+  # 1. dbus 환경변수 자동 설정
+  local uid
+  uid="$(id -u)"
+  if [[ -z "${XDG_RUNTIME_DIR:-}" && -d "/run/user/$uid" ]]; then
+    export XDG_RUNTIME_DIR="/run/user/$uid"
+  fi
+  if [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" && -S "/run/user/$uid/bus" ]]; then
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus"
+  fi
+
+  # 2. AppArmor unprivileged_userns 차단 감지 + 안내
+  if [[ -r /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]]; then
+    local val
+    val="$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)"
+    if [[ "$val" = "1" && -z "${AIDH_USERNS_WARNED:-}" ]]; then
+      export AIDH_USERNS_WARNED=1
+      echo "[INFO] AppArmor 'unprivileged_userns_restriction=1' — user namespace 차단 상태." >&2
+      echo "       apptainer 가 실패하면 영구 해제 필요 (sudo 1회):" >&2
+      echo "         echo 'kernel.apparmor_restrict_unprivileged_userns=0' | \\" >&2
+      echo "           sudo tee /etc/sysctl.d/60-apptainer-userns.conf >/dev/null" >&2
+      echo "         sudo sysctl --system" >&2
+    fi
+  fi
+}
+
+# instance start fast-fail 폴백 — dbus / cgroup / fakeroot 자동 재시도.
+# 사용:
+#   _aidh_appt_instance_start_with_fallback INST_NAME LOG_PATH "$APPT_SIF" -- \
+#       --bind ... --env ... ...
+# 반환: instance_running 검증까지 끝낸 후 0 = OK, 1 = 모든 폴백 실패.
+_aidh_appt_instance_start_with_fallback() {
+  local inst_name="$1" log_path="$2" sif_path="$3"; shift 3
+  local extra_args=("$@")
+
+  # 1차 — 평소대로
+  local attempt=1
+  while [[ $attempt -le 3 ]]; do
+    local extra_cgroup_opt=()
+    case "$attempt" in
+      2) extra_cgroup_opt=(--no-cgroups)
+         echo "  [폴백 $attempt] --no-cgroups (dbus user session 부재 우회)" >&2
+         ;;
+      3) # 폴백 마지막: 시스템 apptainer 강제 + --no-cgroups
+         local sysappt
+         sysappt="$(command -v apptainer 2>/dev/null || true)"
+         if [[ -n "$sysappt" && "$sysappt" != "$_AIDH_APPT" ]]; then
+           echo "  [폴백 $attempt] 시스템 apptainer $sysappt + --no-cgroups" >&2
+           _AIDH_APPT="$sysappt"
+           _AIDH_APPT_SRC="system PATH (auto-fallback)"
+         else
+           echo "  [폴백 $attempt] --no-cgroups 재시도" >&2
+         fi
+         extra_cgroup_opt=(--no-cgroups)
+         ;;
+    esac
+
+    command "$_AIDH_APPT" instance start \
+      "${extra_args[@]}" \
+      "${extra_cgroup_opt[@]}" \
+      "$sif_path" "$inst_name" \
+      > "$log_path" 2>&1 || true
+
+    sleep 2
+    if instance_running "$inst_name"; then
+      [[ $attempt -gt 1 ]] && echo "  ✓ 폴백 $attempt 성공" >&2
+      return 0
+    fi
+
+    # 폴백 결정 — 로그에서 dbus / cgroup / OwnerUID / OperationNotPermitted 키 검출
+    if grep -qE "dbus|OwnerUID|cgroup|systemd" "$log_path" 2>/dev/null; then
+      attempt=$((attempt + 1))
+      continue
+    fi
+    # 다른 에러는 즉시 실패 (의미 없는 무한 재시도 방지)
+    return 1
+  done
+  return 1
 }
 
 require_node() {

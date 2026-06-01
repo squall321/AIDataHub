@@ -148,34 +148,39 @@ else
     echo "  (--fakeroot 강제 — AIDH_APPT_FAKEROOT=1)"
   fi
 
-  apptainer instance start \
-    "${HOST_NET_OPTS[@]}" \
-    "${FAKEROOT_OPTS[@]}" \
-    --bind "$DATA_DIR/postgres:/var/lib/postgresql/data" \
-    --bind "$DATA_DIR/postgres-run:/var/run/postgresql" \
-    --env "POSTGRES_USER=${POSTGRES_USER}" \
-    --env "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}" \
-    --env "POSTGRES_DB=${POSTGRES_DB}" \
-    --env "PGPORT=${POSTGRES_PORT}" \
-    --env "PGDATA=/var/lib/postgresql/data/pgdata" \
-    --env "LANG=C.UTF-8" \
-    --env "LC_ALL=C.UTF-8" \
-    "$APPT_DIR/postgres.sif" "$INST_POSTGRES" \
-    > "$LOG_DIR/postgres-start.log" 2>&1 || true
-
-  # Fast-fail: 인스턴스가 안 떴으면 pg_isready 60s 헛대기 말고 즉시
-  # 진짜 원인(start 로그)을 그대로 보여준다.
-  sleep 2
-  if ! instance_running "$INST_POSTGRES"; then
-    echo "[ERROR] postgres instance start 실패 — apptainer=$_AIDH_APPT_SRC ($_AIDH_APPT)" >&2
+  # 자동 폴백 wrapper: 1차 실패 시 --no-cgroups → 시스템 apptainer 순서로 자동 재시도.
+  # 부팅 직후 SSH 환경 (dbus user session 부재) 에서 자주 발생하는 케이스 다 흡수.
+  if ! _aidh_appt_instance_start_with_fallback \
+       "$INST_POSTGRES" "$LOG_DIR/postgres-start.log" "$APPT_DIR/postgres.sif" \
+       "${HOST_NET_OPTS[@]}" \
+       "${FAKEROOT_OPTS[@]}" \
+       --bind "$DATA_DIR/postgres:/var/lib/postgresql/data" \
+       --bind "$DATA_DIR/postgres-run:/var/run/postgresql" \
+       --env "POSTGRES_USER=${POSTGRES_USER}" \
+       --env "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}" \
+       --env "POSTGRES_DB=${POSTGRES_DB}" \
+       --env "PGPORT=${POSTGRES_PORT}" \
+       --env "PGDATA=/var/lib/postgresql/data/pgdata" \
+       --env "LANG=C.UTF-8" \
+       --env "LC_ALL=C.UTF-8"; then
+    echo "[ERROR] postgres instance start — 3단계 폴백 모두 실패." >&2
+    echo "        apptainer=$_AIDH_APPT_SRC ($_AIDH_APPT)" >&2
     echo "        fakeroot=$([[ ${#FAKEROOT_OPTS[@]} -gt 0 ]] && echo on || echo off)" >&2
     echo "── postgres-start.log (전체) ─────────────────────────────────" >&2
     cat "$LOG_DIR/postgres-start.log" >&2 2>/dev/null || true
     echo "─────────────────────────────────────────────────────────────" >&2
-    echo "조치 후보:" >&2
-    echo "  · 'subuid'/'fakeroot' 거부 → AIDH_APPT_FAKEROOT=0 또는" >&2
-    echo "    AIDH_APPTAINER_BIN=\$(command -v apptainer) 로 시스템 apptainer 사용" >&2
-    echo "  · chmod Operation not permitted 지속 → 위 로그 그대로 공유" >&2
+    echo "수동 조치 후보:" >&2
+    echo "  1. AppArmor user namespace 영구 해제 (sudo 1회):" >&2
+    echo "       echo 'kernel.apparmor_restrict_unprivileged_userns=0' | \\" >&2
+    echo "         sudo tee /etc/sysctl.d/60-apptainer-userns.conf >/dev/null" >&2
+    echo "       sudo sysctl --system" >&2
+    echo "  2. subuid/subgid 등록 (sudo 1회):" >&2
+    echo "       sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 \$(id -un)" >&2
+    echo "  3. systemd user session 활성 (재로그인 후에도 유지):" >&2
+    echo "       sudo loginctl enable-linger \$(id -un)" >&2
+    echo "       sudo systemctl start user@\$(id -u).service" >&2
+    echo "  4. 환경 변수 강제:" >&2
+    echo "       AIDH_APPTAINER_BIN=\$(command -v apptainer) bash boot.sh" >&2
     exit 1
   fi
 fi
