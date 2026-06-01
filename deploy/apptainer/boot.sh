@@ -12,19 +12,22 @@
 # 사용:
 #   bash deploy/apptainer/boot.sh
 #   bash deploy/apptainer/boot.sh --skip-api   # postgres만 (디버깅용)
+#   bash deploy/apptainer/boot.sh --auto-sudo  # 신규 머신: AppArmor/subuid/linger 자동 셋업
 set -euo pipefail
-# shellcheck source=/dev/null
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
-load_env
 
 SKIP_API=0
 FORCE=0
 for arg in "$@"; do
   case "$arg" in
-    --skip-api) SKIP_API=1 ;;
-    --force)    FORCE=1 ;;
+    --skip-api)  SKIP_API=1 ;;
+    --force)     FORCE=1 ;;
+    --auto-sudo) export AIDH_AUTO_SUDO=1 ;;
   esac
 done
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
+load_env
 
 # systemd 가 관리 중이면 직접 호출 차단 (이중 기동 방지).
 # systemd unit 의 ExecStart 가 이 스크립트를 부르므로 그 경로는 무관 (PPID 검사로 구분).

@@ -190,17 +190,23 @@ require_apptainer() {
 }
 
 # ── rootless apptainer 런타임 자동 튜닝 ─────────────────────────────────
-# 부팅 직후 / SSH 접속 환경에서 흔한 3가지 문제 자동 처리:
+# 부팅 직후 / SSH 접속 환경에서 흔한 4가지 문제 자동 처리:
 #   1. XDG_RUNTIME_DIR / DBUS_SESSION_BUS_ADDRESS 미설정
-#      → /run/user/$UID 가 있으면 자동 export
+#      → /run/user/$UID 가 있으면 자동 export (sudo 불필요)
 #   2. AppArmor unprivileged_userns_restriction=1 (Ubuntu 24.04 default)
-#      → 사용자에게 영구 해제 명령 안내 (sudo 권한 필요 → 자동 수정 X)
-#   3. dbus user session 없음 → instance start 실패 시 호출자가
-#      AIDH_APPT_NO_CGROUPS=1 폴백을 자동 시도
+#      → AIDH_AUTO_SUDO=1 이면 sysctl 영구 해제, 아니면 안내만
+#   3. subuid/subgid 미등록 → AIDH_AUTO_SUDO=1 이면 usermod 자동 실행
+#   4. systemd user linger 미설정 → AIDH_AUTO_SUDO=1 이면 loginctl + user@.service
+#
+# AIDH_AUTO_SUDO=1 (또는 quickstart.sh --auto-sudo) 일 때 sudo 비번 1회 입력으로
+# 4가지 셋업 모두 자동 수행. 기본값은 안내만 (보안상 명시적 opt-in).
 _aidh_runtime_autotune() {
-  # 1. dbus 환경변수 자동 설정
-  local uid
+  local uid uname auto_sudo
   uid="$(id -u)"
+  uname="$(id -un)"
+  auto_sudo="${AIDH_AUTO_SUDO:-0}"
+
+  # 1. dbus 환경변수 자동 설정 (sudo 불필요)
   if [[ -z "${XDG_RUNTIME_DIR:-}" && -d "/run/user/$uid" ]]; then
     export XDG_RUNTIME_DIR="/run/user/$uid"
   fi
@@ -208,18 +214,81 @@ _aidh_runtime_autotune() {
     export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus"
   fi
 
-  # 2. AppArmor unprivileged_userns 차단 감지 + 안내
+  # 2~4: sudo 필요 — 감지
+  local need_apparmor=0 need_subuid=0 need_linger=0
+
   if [[ -r /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]]; then
     local val
     val="$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)"
-    if [[ "$val" = "1" && -z "${AIDH_USERNS_WARNED:-}" ]]; then
-      export AIDH_USERNS_WARNED=1
-      echo "[INFO] AppArmor 'unprivileged_userns_restriction=1' — user namespace 차단 상태." >&2
-      echo "       apptainer 가 실패하면 영구 해제 필요 (sudo 1회):" >&2
+    [[ "$val" = "1" ]] && need_apparmor=1
+  fi
+
+  if ! grep -q "^${uname}:" /etc/subuid 2>/dev/null; then need_subuid=1; fi
+  if ! grep -q "^${uname}:" /etc/subgid 2>/dev/null; then need_subuid=1; fi
+
+  if command -v loginctl >/dev/null 2>&1; then
+    if ! loginctl show-user "$uname" 2>/dev/null | grep -q "^Linger=yes"; then
+      need_linger=1
+    fi
+  fi
+
+  # 아무것도 필요없으면 조용히 종료
+  [[ $need_apparmor -eq 0 && $need_subuid -eq 0 && $need_linger -eq 0 ]] && return 0
+
+  # 이미 1회 처리/안내했으면 스킵
+  [[ -n "${AIDH_SUDO_HANDLED:-}" ]] && return 0
+  export AIDH_SUDO_HANDLED=1
+
+  if [[ "$auto_sudo" = "1" ]]; then
+    echo "[AUTO-SUDO] rootless apptainer 셋업 자동 실행 — sudo 비번 1회 요구될 수 있음" >&2
+
+    if [[ $need_apparmor -eq 1 ]]; then
+      echo "  · AppArmor unprivileged_userns 영구 해제" >&2
+      if echo 'kernel.apparmor_restrict_unprivileged_userns=0' \
+           | sudo tee /etc/sysctl.d/60-apptainer-userns.conf >/dev/null \
+         && sudo sysctl --system >/dev/null 2>&1; then
+        echo "    완료" >&2
+      else
+        echo "    실패 (sudo 거부 또는 비번 오류)" >&2
+      fi
+    fi
+
+    if [[ $need_subuid -eq 1 ]]; then
+      echo "  · subuid/subgid 매핑 등록 ($uname: 100000-165535)" >&2
+      if sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 "$uname" 2>/dev/null; then
+        echo "    완료" >&2
+      else
+        echo "    실패 또는 이미 등록됨 (무시 가능)" >&2
+      fi
+    fi
+
+    if [[ $need_linger -eq 1 ]]; then
+      echo "  · systemd linger 활성 + user@.service 시작 ($uname)" >&2
+      if sudo loginctl enable-linger "$uname" 2>/dev/null \
+         && sudo systemctl start "user@${uid}.service" 2>/dev/null; then
+        echo "    완료 — dbus 즉시 활성" >&2
+        # 새로 시작된 user@.service 의 dbus 경로 재캡처
+        sleep 1
+        if [[ -S "/run/user/$uid/bus" ]]; then
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus"
+        fi
+      else
+        echo "    실패 (sudo 거부 또는 systemd 미가용)" >&2
+      fi
+    fi
+  else
+    echo "[INFO] rootless apptainer 추가 셋업 필요 — sudo 1회로 자동 처리하려면:" >&2
+    echo "       AIDH_AUTO_SUDO=1 bash deploy/apptainer/quickstart.sh" >&2
+    echo "       또는 아래 명령 수동 실행:" >&2
+    [[ $need_apparmor -eq 1 ]] && {
       echo "         echo 'kernel.apparmor_restrict_unprivileged_userns=0' | \\" >&2
       echo "           sudo tee /etc/sysctl.d/60-apptainer-userns.conf >/dev/null" >&2
       echo "         sudo sysctl --system" >&2
-    fi
+    }
+    [[ $need_subuid -eq 1 ]] && \
+      echo "         sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $uname" >&2
+    [[ $need_linger -eq 1 ]] && \
+      echo "         sudo loginctl enable-linger $uname && sudo systemctl start user@${uid}.service" >&2
   fi
 }
 
