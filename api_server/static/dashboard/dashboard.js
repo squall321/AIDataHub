@@ -5,7 +5,21 @@
 // Config / API helpers
 // ============================================================================
 const API_KEY_STORAGE = "aidh.api_key";
-const BASE = "";
+// Prefix the app is served under. Standalone the dashboard is at "/dashboard/…" → BASE "".
+// Behind the HWAX portal it's at "/ai-data-hub/dashboard/…" → BASE "/ai-data-hub". All API/static
+// calls go through `BASE + path`, so deriving this once makes every absolute path follow the prefix.
+const BASE = location.pathname.replace(/\/dashboard(\/.*)?$/, "");
+
+// Rewrite the static index.html's internal absolute links (/static, /docs, /api/discover, …) to
+// sit under BASE too — they're plain HTML hrefs the derive above can't reach.
+if (BASE) {
+  document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll('a[href^="/"], link[href^="/"]').forEach((el) => {
+      const h = el.getAttribute("href");
+      if (h && !h.startsWith("//") && !h.startsWith(BASE + "/")) el.setAttribute("href", BASE + h);
+    });
+  });
+}
 
 function getApiKey() {
   return localStorage.getItem(API_KEY_STORAGE) || "";

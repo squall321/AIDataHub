@@ -2,11 +2,13 @@
 
 라우터 등록은 `api.routes.register_routers(app)` 가 담당한다.
 """
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
@@ -129,6 +131,10 @@ app = FastAPI(
     description="문서/시뮬레이션/데이터 → JSON → PostgreSQL+pgvector 적재 데이터를 AI 에이전트에 제공",
     version=__version__,
     lifespan=lifespan,
+    # Behind the HWAX portal this app is reverse-proxied under /ai-data-hub/ (the proxy strips the
+    # prefix, so routing is unchanged). Set AIDH_ROOT_PATH=/ai-data-hub so generated URLs
+    # (docs / openapi server) carry the public prefix. Empty = standalone.
+    root_path=os.environ.get("AIDH_ROOT_PATH", ""),
 )
 
 # CORS — env 로 allow_origins 좁히기 가능.
@@ -209,7 +215,12 @@ if _MCP_AVAILABLE and _mcp_app is not None:
 
 
 @app.get("/", tags=["system"])
-async def root() -> dict[str, str]:
+async def root(request: Request):
+    # Browsers landing on the root (e.g. the HWAX portal tile → /ai-data-hub/) get sent to the
+    # dashboard SPA; API clients still receive the JSON status. The relative target resolves under
+    # whatever prefix the app is served at.
+    if "text/html" in request.headers.get("accept", ""):
+        return RedirectResponse(url="dashboard/")
     return {
         "service": "mobile-experience-ai-data-hub",
         "version": __version__,

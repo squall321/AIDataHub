@@ -183,9 +183,13 @@ rotate_log "$LOG_DIR/uvicorn.log" "${AIDH_LOG_CAP_MB:-20}"
 # HuggingFace 모델이 로컬 캐시에 있으면 네트워크 확인을 건너뛴다.
 # MCP 첫 호출 시 수십 초 블로킹을 막기 위해 프로세스 환경에 직접 export.
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
+# Behind the HWAX portal, set AIDH_ROOT_PATH=/ai-data-hub so docs/openapi URLs carry the prefix.
+ROOT_PATH_ARG=()
+[ -n "${AIDH_ROOT_PATH:-}" ] && ROOT_PATH_ARG=(--root-path "$AIDH_ROOT_PATH")
 nohup "$VENV_PY" -m uvicorn api.main:app \
     --host "$API_HOST" --port "$API_PORT" \
     --proxy-headers --forwarded-allow-ips="*" \
+    "${ROOT_PATH_ARG[@]}" \
     > "$LOG_DIR/uvicorn.log" 2>&1 &
 echo $! > "$LOG_DIR/api.pid"
 echo "  pid=$(cat "$LOG_DIR/api.pid")"
