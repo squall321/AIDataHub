@@ -84,20 +84,25 @@ fi
 echo "  ✓ 정리 완료"
 
 # ── 2. 포트 검사 ──────────────────────────────────────────────────
-echo "[2/4] 포트 가용성 확인"
-for p in "$POSTGRES_PORT" "$API_PORT"; do
-  if ss -tnl 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${p}\$"; then
-    PROC=$(ss -tlnp 2>/dev/null | grep -E "[:.]${p}\$" | head -1)
-    echo "  ✗ port $p 이미 사용 중:"
-    echo "      $PROC"
-    echo
-    echo "    재부팅 전에 다른 서비스가 같은 포트를 잡았을 수 있습니다."
-    echo "    lsof -i :${p}    # 점유자 확인"
-    echo "    또는 .env 의 PORT 변경 후 다시 실행"
-    exit 1
-  fi
-done
-echo "  ✓ port $POSTGRES_PORT / $API_PORT 가용"
+# --force = 재배포(코드/설정 갱신) → 포트를 우리 자신이 잡고 있어도 OK. start_postgres.sh/
+# start_api.sh 가 기존 인스턴스/uvicorn 을 정리하고 다시 띄운다. 그래서 --force 면 포트 검사 skip.
+if [[ $FORCE -eq 1 ]]; then
+  echo "[2/4] 포트 가용성 확인 — --force: skip (기존 프로세스를 재기동)"
+else
+  echo "[2/4] 포트 가용성 확인"
+  for p in "$POSTGRES_PORT" "$API_PORT"; do
+    if ss -tnl 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${p}\$"; then
+      PROC=$(ss -tlnp 2>/dev/null | grep -E "[:.]${p}\$" | head -1)
+      echo "  ✗ port $p 이미 사용 중:"
+      echo "      $PROC"
+      echo
+      echo "    이미 떠 있는 걸 갱신·재기동하려면:  bash deploy/apptainer/boot.sh --force"
+      echo "    lsof -i :${p}    # 점유자 확인 / 또는 .env 의 PORT 변경"
+      exit 1
+    fi
+  done
+  echo "  ✓ port $POSTGRES_PORT / $API_PORT 가용"
+fi
 
 # ── 3. postgres 기동 ──────────────────────────────────────────────
 echo "[3/4] postgres 기동"

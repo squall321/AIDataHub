@@ -167,14 +167,20 @@ timeout 300 "$VENV_PY" -m alembic upgrade head > "$LOG_DIR/alembic.log" 2>&1 || 
 echo "→ seed agents (멱등)"
 "$VENV_PY" -m api.seed -v > "$LOG_DIR/seed.log" 2>&1 || echo "  [WARN] seed 실패 — 무시"
 
-# 기존 uvicorn 종료
+# 기존 uvicorn 종료 (api.pid + 혹시 추적 안 되는 동일 앱 프로세스까지)
 if [[ -f "$LOG_DIR/api.pid" ]] && kill -0 "$(cat "$LOG_DIR/api.pid")" 2>/dev/null; then
-  echo "  (기존 uvicorn 종료)"
-  kill "$(cat "$LOG_DIR/api.pid")" || true
-  sleep 1
+  echo "  (기존 uvicorn 종료: pid $(cat "$LOG_DIR/api.pid"))"
+  kill "$(cat "$LOG_DIR/api.pid")" 2>/dev/null || true
 fi
+# api.pid 로 안 잡힌 기존 인스턴스(예: 이전 코드)도 포트 기준으로 정리 — 재배포 시 코드 갱신을 보장.
+pkill -f "uvicorn api.main:app.*--port[= ]?${API_PORT}" 2>/dev/null || true
+# 포트가 실제로 빌 때까지 최대 10s 대기 (TIME_WAIT/늦은 해제 대비)
+for _i in $(seq 1 20); do
+  ss -tnl 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${API_PORT}\$" || break
+  sleep 0.5
+done
 
-# 새로 띄우기 전 포트 확인 (혹시 외부 프로세스가 잡았다면 명시적 에러)
+# 새로 띄우기 전 포트 확인 (그래도 외부 프로세스가 잡고 있으면 명시적 에러)
 require_port_free "$API_PORT" "API"
 
 echo "→ uvicorn api.main:app --host $API_HOST --port $API_PORT (백그라운드)"
