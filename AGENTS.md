@@ -17,4 +17,9 @@ sub-path **`/ai-data-hub/`** (the portal **strips** the prefix). Notes:
    `AIDH_ROOT_PATH=/ai-data-hub ./boot.sh`. Don't add absolute `/api`,`/static` paths in the
    dashboard without routing them through the derived `BASE`.
 
+3. **Portal mode is now the default in `.env`** (2026-06-08). `AIDH_ROOT_PATH=/ai-data-hub` is
+   committed in `deploy/apptainer/.env`, so `boot.sh` runs portal mode without extra flags.
+   Standalone mode = comment that line out and restart. `diag.sh` section `[F]` enforces the
+   contract (uvicorn arg / openapi servers / `/` redirect / `dashboard.js BASE`) — keep it green.
+
 Full details: **`docs/HWAX-PORTAL-INTEGRATION.md`**.

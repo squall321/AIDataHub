@@ -131,6 +131,44 @@ if instance_running "$INST_POSTGRES" && command -v curl >/dev/null 2>&1; then
   pass "(직접 검증은 API startup 로그의 'EMBEDDING_DIM consistency check' 참고)"
 fi
 
+# ── F. HWAX portal sub-path 정합 (회귀 검증) -----------------------------
+# AIDH_ROOT_PATH 가 .env 에 있으면 portal mode — uvicorn 인자 / openapi servers /
+# dashboard.js BASE 도출 / GET / redirect 가 모두 prefix 와 일치해야 한다.
+echo "[F] HWAX portal sub-path 정합 (AIDH_ROOT_PATH=${AIDH_ROOT_PATH:-<unset>})"
+if [[ -z "${AIDH_ROOT_PATH:-}" ]]; then
+  info "AIDH_ROOT_PATH 미설정 — standalone mode (검사 스킵)"
+else
+  # F-1. uvicorn 의 --root-path 인자가 실제로 전달됐는지
+  if pgrep -af "uvicorn.*api.main" 2>/dev/null | grep -q -- "--root-path $AIDH_ROOT_PATH"; then
+    pass "uvicorn 에 --root-path $AIDH_ROOT_PATH 전달됨"
+  else
+    fail "uvicorn 에 --root-path $AIDH_ROOT_PATH 미전달 — start_api.sh 가 .env 를 load 했나?"
+  fi
+  # F-2. openapi.json 의 servers 가 prefix 를 들고 있는지
+  SRV=$(curl -s --max-time 3 "http://127.0.0.1:${API_PORT}/openapi.json" 2>/dev/null \
+        | python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('servers') or [{}])[0].get('url',''))" 2>/dev/null)
+  if [[ "$SRV" = "$AIDH_ROOT_PATH" ]]; then
+    pass "openapi servers[0].url = $SRV"
+  else
+    fail "openapi servers[0].url='$SRV' ≠ AIDH_ROOT_PATH='$AIDH_ROOT_PATH'"
+  fi
+  # F-3. GET / (Accept: text/html) 가 dashboard/ 로 redirect (상대경로 — prefix 자동 보존)
+  RDR=$(curl -s -o /dev/null -w "%{redirect_url}" --max-time 3 \
+        -H "Accept: text/html" "http://127.0.0.1:${API_PORT}/" 2>/dev/null)
+  if [[ "$RDR" == */dashboard/ ]]; then
+    pass "GET / (html) → 307 redirect → $RDR"
+  else
+    fail "GET / redirect target 비정상: '$RDR' (expected: dashboard/)"
+  fi
+  # F-4. dashboard.js 의 BASE 도출 로직이 portal prefix 와 호환
+  if grep -q 'location.pathname.replace(/\\/dashboard' \
+       "$ROOT_DIR/api_server/static/dashboard/dashboard.js" 2>/dev/null; then
+    pass "dashboard.js BASE 도출 로직 보존됨 (sub-path 자동대응)"
+  else
+    fail "dashboard.js BASE 도출 로직 누락 — 절대경로로 회귀했을 가능성"
+  fi
+fi
+
 # ── 결과 + 로그 tail -----------------------------------------------------
 echo
 if [[ $FAILED -eq 0 ]]; then
