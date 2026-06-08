@@ -1,0 +1,34 @@
+# Drive-Sync 템플릿 — 프로젝트별 설정 (이 파일만 채우면 됨)
+#
+# 사용법:
+#   cp PROJECT.conf.example PROJECT.conf
+#   $EDITOR PROJECT.conf
+#
+# 이후 setup-drive-sync.sh / backup-to-drive.sh / sync-from-drive.sh 가
+# 이 파일을 자동으로 source 합니다.
+
+# 1) Dump 파일명 prefix — 짧고 영문/숫자만 (sf, mxwp, aidh 등)
+PROJ_PREFIX=sf
+
+# 2) Drive 폴더 식별자 — <remote>:<PROJ_NAME>/db-dumps/ 로 사용됨
+PROJ_NAME=SignalForge
+
+# 3) apptainer PG 인스턴스 이름 (host pg 면 빈 문자열)
+PROJ_PG_INSTANCE=sf_postgres
+
+# 4) .env 위치 — POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB / POSTGRES_PORT 가 들어있는 파일
+PROJ_ENV_FILE=/home/koopark/claude/SignalForge/.env
+
+# 5) 로컬 dump 저장 디렉터리 (없으면 자동 생성)
+PROJ_DUMP_DIR=/home/koopark/claude/SignalForge/backups
+
+# 6) rclone remote 이름 기본값 (이미 설정된 remote 가 있으면 그걸 재사용)
+PROJ_DRIVE_REMOTE_DEFAULT=ApptainerImages
+
+# 7) Drive 보존 정책 — 최신 N개만 유지
+PROJ_DRIVE_RETAIN_DEFAULT=5
+
+# 8) (선택) restore 후 health-check URL — sync-from-drive.sh 가 호출
+#    값이 비어있으면 health-check 스킵
+PROJ_HEALTH_URL=
+# 예: http://127.0.0.1:8000/health
