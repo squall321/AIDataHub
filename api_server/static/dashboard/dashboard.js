@@ -286,9 +286,11 @@ async function loadStatus() {
     const linkCard = el("div", { class: "card" });
     linkCard.appendChild(el("div", { class: "label" }, "빠른 링크"));
     const linkUl = el("ul");
-    [["/docs", "Swagger UI"],
-     ["/api/discover", "Discover"],
-     ["/api/system/health", "Health"]].forEach(([href, lab]) => {
+    // BASE-prefix these so they resolve under /ai-data-hub/ behind the portal (the static-HTML
+    // rewriter only fixes hrefs that exist at DOMContentLoaded — these are created dynamically).
+    [[BASE + "/docs", "Swagger UI"],
+     [BASE + "/api/discover", "Discover"],
+     [BASE + "/api/system/health", "Health"]].forEach(([href, lab]) => {
       linkUl.appendChild(el("li", {}, [
         el("span", {}, lab),
         el("a", { href, target: "_blank", rel: "noopener" }, "↗"),
@@ -306,16 +308,16 @@ async function loadStatus() {
         // 버전 박힌 파일 우선 (고유 URL → 브라우저 캐시 무관). 없으면 latest.
         const vfile = meta.versioned_filename || meta.filename || "ai-data-hub-uploader-latest.vsix";
         const latest = meta.filename || "ai-data-hub-uploader-latest.vsix";
-        const fullUrl = location.origin + "/downloads/" + vfile;
+        const fullUrl = location.origin + BASE + "/downloads/" + vfile;
         extCard.appendChild(el("div", { class: "value small" }, "v" + (meta.version || "?")));
         extCard.appendChild(el("div", { style: "margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;" }, [
           el("a", {
-            href: "/downloads/" + vfile,
+            href: BASE + "/downloads/" + vfile,
             class: "btn",
             style: "display:inline-block; padding:5px 12px; font-size:12px; text-decoration:none;",
           }, "Download v" + (meta.version || "?")),
           el("a", {
-            href: "/downloads/" + latest,
+            href: BASE + "/downloads/" + latest,
             class: "btn ghost",
             style: "display:inline-block; padding:5px 12px; font-size:12px; text-decoration:none;",
           }, "latest"),
