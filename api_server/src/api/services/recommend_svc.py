@@ -209,7 +209,8 @@ async def build_context_bundle(
 
         embedder = get_embedder()
         for sq in sample_queries:
-            qv = np.asarray(embedder.encode(sq), dtype="float32")
+            # sample query 는 section passage 벡터와 대조되는 질의 역할 — query prefix.
+            qv = np.asarray(embedder.encode_query(sq), dtype="float32")
             qn = float(np.linalg.norm(qv))
             if qn < 1e-12:
                 continue

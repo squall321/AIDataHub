@@ -12,6 +12,12 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_common.sh"
 load_env
 export_proxy
 
+# 실패 marker — cron 의 조용한 실패를 watchdog 이 감지할 수 있게.
+# 성공 종료 시 마지막에 제거된다.
+_FAIL_MARKER="$APPT_DIR/backups/.last-backup-failed"
+mkdir -p "$APPT_DIR/backups"
+trap 'rc=$?; if [[ $rc -ne 0 ]]; then date -u +"%FT%TZ rc=$rc" > "$_FAIL_MARKER"; fi' EXIT
+
 NOTE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -109,3 +115,6 @@ echo
 echo "공유 링크:"
 rclone link "$REMOTE/$(basename "$DUMP")" 2>/dev/null | sed 's/^/    /' || echo "    (rclone link 실패 — 공유 권한 확인)"
 echo "================================================================"
+
+# 성공 — 실패 marker 제거 (watchdog 의 경고 해제)
+rm -f "$_FAIL_MARKER" 2>/dev/null || true

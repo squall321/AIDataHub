@@ -135,7 +135,7 @@ done
 if [[ $OK -eq 0 ]]; then
   echo "  ✗ API 응답 없음 (${HEALTH_TIMEOUT}초 timeout)"
   echo "    alembic 마이그레이션이 길거나 부팅 실패 가능. 늘리려면 AIDH_BOOT_HEALTH_TIMEOUT=300 bash boot.sh"
-  echo "    로그: tail -30 $LOG_DIR/api.log"
+  echo "    로그: tail -30 $LOG_DIR/uvicorn.log"
   echo "    또는 bash deploy/apptainer/diag.sh --tail-logs"
   exit 1
 fi

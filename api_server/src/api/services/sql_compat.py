@@ -245,15 +245,22 @@ def summary_ilike(column: Any, q: str) -> ColumnElement[bool]:
     return column.ilike(pattern)
 
 
-def fts_match(column: Any, q: str, session: AsyncSession) -> ColumnElement[bool]:
+def fts_match(
+    column: Any, q: str, session: AsyncSession, *, any_token: bool = False
+) -> ColumnElement[bool]:
     """간이 FTS.
 
-    - PG : ``to_tsvector('simple'::regconfig, column) @@ plainto_tsquery('simple'::regconfig, q)``
+    - PG : ``to_tsvector('simple'::regconfig, column) @@ websearch_to_tsquery(...)``
       ``literal('simple')`` 만 쓰면 첫 인자가 ``varchar`` 로 추론되어 PG 의
       ``to_tsvector(regconfig, text)`` 시그니처와 매칭되지 않는다
       (``UndefinedFunctionError``). ``literal_column`` 으로 ``::regconfig``
       캐스팅을 강제한다.
     - 기타 : ILIKE 폴백.
+
+    ``any_token=True`` 면 토큰별 OR 매칭 (널널). 기본 (AND) 매칭이 0건일 때
+    호출 측이 재시도용으로 사용한다 — 'simple' config 는 한국어 형태소를
+    모르므로 자연어 질의 ('S25 카메라 색감 사용자 반응') 는 토큰 하나만
+    빠져도 AND 가 통째로 실패하기 때문 (2026-06-10 진단).
     """
     if not q:
         return literal(False)
@@ -262,8 +269,25 @@ def fts_match(column: Any, q: str, session: AsyncSession) -> ColumnElement[bool]
 
         cfg = literal_column("'simple'::regconfig")
         tsvector = func.to_tsvector(cfg, column)
-        tsquery = func.plainto_tsquery(cfg, literal(q))
+        if any_token:
+            # 토큰별 plainto_tsquery 를 OR — tsquery 특수문법 주입 걱정 없음.
+            tokens = [t for t in q.split() if t.strip()][:12]
+            if not tokens:
+                return literal(False)
+            preds = [
+                tsvector.op("@@")(func.plainto_tsquery(cfg, literal(t)))
+                for t in tokens
+            ]
+            return or_(*preds)
+        # websearch_to_tsquery: plainto 와 같은 AND 기본이지만 따옴표 구문,
+        # OR 키워드, '-' 제외를 지원해 운영자가 정밀 질의를 만들 수 있다.
+        tsquery = func.websearch_to_tsquery(cfg, literal(q))
         return tsvector.op("@@")(tsquery)
+    if any_token:
+        tokens = [t for t in q.split() if t.strip()][:12]
+        if not tokens:
+            return literal(False)
+        return or_(*[summary_ilike(column, t) for t in tokens])
     return summary_ilike(column, q)
 
 

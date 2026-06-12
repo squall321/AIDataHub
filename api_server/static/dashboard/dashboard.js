@@ -1356,6 +1356,16 @@ async function loadConnectedSources() {
   const errN = sources.filter(s => s.last_status === "error").length;
   const neverN = sources.filter(s => s.last_status === "never").length;
 
+  // 신선도 — last_status 가 ok 여도 last_sync_at 이 오래됐으면 정체 상태다
+  // (2026-06-10 진단: 11일 정체인데 대시보드는 녹색 '정상' 표시였음).
+  const staleHours = (s) => {
+    if (!s.enabled || !s.schedule_cron) return null; // 수동 소스는 판정 제외
+    if (!s.last_sync_at) return Infinity;
+    return (Date.now() - new Date(s.last_sync_at).getTime()) / 3600000;
+  };
+  // 24h 를 기본 지연 기준으로 (스케줄 주기와 무관하게 하루 이상이면 명백한 정체)
+  const staleN = sources.filter(s => { const h = staleHours(s); return h !== null && h > 24; }).length;
+
   summary.innerHTML = `
     <div class="kpi-row">
       <div class="kpi"><div class="kpi-label">등록</div><div class="kpi-value">${sources.length}</div></div>
@@ -1363,6 +1373,7 @@ async function loadConnectedSources() {
       <div class="kpi"><div class="kpi-label">정상</div><div class="kpi-value">${okN}</div></div>
       <div class="kpi"><div class="kpi-label">에러</div><div class="kpi-value">${errN}</div></div>
       <div class="kpi"><div class="kpi-label">미실행</div><div class="kpi-value">${neverN}</div></div>
+      <div class="kpi"><div class="kpi-label">지연(24h+)</div><div class="kpi-value ${staleN ? "status-err" : ""}">${staleN}</div></div>
     </div>
   `;
 
@@ -1390,6 +1401,10 @@ async function loadConnectedSources() {
     const lastSync = s.last_sync_at
       ? new Date(s.last_sync_at).toLocaleString()
       : "(미실행)";
+    const hrs = staleHours(s);
+    const staleBadge = (hrs !== null && hrs > 24)
+      ? ` <span class="status-err">지연 ${hrs === Infinity ? "—" : Math.floor(hrs / 24) + "d"}</span>`
+      : "";
     const rules = s.mapping_rules || {};
     const docType = rules.doc_type || "—";
     const teamGroup = (rules.team || "?") + "/" + (rules.group || "?");
@@ -1400,7 +1415,7 @@ async function loadConnectedSources() {
         <td><b>${escapeHtml(s.name)}</b><div class="muted-sm">${escapeHtml(s.description || "")}</div></td>
         <td><code>${escapeHtml(s.base_url)}</code><div class="muted-sm">${escapeHtml(s.list_endpoint)}</div></td>
         <td>${escapeHtml(docType)}<div class="muted-sm">${escapeHtml(teamGroup)}</div></td>
-        <td class="${statusClass}">${escapeHtml(status)}<div class="muted-sm">${escapeHtml(lastSync)}</div></td>
+        <td class="${statusClass}">${escapeHtml(status)}${staleBadge}<div class="muted-sm">${escapeHtml(lastSync)}</div></td>
         <td>${s.last_fetched_count || 0} / ${s.last_imported_count || 0}<div class="muted-sm">fetched / imported</div></td>
         <td><code>${escapeHtml(cron)}</code></td>
         <td>${s.has_api_key ? '<span class="status-ok">●</span> 있음' : '<span class="status-err">○</span> 없음'}</td>

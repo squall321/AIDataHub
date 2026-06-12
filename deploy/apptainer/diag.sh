@@ -169,6 +169,32 @@ else
   fi
 fi
 
+# ── G. 데이터 신선도 + embed 백로그 (health 게이지) ----------------------
+# /api/system/health 가 sync_stale_sources / embed_backlog 게이지를 노출한다.
+# stale > 0 = 동기화 정체 (스케줄러 죽음 / 소스 다운), backlog > 0 = 검색 누락.
+echo "[G] 데이터 신선도 / embed 백로그"
+HEALTH_JSON=$(curl -s --max-time 5 "http://127.0.0.1:${API_PORT}/api/system/health" 2>/dev/null)
+if [[ -z "$HEALTH_JSON" ]]; then
+  fail "health 응답 없음 — API 다운?"
+else
+  STALE=$(echo "$HEALTH_JSON" | python3 -c "import sys,json;d=json.load(sys.stdin);v=d.get('sync_stale_sources');print('' if v is None else v)" 2>/dev/null)
+  BACKLOG=$(echo "$HEALTH_JSON" | python3 -c "import sys,json;d=json.load(sys.stdin);v=d.get('embed_backlog');print('' if v is None else v)" 2>/dev/null)
+  if [[ -z "$STALE" ]]; then
+    warn "sync_stale_sources 게이지 없음 (구버전 API?)"
+  elif [[ "$STALE" = "0" ]]; then
+    pass "sync 신선도 OK (정체 소스 0)"
+  else
+    fail "sync 정체 소스 ${STALE}개 — 대시보드 '연결 소스' 탭에서 확인"
+  fi
+  if [[ -z "$BACKLOG" ]]; then
+    warn "embed_backlog 게이지 없음 (구버전 API?)"
+  elif [[ "$BACKLOG" = "0" ]]; then
+    pass "embed 백로그 0 (모든 섹션 검색 가능)"
+  else
+    warn "embed 백로그 ${BACKLOG}건 — 30분 내 자동 sweep 예정 (지속되면 로그 확인)"
+  fi
+fi
+
 # ── 결과 + 로그 tail -----------------------------------------------------
 echo
 if [[ $FAILED -eq 0 ]]; then

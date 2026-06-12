@@ -104,7 +104,7 @@ async def search_samples(
     from .embedding import get_embedder
 
     embedder = get_embedder()
-    qvec = embedder.encode(query)
+    qvec = embedder.encode_query(query)
     top_k = max(1, min(int(top_k), 100))
 
     if is_postgres(session):

@@ -293,6 +293,45 @@ async def build_discover_payload(
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
 
+    # ----- 데이터 신선도 (agent 가 stale 데이터를 최신처럼 인용하지 않게) ----
+    try:
+        from ..db.models import SyncSource
+        from .sync_svc import interval_minutes_from_cron
+
+        src_rows = (
+            (await session.execute(select(SyncSource).where(SyncSource.enabled.is_(True))))
+            .scalars()
+            .all()
+        )
+        now_dt = datetime.now(timezone.utc)
+        sources_out: list[dict[str, Any]] = []
+        warnings: list[str] = []
+        for src in src_rows:
+            last = src.last_sync_at
+            if last is not None and last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            age_h = (now_dt - last).total_seconds() / 3600.0 if last else None
+            sources_out.append({
+                "name": src.name,
+                "last_sync_at": last.isoformat() if last else None,
+                "age_hours": round(age_h, 1) if age_h is not None else None,
+                "status": src.last_status,
+            })
+            interval_min = interval_minutes_from_cron(src.schedule_cron)
+            if interval_min is not None and (
+                age_h is None or age_h * 60 > interval_min * 4
+            ):
+                warnings.append(
+                    f"source '{src.name}' 의 마지막 동기화가 "
+                    f"{'없음' if age_h is None else f'{age_h:.0f}시간 전'} — "
+                    "이 소스의 데이터는 최신이 아닐 수 있음"
+                )
+        payload["sources"] = sources_out
+        if warnings:
+            payload["freshness_warning"] = warnings
+    except Exception:  # noqa: BLE001 — 신선도는 best-effort 메타
+        pass
+
     _cache_set("discover", payload)
     return payload
 

@@ -85,14 +85,17 @@ setup.sh 가 자동으로 수행:
 
 ## 운영 안내
 
-### AX Hub 측 cron 등록 예시
+### 자동 동기화 — 외부 cron 불필요 (v0.14+)
 
-```cron
-# /etc/cron.d/aidh-signalforge
-*/30 * * * *  aidh  curl -s -X POST \
-  -H "X-API-Key: $AIDH_ADMIN_KEY" \
-  http://aidatahub:8001/api/sync/sources/SIGNALFORGE_ID/run \
-  >> /var/log/aidh/sf-sync.log 2>&1
+AX Hub 의 **인앱 스케줄러**가 `sync_sources.schedule_cron` (기본 `*/30 * * * *`)
+을 자동 실행합니다. 별도 cron 등록이 필요 없으며, 서버만 떠 있으면
+30분마다 pull 됩니다. 비활성화: `AIDH_SCHEDULER=off`.
+
+수동 즉시 실행이 필요할 때만:
+
+```bash
+curl -s -X POST -H "X-API-Key: $AIDH_ADMIN_KEY" \
+  http://aidatahub:8001/api/sync/sources/SIGNALFORGE_ID/run
 ```
 
 `SIGNALFORGE_ID` 는 `setup.sh` 출력에 표시됩니다.

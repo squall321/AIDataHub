@@ -135,7 +135,7 @@ if [[ "$FOUND" -gt 0 ]]; then
   echo "  ✓ semantic_search 가 $RID 발견 (P1.7 embedding 정상)"
 else
   echo "  [WARN] semantic_search 가 $RID 미발견 — embedding=null 가능성 (백필 필요)"
-  echo "         curl -X POST $BASE/api/jobs/embed?backfill=true"
+  echo "         curl -X POST $BASE/api/jobs/embed -H 'Content-Type: application/json' -d '{}'"
 fi
 
 step "완료"

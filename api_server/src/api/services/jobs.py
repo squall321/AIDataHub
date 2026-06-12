@@ -220,9 +220,10 @@ async def embed_handler(job: Job) -> dict:
     if not target_ids and single_id:
         target_ids = [single_id]
 
-    # embedder 인스턴스화 (provider 미설정 시 HashEmbedder default).
+    # embedder 인스턴스화 — 모델 로드가 느릴 수 있어 (cold start ~수 초)
+    # 이벤트 루프를 막지 않도록 스레드로 오프로딩.
     try:
-        embedder = get_embedder()
+        embedder = await asyncio.to_thread(get_embedder)
     except Exception as exc:  # noqa: BLE001
         logger.error("embed_handler: get_embedder failed: %s", exc)
         raise
@@ -233,36 +234,52 @@ async def embed_handler(job: Job) -> dict:
     failed = 0
 
     async with sessionmaker() as session:
-        stmt = select(RecordSection)
+        stmt = select(RecordSection).where(RecordSection.embedding.is_(None))
         if target_ids:
+            # record 갱신 시 _resync_sections 가 행을 재생성 (embedding NULL)
+            # 하므로 NULL 필터를 걸어도 갱신분은 항상 잡힌다. 이미 임베딩된
+            # 섹션 재처리 방지 — 267섹션 매뉴얼 1건 갱신에 수십 초 낭비 방지.
             stmt = stmt.where(RecordSection.record_id.in_(list(target_ids)))
-        else:
-            # backfill 모드: 미임베딩 섹션만 대상 (재실행 안전).
-            stmt = stmt.where(RecordSection.embedding.is_(None))
         result = await session.execute(stmt)
         sections = list(result.scalars().all())
 
         total = max(len(sections), 1)
         now = datetime.now(timezone.utc)
 
-        for i, sec in enumerate(sections, start=1):
+        # 빈 텍스트는 인코딩 없이 'skipped-empty' 마킹 — embedded_at 을 채워야
+        # 백로그 통계 (embedding IS NULL AND embedded_at IS NULL) 에서 빠진다.
+        # 마킹 안 하면 매 backfill 마다 같은 빈 섹션을 재스캔하는 영구 가짜
+        # 백로그가 된다 (2026-06-10 진단: 302건이 이 상태였음).
+        to_encode: list[Any] = []
+        for sec in sections:
             text = (sec.content_text or "").strip()
             if not text:
+                sec.embedded_at = now
+                sec.embedding_model = "skipped-empty"
                 skipped += 1
             else:
-                try:
-                    vec = embedder.encode(text[:8000])
+                to_encode.append(sec)
+
+        # encode_many 배치 — 섹션별 단건 encode 대비 추론 비용 대폭 절감.
+        # 동기 CPU 작업이므로 스레드로 오프로딩 (이벤트 루프 보호).
+        batch_size = 64
+        for start in range(0, len(to_encode), batch_size):
+            batch = to_encode[start : start + batch_size]
+            texts = [(s.content_text or "")[:8000] for s in batch]
+            try:
+                vecs = await asyncio.to_thread(embedder.encode_many, texts)
+                for sec, vec in zip(batch, vecs):
                     sec.embedding = vec
                     sec.embedded_at = now
                     sec.embedding_model = embedder.name
                     processed += 1
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning(
-                        "embed_handler: encode failed for section %s: %s",
-                        sec.id, exc,
-                    )
-                    failed += 1
-            job.progress = i / total
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "embed_handler: encode_many failed for batch @%d: %s",
+                    start, exc,
+                )
+                failed += len(batch)
+            job.progress = min((skipped + processed + failed) / total, 1.0)
         await session.commit()
 
     return {

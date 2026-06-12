@@ -89,6 +89,11 @@ class Embedder(ABC):
     def encode(self, text: str) -> list[float]:
         """단일 텍스트 → 길이 :attr:`dim` 의 ``list[float]``."""
 
+    def encode_query(self, text: str) -> list[float]:
+        """검색 질의용 임베딩. 비대칭 모델 (E5 등) 은 override 해서 query
+        prefix 를 적용한다. 대칭 모델은 encode 와 동일하면 충분."""
+        return self.encode(text)
+
     def encode_many(self, texts: Sequence[str]) -> list[list[float]]:
         return [self.encode(t) for t in texts]
 
@@ -301,6 +306,12 @@ class SentenceTransformerEmbedder(Embedder):
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
+# provider 별 싱글톤 캐시. SentenceTransformer 로드는 ~1GB 디스크 I/O + 수 초가
+# 들기 때문에, 요청마다 재인스턴스화하면 semantic 검색이 질의당 1.6s+ 로
+# 느려지고 그동안 이벤트 루프 전체가 정지한다 (실측 2026-06-10).
+_EMBEDDER_CACHE: dict[str, Embedder] = {}
+
+
 def get_embedder() -> Embedder:
     """``EMBEDDING_PROVIDER`` env 에 따라 embedder 인스턴스를 반환.
 
@@ -310,12 +321,24 @@ def get_embedder() -> Embedder:
       (``SENTENCE_TRANSFORMER_MODEL`` env 또는 default)
     - 그 외/미설정 → :class:`HashEmbedder` (default)
 
+    같은 provider 에 대해 프로세스 당 1회만 인스턴스화 (모듈 레벨 캐시).
+    실패 (패키지/키 부재) 는 캐시하지 않으므로 환경 수정 후 재시도 가능.
+
     외부 의존 경로 (openai / sentence_transformers) 에서 패키지·키가 없는
     경우 :class:`RuntimeError` 가 raise 되며, caller 측은 fallback 여부를
     결정해야 한다 (본 함수는 silent fallback 하지 않는다 — 운영 환경에서
     의도치 않게 hash 로 떨어지는 것을 막기 위함).
     """
     provider = (os.environ.get("EMBEDDING_PROVIDER") or "hash").strip().lower()
+    cached = _EMBEDDER_CACHE.get(provider)
+    if cached is not None:
+        return cached
+    emb = _build_embedder(provider)
+    _EMBEDDER_CACHE[provider] = emb
+    return emb
+
+
+def _build_embedder(provider: str) -> Embedder:
     if provider == "openai":
         return OpenAIEmbedder()
     if provider == "e5_small":

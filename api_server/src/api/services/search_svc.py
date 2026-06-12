@@ -88,40 +88,48 @@ async def fts_search(
 ) -> tuple[list[dict], int]:
     """텍스트 검색.
 
-    PostgreSQL: ``to_tsvector('simple', col) @@ plainto_tsquery('simple', q)``
+    PostgreSQL: ``to_tsvector('simple', col) @@ websearch_to_tsquery('simple', q)``
     SQLite (테스트): ``ILIKE %q%`` 폴백.
+
+    2단 전략: 기본 (AND) 매칭이 0건이고 질의가 다단어면 토큰 OR 로 1회
+    재시도한다. 'simple' config 는 한국어 형태소를 모르므로 자연어 질의는
+    토큰 하나만 어긋나도 AND 가 통째로 실패하기 때문.
 
     ``fts_match`` 헬퍼가 dialect 분기를 담당한다.
     """
     if not q.strip():
         return [], 0
 
-    section_stmt = (
-        select(
-            Record.id.label("record_id"),
-            Record.title.label("title"),
-            Record.data_type.label("data_type"),
-            Record.tags.label("tags"),
-            RecordSection.section_id.label("section_id"),
-            RecordSection.title.label("section_title"),
-            RecordSection.content_text.label("content_text"),
-            RecordSection.section_path.label("section_path"),
-            RecordSection.figure_refs.label("figure_refs"),
-            RecordSection.table_refs.label("table_refs"),
+    async def _run(any_token: bool) -> tuple[list, list]:
+        section_stmt = (
+            select(
+                Record.id.label("record_id"),
+                Record.title.label("title"),
+                Record.data_type.label("data_type"),
+                Record.tags.label("tags"),
+                RecordSection.section_id.label("section_id"),
+                RecordSection.title.label("section_title"),
+                RecordSection.content_text.label("content_text"),
+                RecordSection.section_path.label("section_path"),
+                RecordSection.figure_refs.label("figure_refs"),
+                RecordSection.table_refs.label("table_refs"),
+            )
+            .join(RecordSection, RecordSection.record_id == Record.id)
+            .where(fts_match(RecordSection.content_text, q, session, any_token=any_token))
         )
-        .join(RecordSection, RecordSection.record_id == Record.id)
-        .where(fts_match(RecordSection.content_text, q, session))
-    )
-
-    record_stmt = select(Record).where(
-        or_(
-            fts_match(Record.title, q, session),
-            fts_match(Record.summary, q, session),
+        record_stmt = select(Record).where(
+            or_(
+                fts_match(Record.title, q, session, any_token=any_token),
+                fts_match(Record.summary, q, session, any_token=any_token),
+            )
         )
-    )
+        s_rows = (await session.execute(section_stmt.limit(limit * 3))).all()
+        r_rows = (await session.execute(record_stmt.limit(limit * 3))).scalars().all()
+        return s_rows, r_rows
 
-    section_rows = (await session.execute(section_stmt.limit(limit * 3))).all()
-    record_rows = (await session.execute(record_stmt.limit(limit * 3))).scalars().all()
+    section_rows, record_rows = await _run(False)
+    if not section_rows and not record_rows and len(q.split()) >= 2:
+        section_rows, record_rows = await _run(True)
 
     seen: set[tuple[str, str | None]] = set()
     items: list[dict] = []
@@ -235,7 +243,9 @@ async def semantic_search(
         return []
 
     embedder = get_embedder()
-    qvec = embedder.encode(query)
+    # E5 비대칭 모델: 질의는 query prefix — passage prefix 로 인코딩하면
+    # ranking 이 모델 학습 의도와 어긋난다.
+    qvec = embedder.encode_query(query)
     top_k = max(1, min(int(top_k), 100))
 
     # tag_boost / min_score 가 활성이면 재랭킹/필터를 위해 후보 풀을 넓게 가져온다.

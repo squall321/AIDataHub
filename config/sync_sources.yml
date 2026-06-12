@@ -19,11 +19,14 @@ sources:
   # name 과 list_endpoint 만 변경 (예: signalforge-gz, /api/v1/products/GZ/voc).
   # ---------------------------------------------------------------------------
   - name: signalforge-gs
-    description: "SignalForge VOC pull — Galaxy S 시리즈"
-    base_url: "http://signalforge-backend:8000"
+    description: "SignalForge VOC pull — Galaxy S25"
+    # 같은 호스트의 SF backend (HWAX portal routes.env 와 동일 주소).
+    # 'signalforge-backend' 같은 컨테이너 호스트명은 이 박스에서 해석 불가.
+    base_url: "http://127.0.0.1:18000"
     api_key_env: SF_API_KEY          # 환경변수에서 키 읽음 (yaml 에 평문 X)
     auth_header: "X-API-Key"
-    list_endpoint: "/api/v1/products/GS/voc"
+    # 주의: GS 는 '시리즈' 코드라 0건 반환 — 제품 코드 (GS25) 를 써야 한다.
+    list_endpoint: "/api/v1/products/GS25/voc"
     list_method: GET
     cursor_param: offset             # SF 는 limit/offset 페이지네이션
     since_param: from                # SF 는 published_at 기준 server-side
@@ -85,7 +88,8 @@ sources:
   # ---------------------------------------------------------------------------
   - name: mxwp
     description: "MX White Paper 위키 (DocumentJSON v1.0) — published 미러"
-    base_url: "http://mxwp-api:8000"
+    # 같은 호스트의 MXWP api (HWAX portal routes.env 와 동일 주소).
+    base_url: "http://127.0.0.1:8800"
     api_key_env: MXWP_INTERNAL_KEY
     auth_header: "X-API-Key"
     list_endpoint: "/api/v1/documents"

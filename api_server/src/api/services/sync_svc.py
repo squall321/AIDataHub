@@ -591,6 +591,34 @@ async def _fetch_page(
 # ===========================================================================
 # 메인: run_sync
 # ===========================================================================
+def interval_minutes_from_cron(expr: str | None) -> int | None:
+    """schedule_cron 문자열 → 실행 간격 (분). None = 수동 전용 (스킵).
+
+    풀 cron 파서 (croniter) 의존성을 피하고 실사용 패턴만 해석:
+        "*/30 * * * *"  → 30분
+        "0 */6 * * *"   → 360분
+        "0 4 * * *"     → 1440분 (매일)
+    그 외 패턴은 기본 30분 — '정확한 시각' 보다 '주기적으로 도는 것' 이
+    목적이므로 interval 의미론으로 충분하다. 인앱 스케줄러 (main.py) 와
+    신선도 게이지 (routes/system.py) 가 공유한다.
+    """
+    import re as _re
+
+    if not expr or not expr.strip():
+        return None
+    expr = expr.strip()
+    m = _re.match(r"^\*/(\d+)\s+\*\s+\*\s+\*\s+\*$", expr)
+    if m:
+        return max(1, int(m.group(1)))
+    m = _re.match(r"^\d+\s+\*/(\d+)\s+\*\s+\*\s+\*$", expr)
+    if m:
+        return max(1, int(m.group(1))) * 60
+    m = _re.match(r"^\d+\s+\d+\s+\*\s+\*\s+\*$", expr)
+    if m:
+        return 24 * 60
+    return 30
+
+
 async def run_sync(
     session: AsyncSession,
     source_id: int,
@@ -613,7 +641,13 @@ async def run_sync(
     # session 의 commit 후 ORM attribute lazy reload 가 async I/O 를
     # 트리거해 MissingGreenlet 에러를 일으킨다. _import_one 의 record-별
     # commit 사이에 src.name / run.id 같은 attribute 를 안전하게 쓰려면 expire 비활성.
-    session.expire_on_commit = False
+    # 주의: AsyncSession 래퍼에 직접 대입하면 underlying sync Session 에 전파되지
+    # 않아 무효다 (2026-06-10 스케줄러 MissingGreenlet 원인) — sync_session 에 설정.
+    sync_sess = getattr(session, "sync_session", None)
+    if sync_sess is not None:
+        sync_sess.expire_on_commit = False
+    else:  # pragma: no cover — sync Session 폴백 (테스트)
+        session.expire_on_commit = False
 
     src = (await session.execute(select(SyncSource).where(SyncSource.id == source_id))).scalar_one_or_none()
     if src is None:
@@ -692,7 +726,7 @@ async def run_sync(
 
     throttle = _Throttle(src_max_rps)
     rules = dict(src.mapping_rules or {})
-    fetched = imported = updated_cnt = failed = 0
+    fetched = imported = updated_cnt = failed = skipped = 0
     dead_letter: list[dict[str, Any]] = []
     next_cursor = src_initial_cursor
     since_iso = src.last_sync_at.isoformat() if src.last_sync_at else None
@@ -789,11 +823,20 @@ async def run_sync(
                         raw, rules, trust_pii=src_trust_pii,
                     )
                     if "_reject_reason" in transformed:
+                        reason = transformed["_reject_reason"]
+                        if reason.startswith("filter failed"):
+                            # 의도된 필터 (예: processed_at 미완료 VOC) — 실패가
+                            # 아니므로 dead_letter 에 쌓지 않고 skipped 로 분리.
+                            # failed 로 집계하면 run 이 partial 이 되어 진짜
+                            # 실패가 필터 노이즈에 묻힌다 (2026-06-10 진단:
+                            # dead_letter 7건 중 101건이 filter reject).
+                            skipped += 1
+                            continue
                         failed += 1
                         # PII 마스킹: 큰 텍스트/긴 필드 잘라내기 + sentitive key 명시 차단
                         dead_letter.append({
                             "raw": _redact_for_dead_letter(raw),
-                            "error": transformed["_reject_reason"],
+                            "error": reason,
                         })
                         continue
                     if dry_run:
@@ -820,8 +863,13 @@ async def run_sync(
                             "error": outcome["error"],
                         })
                     else:
-                        if outcome.get("action") == "updated":
+                        action = outcome.get("action")
+                        if action == "updated":
                             updated_cnt += 1
+                        elif action == "skipped":
+                            # content_hash 동일 — 변경 없음. imported 로 세면
+                            # 매 run "333건 import" 처럼 보이는 가짜 신호가 된다.
+                            skipped += 1
                         else:
                             imported += 1
 
@@ -854,17 +902,22 @@ async def run_sync(
             offset_mode = (src_cursor_param or "").lower() == "offset"
             new_cursor = None if (offset_mode or not drained) else next_cursor
             last_status = "ok" if failed == 0 else "partial"
+            update_values: dict[str, Any] = dict(
+                cursor=new_cursor,
+                last_status=last_status,
+                last_fetched_count=fetched,
+                last_imported_count=imported + updated_cnt,
+                last_error=None,
+            )
+            # partial (진짜 실패 존재) 이면 last_sync_at 을 전진시키지 않는다 —
+            # 전진하면 실패 항목이 since 필터에 걸려 영구 누락 (UPSERT 라
+            # 다음 run 의 재fetch 중복 비용만 있을 뿐 데이터 손상 없음).
+            if failed == 0:
+                update_values["last_sync_at"] = started_now
             await session.execute(
                 _update(SyncSource)
                 .where(SyncSource.id == source_id)
-                .values(
-                    cursor=new_cursor,
-                    last_sync_at=started_now,
-                    last_status=last_status,
-                    last_fetched_count=fetched,
-                    last_imported_count=imported + updated_cnt,
-                    last_error=None,
-                )
+                .values(**update_values)
             )
 
         run_status_override = "ok" if failed == 0 else "partial"
@@ -937,6 +990,7 @@ async def run_sync(
         "imported": imported,
         "updated": updated_cnt,
         "failed": failed,
+        "skipped": skipped,
         "cursor_before": src_initial_cursor,
         "cursor_after": next_cursor,
         "dry_run": dry_run,
@@ -945,4 +999,4 @@ async def run_sync(
     }
 
 
-__all__ = ["run_sync", "transform_record"]
+__all__ = ["interval_minutes_from_cron", "run_sync", "transform_record"]

@@ -51,6 +51,25 @@ async def post_embed_job(req: EmbedJobRequest) -> JSONResponse:
 
 
 @router.get(
+    "/embed",
+    summary="(안내) embed 잡 시작은 POST — GET 은 메서드 착오 안내",
+    status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
+    include_in_schema=False,
+)
+async def get_embed_hint() -> JSONResponse:
+    """GET /api/jobs/embed 는 아래 job_id 라우트에 잡혀 'job not found: embed'
+    404 가 나왔다 — 메서드 착오를 진단할 수 없는 응답 (2026-06-09 운영 점검에서
+    실제 발생). 명시적 405 + 사용법 안내로 교체."""
+    return JSONResponse(
+        status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
+        content={
+            "detail": "use POST /api/jobs/embed",
+            "example": "curl -X POST .../api/jobs/embed -H 'Content-Type: application/json' -d '{}'",
+        },
+    )
+
+
+@router.get(
     "/{job_id}",
     summary="잡 상태/결과 조회",
 )

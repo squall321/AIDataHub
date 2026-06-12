@@ -70,6 +70,7 @@ def _flatten_sections(
     sections: list[dict[str, Any]],
     *,
     max_level: int = 3,
+    tables: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """중첩된 sections (children 트리) 를 평탄 리스트로 펼친다.
 
@@ -138,7 +139,11 @@ def _flatten_sections(
         next_path = path + [title] if title else path
         if level <= max_level and sid and sid not in seen:
             seen.add(sid)
-            content = _blocks_to_text(node.get("blocks") or [])
+            # blocks 가 없는 섹션 (sync_svc 가 만드는 {content_text: body} 형태 등) 은
+            # node 의 content_text 를 그대로 사용 — 폴백 없으면 본문이 통째로 드롭된다.
+            content = _blocks_to_text(node.get("blocks") or [], tables) or str(
+                node.get("content_text") or ""
+            )
             section_path = " > ".join(p for p in path if p) or None
             figs = list(node.get("figure_refs") or [])
             tabs = list(node.get("table_refs") or [])
@@ -186,8 +191,16 @@ def _flatten_sections(
     return out
 
 
-def _blocks_to_text(blocks: list[dict[str, Any]]) -> str:
-    """``blocks`` 배열에서 텍스트만 이어붙여 RAG 입력용 평문을 만든다."""
+def _blocks_to_text(
+    blocks: list[dict[str, Any]],
+    tables: dict[str, dict[str, Any]] | None = None,
+) -> str:
+    """``blocks`` 배열에서 텍스트만 이어붙여 RAG 입력용 평문을 만든다.
+
+    ``tables`` 는 ``content.tables[]`` 를 id/ref 로 인덱싱한 dict. table 블록은
+    ref 만 들고 있으므로, 여기서 실제 표를 찾아 평문화해야 파라미터 표 같은
+    내용이 semantic/FTS 검색에 잡힌다 (없으면 해당 섹션이 RAG 사각지대가 됨).
+    """
     parts: list[str] = []
     for b in blocks:
         if not isinstance(b, dict):
@@ -212,8 +225,31 @@ def _blocks_to_text(blocks: list[dict[str, Any]]) -> str:
             text = b.get("text") or b.get("code")
             if text:
                 parts.append(str(text))
-        # figure/table 참조는 figure_refs/table_refs 에 별도 보관되므로 본문에는 포함하지 않음.
-    return "\n".join(parts)
+        elif t == "table" and tables:
+            tab = tables.get(str(b.get("ref") or b.get("id") or ""))
+            if tab:
+                parts.append(_table_to_text(tab))
+        # figure 참조는 figure_refs 에 별도 보관되므로 본문에는 포함하지 않음.
+    return "\n".join(p for p in parts if p)
+
+
+def _table_to_text(tab: dict[str, Any]) -> str:
+    """``content.tables[]`` 항목 1개를 검색용 평문으로 직렬화.
+
+    caption + headers + rows 를 'a | b' 행으로. 셀 안 텍스트가 그대로
+    FTS/임베딩에 노출되는 것이 목적 — 시각 포맷은 무관.
+    """
+    lines: list[str] = []
+    cap = tab.get("caption")
+    if cap:
+        lines.append(str(cap))
+    headers = tab.get("headers") or []
+    if headers:
+        lines.append(" | ".join(str(h) for h in headers))
+    for row in tab.get("rows") or []:
+        if isinstance(row, list):
+            lines.append(" | ".join(str(c) for c in row))
+    return "\n".join(lines)
 
 
 async def compute_depth(
@@ -565,7 +601,16 @@ async def _resync_sections(
     if not isinstance(sections, list):
         return
 
-    flattened = _flatten_sections(sections, max_level=3)
+    # content.tables[] 를 id 로 인덱싱 — table 블록 (ref 만 보유) 평문화용.
+    tables_index: dict[str, dict[str, Any]] = {}
+    for tab in record_in.content.get("tables") or []:
+        if isinstance(tab, dict):
+            for key_field in ("id", "ref", "number"):
+                kv = str(tab.get(key_field) or "")
+                if kv:
+                    tables_index.setdefault(kv, tab)
+
+    flattened = _flatten_sections(sections, max_level=3, tables=tables_index)
     for row in flattened:
         session.add(
             RecordSection(
