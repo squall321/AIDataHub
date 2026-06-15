@@ -802,6 +802,41 @@ async def get_context_bundle(
 
 
 # ===========================================================================
+# Write tools — Claude Desktop drag&drop → 우리 DB 규격으로 저장
+# (DESKTOP_MCP_MIGRATION_PLAN.md v2 Phase 0+1)
+# ===========================================================================
+
+@mcp.tool(
+    title="Import a record (drag&drop 표/문서 → 저장)",
+    description=(
+        "사용자가 붙여넣은 표/문서를 우리 DB 규격으로 검증하거나 저장한다. "
+        "흐름: (1) 첨부를 record dict 로 파싱 — DATA 면 content={headers:[...],rows:[[...]]}, "
+        "DOC 면 content={sections:[...]}. (2) dry_run=true 로 먼저 호출 → 부족한 필드가 "
+        "있으면 status='incomplete' 와 ask_user(예: ['title','team','group']) 를 돌려준다. "
+        "그 필드만 사용자에게 물어 같은 record 에 합친다. suggestions 에 제안값이 오면 "
+        "confidence 를 보고 낮으면 반드시 확인하라. (3) 모두 채워지면 status='ready'. "
+        "(4) 그때 같은 record 로 dry_run=false 재호출 → status='saved' + id. "
+        "주의: team/group 은 절대 임의로 채우지 말고 사용자에게 확인하라 — 틀리면 "
+        "엉뚱한 곳에 저장되어 못 찾는다. 각 호출은 독립이므로 record 전체를 매번 보낸다."
+    ),
+)
+async def import_record(
+    record: dict[str, Any],
+    dry_run: bool = True,
+    api_key: str = "",
+    agent_type: str = "",
+) -> dict[str, Any]:
+    from .services import mcp_write_svc
+
+    return await mcp_write_svc.run_import(
+        record=record,
+        dry_run=dry_run,
+        api_key=api_key or None,
+        agent_type=agent_type or None,
+    )
+
+
+# ===========================================================================
 # Resources
 # ===========================================================================
 

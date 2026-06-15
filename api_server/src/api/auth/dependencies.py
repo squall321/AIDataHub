@@ -37,34 +37,31 @@ class Principal:
     is_bootstrap: bool = False
 
 
-async def get_principal(
-    request: Request,
-    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
-    session: AsyncSession = Depends(get_session),
+async def resolve_principal(
+    session: AsyncSession,
+    api_key: str | None,
 ) -> Principal:
-    """현재 호출자의 ``Principal`` 확정.
+    """``api_key`` 문자열 → ``Principal`` (FastAPI 의존성 주입 없이).
 
-    AUTH_REQUIRED=false (default):
-        - 키 없으면 anonymous Principal 반환
-        - 키 있으면 검증; 잘못되면 401
+    FastAPI ``get_principal`` 과 MCP 도구가 **같은 인증 로직**을 공유하기 위한
+    plain 함수. MCP 도구는 ``Header()`` 주입을 못 받으므로, 도구 인자로 받은
+    api_key 문자열을 이 함수에 넘겨 동일하게 검증한다 (단일 진실원천).
 
-    AUTH_REQUIRED=true:
-        - 키 없거나 잘못되면 401
+    AUTH_REQUIRED=false: 키 없으면 anonymous, 키 있으면 검증(틀리면 raise).
+    AUTH_REQUIRED=true : 키 없거나 틀리면 raise.
     """
     bootstrap = (settings.bootstrap_api_key or "").strip()
 
-    if x_api_key is None or not x_api_key.strip():
+    if api_key is None or not api_key.strip():
         if settings.auth_required:
             raise AuthenticationError("missing X-API-Key header")
-        principal = Principal()
-        request.state.principal = principal
-        return principal
+        return Principal()
 
-    candidate = x_api_key.strip()
+    candidate = api_key.strip()
 
     # bootstrap 키 매칭 (constant-time)
     if bootstrap and secrets.compare_digest(candidate, bootstrap):
-        principal = Principal(
+        return Principal(
             key_id=None,
             name="bootstrap",
             agent_scopes=["*"],
@@ -72,8 +69,6 @@ async def get_principal(
             is_anonymous=False,
             is_bootstrap=True,
         )
-        request.state.principal = principal
-        return principal
 
     key = await lookup_active_key(session, candidate)
     if key is None:
@@ -82,7 +77,7 @@ async def get_principal(
     # last_used_at 갱신은 best-effort (실패해도 인증 흐름은 진행)
     await touch_last_used(session, key.id)
 
-    principal = Principal(
+    return Principal(
         key_id=key.id,
         name=key.name,
         agent_scopes=list(key.agent_scopes or []),
@@ -90,6 +85,16 @@ async def get_principal(
         is_anonymous=False,
         is_bootstrap=False,
     )
+
+
+async def get_principal(
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    session: AsyncSession = Depends(get_session),
+) -> Principal:
+    """현재 호출자의 ``Principal`` 확정 (FastAPI 의존성). 로직은
+    :func:`resolve_principal` 에 위임 — MCP 와 공유."""
+    principal = await resolve_principal(session, x_api_key)
     request.state.principal = principal
     return principal
 
