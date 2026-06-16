@@ -836,6 +836,91 @@ async def import_record(
     )
 
 
+# ── Agent / DocType 정의 (VSCode extension → 대화로 이관, Phase 2) ──────────
+
+@mcp.tool(
+    title="Agent 정의 폼 안내",
+    description=(
+        "agent(검색 챗봇 페르소나)를 만들 때 채워야 할 필드와 설명을 반환한다. "
+        "create_agent 호출 전에 이걸로 무엇이 필요한지 파악하라."
+    ),
+)
+async def describe_agent_schema() -> dict[str, Any]:
+    from .services import mcp_write_svc
+    return await mcp_write_svc.describe_agent_schema()
+
+
+@mcp.tool(
+    title="Agent 정의 초안 생성 (저장 안 함)",
+    description=(
+        "기존 레코드 신호 + 자연어 의도(hint)로 agent 정의 초안을 만든다. "
+        "예: hint='배터리 셀 시험보고서만 찾는 분석가'. record_ids/filter_tags/"
+        "filter_data_types 로 데이터 군을 한정할 수 있다. 결과의 system_prompt/"
+        "sample_queries 를 사람이 읽기 좋게 보여주고, 다듬을지 물은 뒤 create_agent 로 저장."
+    ),
+)
+async def draft_agent(
+    hint: str = "",
+    record_ids: list[str] | None = None,
+    filter_tags: list[str] | None = None,
+    filter_data_types: list[str] | None = None,
+    api_key: str = "",
+) -> dict[str, Any]:
+    from .services import mcp_write_svc
+    return await mcp_write_svc.draft_agent(
+        hint=hint or None, record_ids=record_ids, filter_tags=filter_tags,
+        filter_data_types=filter_data_types, api_key=api_key or None,
+    )
+
+
+@mcp.tool(
+    title="Agent 신규 등록",
+    description=(
+        "agent(검색 챗봇 페르소나)를 저장한다. agent dict 는 최소 agent_type + "
+        "system_prompt, 권장 sample_queries(3~5개) + data_types. 필드는 "
+        "describe_agent_schema 참고. sample_queries 는 저장 시 자동 임베딩된다. "
+        "이미 있으면 patch_agent 를 쓰라."
+    ),
+)
+async def create_agent(agent: dict[str, Any], api_key: str = "") -> dict[str, Any]:
+    from .services import mcp_write_svc
+    return await mcp_write_svc.create_agent(agent=agent, api_key=api_key or None)
+
+
+@mcp.tool(
+    title="Agent 부분 수정",
+    description=(
+        "기존 agent 의 일부 필드만 수정한다. patch dict 에 바꿀 필드만 담는다 "
+        "(예: {sample_queries:[...], system_prompt:'...'}). 빈 stub agent 에 "
+        "persona 를 채울 때 유용."
+    ),
+)
+async def patch_agent(agent_type: str, patch: dict[str, Any], api_key: str = "") -> dict[str, Any]:
+    from .services import mcp_write_svc
+    return await mcp_write_svc.patch_agent(agent_type=agent_type, patch=patch, api_key=api_key or None)
+
+
+@mcp.tool(
+    title="DocType 목록",
+    description="등록된 doc_type(의미 분류) 목록. create_agent 의 required_doc_type 선택에 참고.",
+)
+async def list_doc_types(api_key: str = "") -> dict[str, Any]:
+    from .services import mcp_write_svc
+    return await mcp_write_svc.list_doc_types(api_key=api_key or None)
+
+
+@mcp.tool(
+    title="DocType 신규 등록",
+    description=(
+        "새 doc_type(의미 분류)을 등록한다. doc_type dict 는 code + name 필수, "
+        "description/expected_sections 권장. 새 종류 문서를 분류 체계에 추가할 때."
+    ),
+)
+async def create_doc_type(doc_type: dict[str, Any], api_key: str = "") -> dict[str, Any]:
+    from .services import mcp_write_svc
+    return await mcp_write_svc.create_doc_type(doc_type=doc_type, api_key=api_key or None)
+
+
 # ===========================================================================
 # Resources
 # ===========================================================================

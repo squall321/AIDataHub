@@ -188,4 +188,143 @@ async def run_import(
         }
 
 
-__all__ = ["run_import"]
+# ===========================================================================
+# Phase 2 — Agent / DocType 정의를 Claude 대화로 (VSCode extension 이관)
+#
+# 모든 write 로직은 이미 서비스로 분리돼 있다 (agent_svc / agent_draft_svc /
+# doc_type_svc — 전부 session + dict 받는 plain 함수). 여기선 인증 + 에러봉투만
+# 입혀 MCP 에 노출한다. REST 핸들러와 같은 서비스를 호출 → 단일 진실원천.
+# ===========================================================================
+
+# agent 정의 폼 — Claude 가 "무엇을 채울지" 알도록 introspection 으로 노출.
+_AGENT_FIELDS = {
+    "agent_type": "필수. 고유 식별자 (kebab-case, 예: battery-test-analyst)",
+    "name": "표시 이름",
+    "description": "이 챗봇 페르소나가 무엇을 다루는지 1~2문장",
+    "data_types": "다루는 data_type 목록 (DOC/DATA/SIM/CAD/LOG/FORM/OTHER 중)",
+    "required_doc_type": "한정할 doc_type code (선택)",
+    "common_tags": "이 영역 대표 태그",
+    "required_tags": "검색 시 반드시 가져야 할 태그 (선택)",
+    "excluded_tags": "제외할 태그 (선택)",
+    "system_prompt": "필수. 답변 톤/인용 규약/거부 규칙. 한국어 권장",
+    "sample_queries": "이 페르소나가 받을 법한 질문 예시 3~5개 (의미검색 매칭용)",
+    "retrieval_config": "검색 설정 {top_k:int, score_threshold:float}",
+}
+
+
+async def _authed(api_key: str | None, session) -> tuple[Any, dict | None]:
+    """인증 → (principal, error_envelope). error 면 두번째가 dict."""
+    try:
+        principal = await resolve_principal(session, api_key)
+    except AuthenticationError as exc:
+        return None, {"status": "error", "error": str(exc),
+                      "code": "auth_failed", "recoverable": True,
+                      "suggestion": "유효한 X-API-Key 를 전달하세요."}
+    return principal, None
+
+
+async def describe_agent_schema() -> dict[str, Any]:
+    """agent 정의에 필요한 필드/설명 — Claude 가 create_agent 전에 무엇을
+    채울지 알도록. (VSCode 의 agent 폼을 introspection 으로 대체)"""
+    return {"fields": _AGENT_FIELDS,
+            "note": "create_agent 로 저장. sample_queries 가 있으면 자동으로 임베딩 동기화됨."}
+
+
+async def draft_agent(
+    *, hint: str | None = None, record_ids: list[str] | None = None,
+    filter_tags: list[str] | None = None, filter_data_types: list[str] | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """기존 레코드 신호 + 자연어 의도 → agent 정의 초안 (저장 X)."""
+    async with SessionLocal() as session:
+        _, err = await _authed(api_key, session)
+        if err:
+            return err
+        from . import agent_draft_svc
+        draft = await agent_draft_svc.generate_draft(
+            session, record_ids=record_ids, filter_tags=filter_tags,
+            filter_data_types=filter_data_types, hint=hint,
+        )
+        return {"status": "draft", "draft": draft,
+                "note": "검토 후 create_agent 로 저장하세요. system_prompt/sample_queries 를 다듬으면 검색 품질↑."}
+
+
+async def create_agent(*, agent: dict[str, Any], api_key: str | None = None) -> dict[str, Any]:
+    """agent(검색 챗봇 페르소나) 신규 등록."""
+    if not isinstance(agent, dict) or not agent.get("agent_type"):
+        return {"status": "error", "error": "agent.agent_type required",
+                "code": "missing_field", "recoverable": True,
+                "suggestion": "agent_type(고유 식별자)을 포함하세요. describe_agent_schema 참고."}
+    async with SessionLocal() as session:
+        principal, err = await _authed(api_key, session)
+        if err:
+            return err
+        from . import agent_svc
+        actor = f"mcp:{principal.name}" if not principal.is_anonymous else "mcp:anonymous"
+        try:
+            row = await agent_svc.create_agent(session, agent, changed_by=actor)
+        except ValueError as exc:  # 이미 존재
+            return {"status": "error", "error": str(exc), "code": "duplicate",
+                    "recoverable": True, "suggestion": "patch_agent 로 기존 agent 를 수정하세요."}
+        return {"status": "created", "agent_type": row.agent_type,
+                "samples_indexed": len(row.sample_queries or [])}
+
+
+async def patch_agent(*, agent_type: str, patch: dict[str, Any], api_key: str | None = None) -> dict[str, Any]:
+    """기존 agent 부분 수정 (준 필드만)."""
+    if not agent_type:
+        return {"status": "error", "error": "agent_type required",
+                "code": "missing_field", "recoverable": True, "suggestion": "수정할 agent_type 을 지정하세요."}
+    async with SessionLocal() as session:
+        principal, err = await _authed(api_key, session)
+        if err:
+            return err
+        from . import agent_svc
+        actor = f"mcp:{principal.name}" if not principal.is_anonymous else "mcp:anonymous"
+        row = await agent_svc.update_agent(session, agent_type, patch or {}, changed_by=actor)
+        if row is None:
+            return {"status": "error", "error": f"agent not found: {agent_type}",
+                    "code": "not_found", "recoverable": True,
+                    "suggestion": "create_agent 로 새로 만들거나 list_agents 로 확인하세요."}
+        return {"status": "patched", "agent_type": row.agent_type}
+
+
+async def list_doc_types(*, api_key: str | None = None) -> dict[str, Any]:
+    """등록된 doc_type(의미 분류) 목록 — create_agent 의 required_doc_type 선택용."""
+    async with SessionLocal() as session:
+        from . import doc_type_svc
+        rows = await doc_type_svc.list_doc_types(session)
+        return {"doc_types": [
+            {"code": d.code, "name": d.name, "description": d.description or "",
+             "expected_sections": list(getattr(d, "expected_sections", None) or [])}
+            for d in rows
+        ]}
+
+
+async def create_doc_type(*, doc_type: dict[str, Any], api_key: str | None = None) -> dict[str, Any]:
+    """새 doc_type(의미 분류) 등록."""
+    if not isinstance(doc_type, dict) or not doc_type.get("code"):
+        return {"status": "error", "error": "doc_type.code required",
+                "code": "missing_field", "recoverable": True, "suggestion": "code(식별자)와 name 을 포함하세요."}
+    async with SessionLocal() as session:
+        _, err = await _authed(api_key, session)
+        if err:
+            return err
+        from . import doc_type_svc
+        try:
+            dt = await doc_type_svc.create_doc_type(session, doc_type)
+        except Exception as exc:  # noqa: BLE001 — 중복 등
+            return {"status": "error", "error": str(exc)[:160], "code": "create_failed",
+                    "recoverable": True, "suggestion": "이미 있는 code 인지 list_doc_types 로 확인하세요."}
+        return {"status": "created", "code": dt.code}
+
+
+__all__ = [
+    "run_import",
+    "describe_agent_schema",
+    "draft_agent",
+    "create_agent",
+    "patch_agent",
+    "list_doc_types",
+    "create_doc_type",
+]
