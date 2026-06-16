@@ -801,6 +801,25 @@ async def get_context_bundle(
         return bundle
 
 
+@mcp.tool(
+    title="데이터 타입별 형태 룰 + 적용 도구",
+    description=(
+        "특정 data_type(DOC/DATA/SIM/CAD/LOG/FORM/OTHER) 의 content 형태(필수/"
+        "선택 필드, shape)와 그 타입에 적용 가능한 분석 도구(capability_tools)를 "
+        "반환한다. 데이터를 저장하거나 분석하기 전에 이걸로 '이 타입은 이렇게 "
+        "생겼고 이 도구로 분석한다'를 파악하라. DATA 면 graph_type 권장 어휘도 "
+        "준다 — graph_type 인자를 주면 그 그래프에 맞는 도구로 좁혀준다."
+    ),
+)
+async def describe_data_capability(data_type: str, graph_type: str = "") -> dict[str, Any]:
+    from .services import discover_svc
+
+    async with SessionLocal() as session:
+        return await discover_svc.build_data_capability(
+            session, data_type, graph_type=graph_type or None
+        )
+
+
 # ===========================================================================
 # Write tools — Claude Desktop drag&drop → 우리 DB 규격으로 저장
 # (DESKTOP_MCP_MIGRATION_PLAN.md v2 Phase 0+1)

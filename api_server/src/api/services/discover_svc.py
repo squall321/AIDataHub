@@ -92,6 +92,79 @@ LANGUAGES: tuple[str, ...] = ("ko", "en", "mixed")
 
 
 # ---------------------------------------------------------------------------
+# describe_data_capability (Phase 4) — data_type 별 형태 룰 + 적용 도구
+# ---------------------------------------------------------------------------
+async def build_data_capability(
+    session: AsyncSession,
+    data_type: str,
+    *,
+    graph_type: str | None = None,
+) -> dict[str, Any]:
+    """LLM 이 검색 전에 "이 타입 데이터는 이렇게 생겼고 이 도구로 분석한다"를
+    배우도록, data_type 별 content 형태 룰 + 적용 가능 도구를 반환.
+
+    capability_tools 는 **런타임 DB 조회** (부팅 캐시 의존 X — 적대검증 반영):
+    mcp_uploads 의 manifest.persist_output.data_type 이 일치하거나, DATA 면
+    manifest 에 graph_type 단서가 있는 도구를 모은다.
+    """
+    from sqlalchemy import select
+
+    from ..db.models import MCPUpload
+
+    dt = (data_type or "").upper()
+    shape = CONTENT_SHAPE_HINTS.get(dt)
+    if shape is None:
+        return {"error": f"unknown data_type: {data_type}",
+                "known": list(CONTENT_SHAPE_HINTS.keys())}
+
+    out: dict[str, Any] = {
+        "data_type": dt,
+        "description": DATA_TYPE_DESCRIPTIONS.get(dt, ""),
+        "required": shape.get("required", []),
+        "optional": shape.get("optional", []),
+        "shape": shape.get("shape", ""),
+    }
+    if dt == "DATA":
+        from ..schemas.data import GRAPH_TYPES  # noqa: PLC0415 — 지역 import
+        out["graph_types"] = list(GRAPH_TYPES)
+        out["analysis_hint"] = (
+            "content 에 graph_type(예: stress_strain) 을 담으면 적합한 분석 도구가 "
+            "capability_tools 로 매칭된다."
+        )
+
+    # capability_tools — 런타임 조회 (매 호출 최신)
+    rows = (
+        await session.execute(
+            select(MCPUpload).where(MCPUpload.deprecated_at.is_(None))
+        )
+    ).scalars().all()
+    tools: list[dict[str, Any]] = []
+    for u in rows:
+        manifest = u.manifest or {}
+        po = manifest.get("persist_output") or {}
+        ir = manifest.get("input_requirements") or {}
+        hints = manifest.get("llm_hints") or {}
+        # 매칭: persist_output.data_type (산출물) 또는 input_requirements.data_type (입력)
+        matches = (str(po.get("data_type") or "").upper() == dt
+                   or str(ir.get("data_type") or "").upper() == dt)
+        # DATA 면 graph_type 단서로 추가 매칭
+        if graph_type and dt == "DATA":
+            ir_gt = str(ir.get("graph_type") or "")
+            if ir_gt and ir_gt == graph_type:
+                matches = True
+        if matches:
+            tools.append({
+                "name": u.name,
+                "when_to_use": hints.get("when_to_use") or "",
+                "produces": po.get("data_type"),
+                "accepts": ir.get("data_type"),
+                "graph_type": ir.get("graph_type"),
+            })
+    out["capability_tools"] = tools
+    return out
+
+
+# ---------------------------------------------------------------------------
 # In-process TTL cache (단일 워커 가정)
 # ---------------------------------------------------------------------------
 _DISCOVER_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
