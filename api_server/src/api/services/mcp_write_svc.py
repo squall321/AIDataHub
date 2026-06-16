@@ -319,8 +319,120 @@ async def create_doc_type(*, doc_type: dict[str, Any], api_key: str | None = Non
         return {"status": "created", "code": dt.code}
 
 
+# ===========================================================================
+# 파일 변환 브리지 (Path B) — 서버측 정밀 변환 (docx/xlsx/pdf/pptx → JSON)
+#
+# MCP 는 바이너리를 못 받는다. 그래서 두 경로:
+#   Path A: Claude 가 첨부를 파싱 → import_record(dict)  [작은/구조화 데이터]
+#   Path B: 사용자가 inbox 폴더에 파일을 두고 convert_file(name) 호출 →
+#           서버가 기존 변환기(convert_file_dispatch)로 정밀 변환 → record 초안
+#           반환 → import_record 로 흐름  [수식/병합셀/대용량 등 정밀 필요]
+#
+# 보안: 임의 서버 경로 읽기 = 위험. inbox 디렉터리 하위로만 제한 (traversal 차단).
+# ===========================================================================
+import os as _os
+from pathlib import Path as _Path
+
+
+def _convert_inbox() -> _Path:
+    """변환 허용 디렉터리. ``AIDH_CONVERT_INBOX`` 미설정 시 ~/aidh-inbox.
+    사용자가 여기에 파일을 두고 convert_file 로 변환한다."""
+    raw = _os.environ.get("AIDH_CONVERT_INBOX") or str(_Path.home() / "aidh-inbox")
+    p = _Path(raw).expanduser()
+    p.mkdir(parents=True, exist_ok=True)
+    return p.resolve()
+
+
+def _resolve_in_inbox(name: str) -> _Path | None:
+    """``name`` 을 inbox 하위 실경로로 해석. inbox 밖이면 None (traversal 차단)."""
+    inbox = _convert_inbox()
+    cand = (inbox / name).resolve()
+    try:
+        cand.relative_to(inbox)  # inbox 밖이면 ValueError
+    except ValueError:
+        return None
+    return cand if cand.is_file() else None
+
+
+async def run_convert(
+    *,
+    file: str,
+    team: str = "",
+    group: str = "",
+    year: int = 0,
+    api_key: str | None = None,
+    auto_save: bool = False,
+) -> dict[str, Any]:
+    """inbox 의 파일을 우리 JSON 규격으로 정밀 변환 (Path B).
+
+    반환:
+        - ``converted``: record 초안 (Claude 가 검토 후 import_record 로 저장)
+        - ``auto_save=true`` 면 변환 직후 바로 import_record 까지 (dry_run 권장)
+        - ``error``: inbox 밖 / 미지원 포맷 / 변환 실패
+    """
+    from datetime import datetime, timezone
+
+    name = (file or "").strip()
+    if not name:
+        return {"status": "error", "error": "file name required",
+                "code": "missing_field", "recoverable": True,
+                "suggestion": f"먼저 파일을 inbox 에 두세요: {_convert_inbox()}"}
+
+    path = _resolve_in_inbox(name)
+    if path is None:
+        return {"status": "error", "error": f"file not in inbox: {name}",
+                "code": "not_in_inbox", "recoverable": True,
+                "suggestion": (f"보안상 inbox 하위 파일만 변환합니다. {_convert_inbox()} 에 "
+                               "파일을 두고 파일명만 전달하세요 (경로/.. 불가).")}
+
+    # 인증
+    async with SessionLocal() as session:
+        principal, err = await _authed(api_key, session)
+        if err:
+            return err
+
+    # 포맷 감지 + 변환 (동기 — 스레드 오프로딩)
+    import asyncio
+
+    from .converter_dispatch import (
+        ConvertRequest,
+        UnsupportedFormatError,
+        convert_file,
+        detect_format,
+    )
+
+    try:
+        fmt = detect_format(path.name)
+    except UnsupportedFormatError as exc:
+        return {"status": "error", "error": str(exc), "code": "unsupported_format",
+                "recoverable": True, "suggestion": "docx/xlsx/pdf/pptx/md 만 지원합니다."}
+
+    req = ConvertRequest(
+        team=(team or "TBD").upper(),
+        group=(group or "TBD").upper(),
+        year=int(year) if year else datetime.now(timezone.utc).year,
+    )
+    try:
+        payload = await asyncio.to_thread(convert_file, path, fmt, req)
+    except Exception as exc:  # noqa: BLE001 — 변환 실패 전반
+        return {"status": "error", "error": f"conversion failed: {exc}"[:200],
+                "code": "convert_failed", "recoverable": False,
+                "suggestion": "파일이 손상됐거나 변환기가 처리 못하는 구조일 수 있습니다."}
+
+    if auto_save:
+        # 변환 결과를 곧바로 import (dry_run — 부족 필드는 import 가 되묻는다)
+        result = await run_import(record=payload, dry_run=True, api_key=api_key)
+        return {"status": "converted", "format": fmt.value, "record": payload,
+                "import_preview": result,
+                "note": "team/group 이 TBD 면 import 가 되묻는다. 확정 후 import_record(dry_run=false)."}
+
+    return {"status": "converted", "format": fmt.value, "record": payload,
+            "note": "이 record 를 검토 후 import_record 로 저장하세요 (team/group 확인 필수)."}
+
+
 __all__ = [
     "run_import",
+    "run_convert",
     "describe_agent_schema",
     "draft_agent",
     "create_agent",

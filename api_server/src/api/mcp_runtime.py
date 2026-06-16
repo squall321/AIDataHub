@@ -921,6 +921,33 @@ async def create_doc_type(doc_type: dict[str, Any], api_key: str = "") -> dict[s
     return await mcp_write_svc.create_doc_type(doc_type=doc_type, api_key=api_key or None)
 
 
+@mcp.tool(
+    title="파일 정밀 변환 (docx/xlsx/pdf/pptx → record)",
+    description=(
+        "MCP 는 바이너리 파일을 직접 못 받는다. 두 경로 중 택1: "
+        "(A) 표/CSV/텍스트는 직접 파싱해 import_record 로. "
+        "(B) docx/xlsx/pdf/pptx 처럼 수식·병합셀·복잡한 표가 있어 정밀 변환이 "
+        "필요하면 이 도구를 쓴다 — 사용자가 서버의 inbox 폴더에 파일을 두고 "
+        "파일명만 전달하면(경로/.. 불가, 보안상 inbox 하위만) 서버가 변환해 record "
+        "초안을 돌려준다. team/group/year 를 알면 함께 주고, 모르면 변환 후 "
+        "import_record 가 되묻는다. 결과 record 를 검토 후 import_record 로 저장."
+    ),
+)
+async def convert_file(
+    file: str,
+    team: str = "",
+    group: str = "",
+    year: int = 0,
+    auto_save: bool = False,
+    api_key: str = "",
+) -> dict[str, Any]:
+    from .services import mcp_write_svc
+    return await mcp_write_svc.run_convert(
+        file=file, team=team, group=group, year=year,
+        auto_save=auto_save, api_key=api_key or None,
+    )
+
+
 # ===========================================================================
 # Resources
 # ===========================================================================
