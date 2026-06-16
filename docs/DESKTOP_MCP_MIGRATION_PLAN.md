@@ -1,7 +1,50 @@
 # Claude Desktop MCP 이관 계획 — 데이터/Agent 정의를 대화로
 
 > 작성: 2026-06-14 · 근거: 6관점 코드 조사 + 6렌즈 적대적 검증 (45 확정 문제)
-> 상태: **v2 — 적대적 검증 반영 개정.** 아래 "v2 개정" 섹션이 유효, 그 다음 "v1 원안"은 결정 이력.
+> 상태: **MVP + 능동 흐름 구현 완료 (2026-06).** Phase 0~4·7 shipped, Phase 5·6 연기.
+
+---
+
+# 구현 현황 (shipped)
+
+| Phase | 커밋 | 내용 | 검증 |
+|-------|------|------|------|
+| 0+1 | `9b0ea01` | `import_record` — drag&drop→되묻기→저장 + auth/서비스추출/에러봉투/actor | incomplete→ready→saved, auth 거부, 타입보존 |
+| 2 | `1d4feb7` | Agent/DocType 정의 래퍼 (`draft_agent`/`create_agent`/`patch_agent`/`describe_agent_schema`/`list_doc_types`/`create_doc_type`) | create/patch/중복거부/list 38 |
+| — | `227bcbd` | `convert_file` 브리지 (Path B) — inbox 파일 정밀변환 | xlsx 변환, traversal 차단 |
+| 3 | `9042143` | `graph_type` 분석힌트 메타 + B4(_extract_data 유실) 수정 | DB 보존 확인 |
+| 4 | `9119d5e` | `describe_data_capability` — 타입별 형태룰 + 적용도구 (런타임 조회) | DATA/SIM/미지타입 |
+| 7 | `d8fdb16` | manifest `input_requirements` — graph_type DATA→도구 연결 완결 | describe(DATA,stress_strain)→stress_strain_plot |
+
+**연기 (Phase 5·6 — data_profiles 룰 엔진):** "같은 타입 자동 인식·저장규칙"은
+실데이터 헤더 패턴 20건+ 누적 후 착수 (과설계 방지, 적대검증 권고). 그 전까진
+team/group 을 사용자가 확인.
+
+## 실사용법 (Claude Desktop)
+
+신규 MCP write 도구는 `api_key` 인자에 X-API-Key 를 넣어 호출 (AUTH_REQUIRED=true 시 필수).
+
+1. **표/CSV 저장**: 사용자가 표를 붙임 → Claude 가 dict 파싱 →
+   `import_record(record, dry_run=true)` → 부족필드 되물음 → `dry_run=false` 저장.
+2. **파일 정밀변환** (docx/xlsx/pdf/pptx): 사용자가 서버 inbox(`~/aidh-inbox`,
+   `AIDH_CONVERT_INBOX` 로 변경) 에 파일을 두고 → `convert_file("name.xlsx")` →
+   record 초안 → `import_record` 로 저장. 경로/`..` 불가 (보안).
+3. **Agent 정의**: `draft_agent(hint=...)` → 초안 → `create_agent(agent)`.
+   빈 stub 채우기는 `patch_agent`.
+4. **분석 흐름**: 데이터에 `graph_type` 담아 저장 →
+   `describe_data_capability(DATA, graph_type)` 로 적합 도구 발견 → 그 도구 호출.
+
+## MCP 파일 업로드의 현실 (사용자 질의 답)
+
+**MCP 는 바이너리를 못 받는다** (프로토콜 제약 — 도구 인자는 JSON). 우회 3경로:
+- **Path A (기본)**: Claude Desktop 이 첨부를 파싱 → `import_record(dict)`.
+  작은/구조화 데이터(표·CSV). 한계: 큰 파일 잘림, 복잡한 xlsx/pdf 부정확.
+- **Path B (`convert_file`)**: inbox 파일을 서버가 정밀변환(수식·병합셀). 동일 호스트.
+- **Path C (대시보드)**: `POST /api/convert` 브라우저 업로드. 원격/경로없음.
+
+바이너리는 절대 MCP 를 통과하지 않는다 — Claude 가 파싱하거나(A) 서버가 경로/업로드로 읽는다(B/C).
+
+---
 
 ---
 
