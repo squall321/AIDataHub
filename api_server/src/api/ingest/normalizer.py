@@ -288,6 +288,11 @@ def _extract_data(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         "units": inner.get("units"),
         "notes": inner.get("notes", ""),
     }
+    # 분석 힌트 보존 (graph_type 등) — 고정 키로 재구성하면 extra='allow' 가
+    # 무의미해져 graph_type 이 드롭된다 (적대검증 B4). 있을 때만 실어 보낸다.
+    for hint in ("graph_type", "x_axis", "y_axis", "scale"):
+        if inner.get(hint) is not None:
+            data_content[hint] = inner[hint]
     DataContent.model_validate(data_content)
 
     common = _common_fields(raw, default_title=data_content["caption"] or "DATA")

@@ -488,6 +488,14 @@ def build_json_schema() -> dict[str, Any]:
                             "rows": {"type": "array"},
                             "units": {"type": ["object", "null"]},
                             "notes": {"type": "string"},
+                            # 분석 힌트 (Phase 3) — 도구가 graph_type 으로 적합 분석 선택
+                            "graph_type": {
+                                "type": ["string", "null"],
+                                "description": "분석/작도 타입 힌트 (예: stress_strain, time_series, scatter, line, bar, histogram, table)",
+                            },
+                            "x_axis": {"type": ["string", "null"]},
+                            "y_axis": {"type": ["string", "null"]},
+                            "scale": {"type": ["string", "null"]},
                         },
                     },
                 },
