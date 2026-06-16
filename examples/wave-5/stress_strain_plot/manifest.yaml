@@ -74,6 +74,18 @@ persist_output:
   # 동일 곡선 100번 호출해도 records 1행만 유지 → 폭주 방지.
   dedup_key: "{args.material_name}_{args.e_modulus}_{args.yield_stress}_{args.ultimate_strain}"
 
+# 입력 데이터 선언 (Phase 7) — describe_data_capability 가 이걸 보고
+# "graph_type=stress_strain 인 DATA 표를 이 도구로 분석할 수 있다" 를 LLM 에 노출.
+# 사용자가 stress-strain 표를 저장(graph_type=stress_strain)하면 이 도구가
+# capability_tools 로 자동 제안된다.
+input_requirements:
+  data_type: DATA
+  graph_type: stress_strain
+  required_headers:
+    - strain
+    - stress
+  units_required: true
+
 # LLM 라우팅 보조 — recommend_agents 가 이 도구를 적합 후보로 떠올릴 단서.
 llm_hints:
   when_to_use: >-

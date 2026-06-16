@@ -99,6 +99,18 @@ class PersistOutput:
 
 
 @dataclass
+class InputRequirements:
+    """도구가 받을 수 있는 입력 데이터 모양 — describe_data_capability 가 이걸
+    읽어 "이 data_type/graph_type 데이터엔 이 도구" 를 LLM 에 매칭한다.
+    (DESKTOP_MCP_MIGRATION_PLAN.md v2 Phase 7) 선언 전용 — 코드 분기 없음."""
+
+    data_type: str | None = None
+    required_headers: list[str] = field(default_factory=list)
+    graph_type: str | None = None
+    units_required: bool = False
+
+
+@dataclass
 class LLMHints:
     when_to_use: str = ""
     not_for: str = ""
@@ -148,6 +160,7 @@ class UploadManifest:
     require_agent_tag: list[str] = field(default_factory=list)
     exclude_agent_tag: list[str] = field(default_factory=list)
     persist_output: PersistOutput = field(default_factory=PersistOutput)
+    input_requirements: InputRequirements = field(default_factory=InputRequirements)
     llm_hints: LLMHints = field(default_factory=LLMHints)
     capture_files: CaptureFiles = field(default_factory=CaptureFiles)
     # build/runtime 시점 채워짐 (validate 단계에서는 None)
@@ -323,6 +336,23 @@ def validate_manifest(raw: dict[str, Any]) -> UploadManifest:
             dedup_key=str(po_raw.get("dedup_key") or ""),
         )
 
+    # ---- input_requirements (Phase 7) — 선언만, 검증은 느슨 ----
+    ir_raw = raw.get("input_requirements") or {}
+    ireq = InputRequirements()
+    if isinstance(ir_raw, dict) and ir_raw:
+        ir_dt = str(ir_raw.get("data_type") or "").strip().upper() or None
+        if ir_dt and ir_dt not in _VALID_DATA_TYPES:
+            raise UploadError(
+                "INVALID_MANIFEST",
+                f"input_requirements.data_type {ir_dt!r} 미지원 — {sorted(_VALID_DATA_TYPES)} 중 선택.",
+            )
+        ireq = InputRequirements(
+            data_type=ir_dt,
+            required_headers=[str(h) for h in (ir_raw.get("required_headers") or []) if isinstance(h, str)],
+            graph_type=(str(ir_raw.get("graph_type") or "").strip() or None),
+            units_required=bool(ir_raw.get("units_required")),
+        )
+
     # ---- llm_hints ----
     hints_raw = raw.get("llm_hints") or {}
     hints = LLMHints()
@@ -362,6 +392,7 @@ def validate_manifest(raw: dict[str, Any]) -> UploadManifest:
         require_agent_tag=require_agent_tag,
         exclude_agent_tag=exclude_agent_tag,
         persist_output=po,
+        input_requirements=ireq,
         llm_hints=hints,
     )
 
