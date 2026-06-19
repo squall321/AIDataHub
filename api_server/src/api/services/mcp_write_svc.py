@@ -136,12 +136,33 @@ async def run_import(
     # 0) 부족 필드 사전 스캔 — 한 번에 되묻기
     missing = _scan_missing(rec)
     if missing:
+        suggestions = _suggest(rec)
+        # team/group 이 부족하면 유사도 기반 제안을 추가 (룰 없는 자동분류).
+        # 확정 X — Claude 가 confidence 보고 사용자에게 확인 (B3).
+        if ("team" in missing or "group" in missing) and not rec.get("id"):
+            content = rec.get("content") or {}
+            if isinstance(content, dict):
+                try:
+                    async with SessionLocal() as _s:
+                        from . import similarity_svc
+                        sim = await similarity_svc.suggest_by_similarity(
+                            _s,
+                            title=str(rec.get("title") or ""),
+                            caption=str(content.get("caption") or ""),
+                            headers=content.get("headers") if isinstance(content.get("headers"), list) else None,
+                            data_type=str(rec.get("data_type") or "DATA"),
+                        )
+                    if sim.get("suggested"):
+                        suggestions["by_similarity"] = sim
+                except Exception:  # noqa: BLE001 — 제안은 best-effort
+                    pass
         return {
             "status": "incomplete",
             "ask_user": missing,
-            "suggestions": _suggest(rec),
+            "suggestions": suggestions,
             "auto_filled": auto_filled,
-            "note": "위 필드를 채워 같은 record 에 합쳐 다시 호출하세요 (dry_run 권장).",
+            "note": "위 필드를 채워 같은 record 에 합쳐 다시 호출하세요 (dry_run 권장). "
+                    "by_similarity 제안이 있으면 confidence 를 보고 사용자에게 확인 후 채우세요.",
         }
 
     async with SessionLocal() as session:

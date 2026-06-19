@@ -820,6 +820,34 @@ async def describe_data_capability(data_type: str, graph_type: str = "") -> dict
         )
 
 
+@mcp.tool(
+    title="비슷한 기존 데이터 찾기 (제안형 자동분류)",
+    description=(
+        "새 표/문서가 '기존 어떤 데이터와 같은 종류인지' 임베딩 유사도로 찾아 "
+        "team/group/graph_type 을 제안한다. 룰 없이 데이터가 늘어도 동작. "
+        "헤더(컬럼명)와 caption/title 을 주면 같은 data_type 의 비슷한 레코드 "
+        "top-k 와 다수결 제안을 반환한다. 중요: 이건 **제안**이지 확정이 아니다 — "
+        "confidence 가 low/medium 이면 사용자에게 'team 을 HE 로 할까요?' 처럼 "
+        "반드시 확인하라 (유사도 높아도 다른 종류일 수 있음). import_record 전에 "
+        "호출해 suggestions 를 채우는 용도."
+    ),
+)
+async def find_similar_data(
+    headers: list[str] | None = None,
+    caption: str = "",
+    title: str = "",
+    data_type: str = "DATA",
+    top_k: int = 5,
+) -> dict[str, Any]:
+    from .services import similarity_svc
+
+    async with SessionLocal() as session:
+        return await similarity_svc.suggest_by_similarity(
+            session, title=title, caption=caption, headers=headers,
+            data_type=data_type, top_k=top_k,
+        )
+
+
 # ===========================================================================
 # Write tools — Claude Desktop drag&drop → 우리 DB 규격으로 저장
 # (DESKTOP_MCP_MIGRATION_PLAN.md v2 Phase 0+1)
