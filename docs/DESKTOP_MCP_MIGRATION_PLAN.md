@@ -15,10 +15,15 @@
 | 3 | `9042143` | `graph_type` 분석힌트 메타 + B4(_extract_data 유실) 수정 | DB 보존 확인 |
 | 4 | `9119d5e` | `describe_data_capability` — 타입별 형태룰 + 적용도구 (런타임 조회) | DATA/SIM/미지타입 |
 | 7 | `d8fdb16` | manifest `input_requirements` — graph_type DATA→도구 연결 완결 | describe(DATA,stress_strain)→stress_strain_plot |
+| 5 | `6397af4` | **임베딩 유사도 제안형 자동분류** (`find_similar_data`) — 룰 없는 방식 | 새 표→유사 레코드 매칭→team/group 제안 |
 
-**연기 (Phase 5·6 — data_profiles 룰 엔진):** "같은 타입 자동 인식·저장규칙"은
-실데이터 헤더 패턴 20건+ 누적 후 착수 (과설계 방지, 적대검증 권고). 그 전까진
-team/group 을 사용자가 확인.
+**Phase 5 설계 변경 (룰 테이블 → 임베딩 유사도):** 원안의 선언적 `data_profiles`
+룰 테이블은 "데이터 종류가 늘 때마다 사람이 룰을 추가" 해야 해 확장성이 나쁘다는
+사용자 지적을 반영, **임베딩 유사도 기반 제안**으로 전환. 새 데이터가 들어오면
+기존 비슷한 레코드를 e5-base cosine 으로 찾아 team/group/graph_type 을 **제안**
+(확정 X — confidence 보고 사용자 확인, B3). 룰 0개로 새 타입 자동 분류, 데이터가
+늘어도 사람 작업 없음. 규모 커지면 `signature_embedding` 컬럼+pgvector ANN 으로
+내부 교체 (인터페이스 유지). **Phase 6(룰 폴백/승격)은 룰 방식 폐기로 불요.**
 
 ## 실사용법 (Claude Desktop)
 
