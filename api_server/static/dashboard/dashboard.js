@@ -1912,6 +1912,15 @@ function initApiKeyBox() {
 // Bootstrap
 // ============================================================================
 window.addEventListener("DOMContentLoaded", () => {
+  // HWAX 포털 SSO 핸드오프: portal-callback 이 1회용 aidh_sso_key 쿠키(Path=/)를
+  // 심어두면, 여기서 localStorage 로 옮기고 즉시 만료시킨다. 이후 apiFetch 가
+  // X-API-Key 로 그대로 동작한다. standalone 에서는 쿠키가 없어 무동작.
+  const ssoMatch = document.cookie.match(/(?:^|;\s*)aidh_sso_key=([^;]+)/);
+  if (ssoMatch && ssoMatch[1]) {
+    setApiKey(decodeURIComponent(ssoMatch[1]));
+    document.cookie = "aidh_sso_key=; Max-Age=0; path=/";
+  }
+
   initApiKeyBox();
   initTabs();
 

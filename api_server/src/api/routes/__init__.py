@@ -36,6 +36,7 @@ from . import (
     meta,
     metrics,
     org,
+    portal_sso,
     recommend,
     records,
     search,
@@ -96,6 +97,8 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(analytics.router)
     app.include_router(attachments.router)
     app.include_router(auth.router)
+    # /api/auth/portal-callback — HWAX 포털 SSO 핸드오프 (PORTAL_JWKS_URL 없으면 404)
+    app.include_router(portal_sso.router)
     app.include_router(bundle.router)
     app.include_router(convert.router)
     app.include_router(jobs.router)
@@ -157,6 +160,7 @@ __all__ = [
     "jobs",
     "meta",
     "metrics",
+    "portal_sso",
     "records",
     "register_routers",
     "search",

@@ -33,6 +33,19 @@ class Settings(BaseSettings):
     # 첫 키 발급/관리용 부트스트랩 키 (constant-time 비교). 빈 문자열이면 비활성.
     bootstrap_api_key: str = ""
 
+    # ------------------------------------------------------ HWAX Portal SSO
+    # 포털 launch 토큰(RS256) 검증용 JWKS URL. 빈 문자열이면 portal-callback
+    # 엔드포인트가 404 를 반환한다 (standalone 배포는 영향 없음).
+    portal_jwks_url: str = ""
+    # 토큰 ``aud`` 클레임이 일치해야 하는 값. systems.yaml 의 audience 와 동일.
+    portal_audience: str = "ai-data-hub"
+    # SSO 성공 후 리다이렉트할 브라우저 경로 (포털 prefix 포함 — app 은 root_path 없음).
+    portal_sso_landing: str = "/ai-data-hub/dashboard/"
+    # 발급되는 SSO ApiKey 의 만료 일수.
+    portal_sso_key_ttl_days: int = 30
+    # 핸드오프 쿠키 Secure 플래그. 포털이 TLS 로 서빙하면 true.
+    portal_cookie_secure: bool = False
+
     # --------------------------------------------------------------- metrics
     enable_metrics: bool = True
 

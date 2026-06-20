@@ -272,6 +272,20 @@ class RecordAttachment(Base):
     record: Mapped[Record] = relationship(back_populates="attachments")
 
 
+class User(Base):
+    # SQLite mirror of the real ``users`` table (Migration 0028). String PK
+    # instead of UUID; plain unique email instead of a functional lower()
+    # index — close enough for the conftest schema build / CI.
+    __tablename__ = "users"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    email: Mapped[str] = mapped_column(String(254), nullable=False, unique=True)
+    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    sso_subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class ApiKey(Base):
     __tablename__ = "api_keys"
     __table_args__ = (

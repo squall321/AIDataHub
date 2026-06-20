@@ -31,7 +31,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TIMESTAMP
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -575,6 +575,38 @@ class RecordAttachment(Base):
 # ---------------------------------------------------------------------------
 # ApiKey
 # ---------------------------------------------------------------------------
+class User(Base):
+    """SSO(JIT) 사용자 (Migration 0028).
+
+    HWAX 포털 SSO 첫 로그인 시 이메일 기준으로 just-in-time 생성된다. 비밀번호는
+    저장하지 않으며(로컬 로그인 없음), 발급된 SSO ApiKey 는 ``name='sso:<email>'``
+    규칙으로 연결된다(별도 FK 없음 — v1 은 이름 규칙으로 충분).
+    """
+
+    __tablename__ = "users"
+    __table_args__ = (
+        # 이메일은 대소문자 무시 유일. PostgreSQL 함수형 unique 인덱스.
+        Index("uq_users_email_lower", text("lower(email)"), unique=True),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    email: Mapped[str] = mapped_column(String(254), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    sso_subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<User id={self.id} email={self.email!r}>"
+
+
 class ApiKey(Base):
     """API 키 (SHA-256 해시 저장).
 
