@@ -821,6 +821,27 @@ async def describe_data_capability(data_type: str, graph_type: str = "") -> dict
 
 
 @mcp.tool(
+    title="레코드 메타데이터·보강 가이드",
+    description=(
+        "데이터를 제출(import_record)하기 전에 '어떤 메타데이터로 보강할 수 있고 "
+        "어떻게 채우는지'를 안내한다. 반환: 보강 필드(doc_type/tags/summary/agents/"
+        "classification/subject_keywords/agent_hints 등) 설명 + 선택 가능한 enum "
+        "(data_type/classification/status) + 등록된 doc_type 목록 + agent 별 권장 "
+        "태그 + 예시 레코드. agent_type 을 주면 그 챗봇에 맞는 보강 규칙만 좁혀 안내. "
+        "필수 필드(title/team/group)만 채우지 말고, 이걸로 doc_type·tags·summary 를 "
+        "보강하면 검색 품질이 크게 오른다."
+    ),
+)
+async def describe_record_schema(agent_type: str = "") -> dict[str, Any]:
+    from .services import ingest_guide_svc
+
+    async with SessionLocal() as session:
+        return await ingest_guide_svc.build_guide(
+            session, agent_type=agent_type or None
+        )
+
+
+@mcp.tool(
     title="비슷한 기존 데이터 찾기 (제안형 자동분류)",
     description=(
         "새 표/문서가 '기존 어떤 데이터와 같은 종류인지' 임베딩 유사도로 찾아 "
@@ -864,7 +885,9 @@ async def find_similar_data(
         "confidence 를 보고 낮으면 반드시 확인하라. (3) 모두 채워지면 status='ready'. "
         "(4) 그때 같은 record 로 dry_run=false 재호출 → status='saved' + id. "
         "주의: team/group 은 절대 임의로 채우지 말고 사용자에게 확인하라 — 틀리면 "
-        "엉뚱한 곳에 저장되어 못 찾는다. 각 호출은 독립이므로 record 전체를 매번 보낸다."
+        "엉뚱한 곳에 저장되어 못 찾는다. 각 호출은 독립이므로 record 전체를 매번 보낸다. "
+        "보강 권장: 필수 필드만 채우지 말고 describe_record_schema 로 doc_type·tags·"
+        "summary 등을 확인해 함께 채우면 검색 품질이 오른다."
     ),
 )
 async def import_record(
