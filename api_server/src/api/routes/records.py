@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,13 +30,6 @@ from api.auth.dependencies import Principal, require_api_key
 from api.db.base import SessionLocal, get_session
 from api.db.models import Record
 from api.services.audit import compute_diff, log_action, record_snapshot
-from api.services.sql_compat import (
-    ArrayPredicate,
-    array_contains,
-    array_overlap,
-    paginate_rows,
-    summary_ilike,
-)
 
 from ._schemas import RecordIn, RecordListResponse, RecordOut, RecordPatch
 
@@ -126,42 +119,20 @@ async def list_records(
         limit, offset,
     )
 
-    stmt = select(Record)
-    if data_type:
-        stmt = stmt.where(Record.data_type == data_type)
-    if team:
-        stmt = stmt.where(Record.team == team)
-    if group:
-        stmt = stmt.where(Record.group == group)
-    if year is not None:
-        stmt = stmt.where(Record.year == year)
-    if not include_deleted:
-        stmt = stmt.where(Record.deleted_at.is_(None))
+    from api.services.record_query_svc import query_records as _query_records
 
-    py_predicates: list[ArrayPredicate] = []
-    if agent:
-        pred = array_overlap(Record.agents, agent, session)
-        stmt = stmt.where(pred.where_clause)
-        if pred.python_filter is not None:
-            py_predicates.append(pred)
-    if tag:
-        pred = array_contains(Record.tags, tag, session)
-        stmt = stmt.where(pred.where_clause)
-        if pred.python_filter is not None:
-            py_predicates.append(pred)
-    if q:
-        stmt = stmt.where(
-            or_(summary_ilike(Record.title, q), summary_ilike(Record.summary, q))
-        )
-
-    stmt = stmt.order_by(Record.updated_at.desc(), Record.id.desc())
-
-    rows, total = await paginate_rows(
+    rows, total = await _query_records(
         session,
-        stmt,
+        data_type=data_type,
+        team=team,
+        group=group,
+        year=year,
+        agents=agent,
+        tags=tag,
+        q=q,
+        include_deleted=include_deleted,
         limit=limit,
         offset=offset,
-        extra_python_predicates=py_predicates,
     )
 
     return RecordListResponse(

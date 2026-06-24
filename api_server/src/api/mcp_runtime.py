@@ -665,6 +665,47 @@ async def tag_search(
 # ===========================================================================
 
 @mcp.tool(
+    title="정형 필터로 레코드 목록 조회",
+    description=(
+        "team/group/doc_type/data_type/tags/agent/year + 제목·요약 키워드(q) 로 "
+        "레코드 목록을 거른다. 의미검색(semantic_search)이 아니라 '조건에 맞는 것 "
+        "나열'이 필요할 때 — 예: 'HE 팀 manual 문서 목록', '2026년 VOC 데이터'. "
+        "본문은 빼고 경량 요약(id/title/team/group/doc_type/tags/summary)만 반환해 "
+        "토큰을 아낀다. 전체 본문은 get_record 로. tags 는 모두 포함(AND), agents 는 "
+        "겹침(OR). 결과의 total 로 더 있는지 판단해 offset 으로 페이지."
+    ),
+)
+async def list_records(
+    team: str = "",
+    group: str = "",
+    doc_type: str = "",
+    data_type: str = "",
+    tags: list[str] | None = None,
+    agents: list[str] | None = None,
+    year: int = 0,
+    q: str = "",
+    limit: int = 20,
+    offset: int = 0,
+) -> dict[str, Any]:
+    from .services import record_query_svc
+
+    async with SessionLocal() as session:
+        rows, total = await record_query_svc.query_records(
+            session,
+            team=team or None, group=group or None, doc_type=doc_type or None,
+            data_type=data_type or None, tags=tags or None, agents=agents or None,
+            year=year or None, q=q or None,
+            limit=max(1, min(int(limit), 100)), offset=max(0, int(offset)),
+        )
+        return {
+            "total": total,
+            "count": len(rows),
+            "offset": offset,
+            "items": [record_query_svc.to_summary(r) for r in rows],
+        }
+
+
+@mcp.tool(
     title="Get full record by ID",
     description=(
         "Returns the full record document including content body and metadata. "
