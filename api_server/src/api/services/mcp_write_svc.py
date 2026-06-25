@@ -200,9 +200,18 @@ async def run_import(
 
         # 실제 저장 — commit
         await session.commit()
+        # 시그니처 임베딩 즉시 계산 — 저장 직후 find_similar_data 에 바로 잡히게.
+        # best-effort: 실패해도 저장은 유지 (스케줄러 sweep 이 나중에 채움).
+        rid = outcome.get("id")
+        if rid:
+            try:
+                from . import similarity_svc
+                await similarity_svc.set_signature_embedding(session, rid)
+            except Exception:  # noqa: BLE001
+                pass
         return {
             "status": "saved",
-            "id": outcome.get("id"),
+            "id": rid,
             "action": outcome.get("action"),
             "warnings": outcome.get("warnings", []),
             "auto_filled": auto_filled,

@@ -147,8 +147,22 @@ async def _scheduler_loop() -> None:
                 job_svc.register("embed", job_svc.embed_handler, payload={})
                 last_embed_sweep = time.monotonic()
                 log.info("embed sweep scheduled")
+                # 시그니처 임베딩 백필 — find_similar_data ANN 용 (배치 import/기존분).
+                await _signature_backfill_sweep(log)
         except Exception as exc:  # noqa: BLE001
             log.warning("embed sweep scheduling failed: %s", exc)
+
+
+async def _signature_backfill_sweep(log) -> None:
+    """signature_embedding 이 NULL 인 레코드를 백필 (sweep 당 최대 500건)."""
+    from .db.base import SessionLocal
+    from .services import similarity_svc
+
+    async with SessionLocal() as session:
+        res = await similarity_svc.backfill_signature_embeddings(session, limit=500)
+        if res.get("filled"):
+            log.info("signature backfill: filled=%s remaining=%s",
+                     res["filled"], res["remaining"])
 
 
 async def _run_due_syncs(last_attempt: dict[int, float], log) -> None:

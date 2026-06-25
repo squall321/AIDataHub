@@ -142,6 +142,18 @@ class Record(Base):
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     source_file: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # ---- 시그니처 임베딩 (Migration 0029) — 유사도 자동분류 ANN 용 -------
+    # 시그니처(제목/caption + 헤더) 를 e5-base 768d 로 임베딩. find_similar_data
+    # 가 pgvector <=> 로 대량(O(log N)) 근사 최근접 검색. NULL = 미백필.
+    if _VECTOR_AVAILABLE:
+        signature_embedding: Mapped[list[float] | None] = mapped_column(
+            _Vector(_EMBEDDING_DIM), nullable=True
+        )
+    else:  # pragma: no cover — pgvector 패키지 없음
+        signature_embedding: Mapped[list[float] | None] = mapped_column(
+            _Vector, nullable=True
+        )
+
     # ---- Attachment summary (유지: app 측 INSERT 로 갱신) -----------------
     has_attachments: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"

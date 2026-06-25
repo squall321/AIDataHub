@@ -82,45 +82,29 @@ async def suggest_by_similarity(
     """
     import numpy as np
 
-    from ..db.models import Record
     from .embedding import get_embedder
+    from .sql_compat import is_postgres
 
     dt = (data_type or "DATA").upper()
     qsig = _signature(title=title, caption=caption, headers=headers, notes=notes)
 
     emb = await asyncio.to_thread(get_embedder)
-    qvec = np.asarray(await asyncio.to_thread(emb.encode_query, qsig), dtype="float32")
+    qvec_list = await asyncio.to_thread(emb.encode_query, qsig)
 
-    # 비교 대상: 같은 data_type, soft-delete 제외, 최근 우선
-    rows = (
-        await session.execute(
-            select(Record)
-            .where(Record.data_type == dt, Record.deleted_at.is_(None))
-            .order_by(Record.created_at.desc())
-            .limit(max_candidates + 1)
+    truncated = False
+    if is_postgres(session):
+        # 대량(O(log N)) — pgvector hnsw ANN. signature_embedding 백필된 행만.
+        neighbors = await _ann_neighbors(session, qvec_list, dt, top_k)
+    else:
+        # SQLite 테스트 — on-the-fly numpy 폴백 (max_candidates 까지).
+        neighbors, truncated = await _onthefly_neighbors(
+            session, emb, qvec_list, dt, top_k, max_candidates
         )
-    ).scalars().all()
-    truncated = len(rows) > max_candidates
-    rows = rows[:max_candidates]
 
-    if not rows:
+    if not neighbors:
         return {"neighbors": [], "suggested": {}, "confidence": "none",
-                "note": f"비교할 기존 {dt} 레코드가 없습니다 — 첫 데이터라 제안 불가, 직접 지정하세요."}
-
-    sigs = [_record_signature(r) for r in rows]
-    mat = np.asarray(await asyncio.to_thread(emb.encode_many, sigs), dtype="float32")
-    scores = mat @ qvec  # 정규화 벡터라 dot = cosine
-
-    order = np.argsort(scores)[::-1][:top_k]
-    neighbors: list[dict[str, Any]] = []
-    for i in order:
-        r = rows[int(i)]
-        c = r.content if isinstance(r.content, dict) else {}
-        neighbors.append({
-            "id": r.id, "title": r.title, "team": r.team, "group": r.group,
-            "doc_type": r.doc_type, "tags": list(r.tags or []),
-            "graph_type": c.get("graph_type"), "score": round(float(scores[int(i)]), 3),
-        })
+                "note": f"비교할 기존 {dt} 레코드가 없습니다 (또는 시그니처 미백필) — "
+                        "분류를 직접 지정하세요."}
 
     # 다수결 — medium 이상 이웃만 (낮으면 1등만 참고). 확정 아닌 제안.
     strong = [n for n in neighbors if n["score"] >= _MED] or neighbors[:1]
@@ -177,4 +161,139 @@ async def suggest_by_similarity(
             "confidence": _confidence(top_score), "note": note}
 
 
-__all__ = ["suggest_by_similarity"]
+def _neighbor_dict(r: Any, score: float) -> dict[str, Any]:
+    c = r.content if isinstance(r.content, dict) else {}
+    return {
+        "id": r.id, "title": r.title, "team": r.team, "group": r.group,
+        "doc_type": r.doc_type, "tags": list(r.tags or []),
+        "graph_type": c.get("graph_type"), "score": round(float(score), 3),
+    }
+
+
+async def _ann_neighbors(session, qvec_list, dt: str, top_k: int) -> list[dict[str, Any]]:
+    """pgvector hnsw ANN — signature_embedding <=> qvec. cosine 거리 → 유사도."""
+    from sqlalchemy import select
+
+    from ..db.models import Record
+
+    dist = Record.signature_embedding.cosine_distance(qvec_list).label("distance")
+    rows = (
+        await session.execute(
+            select(Record, dist)
+            .where(
+                Record.data_type == dt,
+                Record.deleted_at.is_(None),
+                Record.signature_embedding.isnot(None),
+            )
+            .order_by(dist)
+            .limit(top_k)
+        )
+    ).all()
+    # cosine 유사도 = 1 - cosine 거리 (정규화 벡터 가정).
+    return [_neighbor_dict(r, 1.0 - float(d)) for r, d in rows]
+
+
+async def _onthefly_neighbors(
+    session, emb, qvec_list, dt: str, top_k: int, max_candidates: int
+) -> tuple[list[dict[str, Any]], bool]:
+    """SQLite 테스트 폴백 — 후보를 매번 임베딩해 numpy cosine."""
+    import numpy as np
+    from sqlalchemy import select
+
+    from ..db.models import Record
+
+    rows = (
+        await session.execute(
+            select(Record)
+            .where(Record.data_type == dt, Record.deleted_at.is_(None))
+            .order_by(Record.created_at.desc())
+            .limit(max_candidates + 1)
+        )
+    ).scalars().all()
+    truncated = len(rows) > max_candidates
+    rows = rows[:max_candidates]
+    if not rows:
+        return [], truncated
+    qvec = np.asarray(qvec_list, dtype="float32")
+    sigs = [_record_signature(r) for r in rows]
+    # ANN 경로(compute_signature_embedding)와 동일하게 encode_query 로 통일 —
+    # 시그니처끼리의 대칭 비교 (클러스터링). encode_many(passage) 면 비대칭이 됨.
+    def _embed_q(texts):
+        return [emb.encode_query(t) for t in texts]
+    mat = np.asarray(await asyncio.to_thread(_embed_q, sigs), dtype="float32")
+    scores = mat @ qvec
+    order = np.argsort(scores)[::-1][:top_k]
+    return [_neighbor_dict(rows[int(i)], float(scores[int(i)])) for i in order], truncated
+
+
+# ---------------------------------------------------------------------------
+# 시그니처 임베딩 쓰기/백필 — ANN 인덱스에 채워 넣는다.
+# ---------------------------------------------------------------------------
+async def compute_signature_embedding(rec: Any) -> list[float] | None:
+    """레코드 1건의 시그니처 임베딩 계산 (저장은 호출자)."""
+    from .embedding import get_embedder
+
+    emb = await asyncio.to_thread(get_embedder)
+    return await asyncio.to_thread(emb.encode_query, _record_signature(rec))
+
+
+async def set_signature_embedding(session, record_id: str) -> bool:
+    """단건 시그니처 임베딩 계산 + 저장 (import 직후 즉시 검색 가능하게)."""
+    from sqlalchemy import select, update
+
+    from ..db.models import Record
+
+    rec = (
+        await session.execute(select(Record).where(Record.id == record_id))
+    ).scalar_one_or_none()
+    if rec is None:
+        return False
+    vec = await compute_signature_embedding(rec)
+    await session.execute(
+        update(Record).where(Record.id == record_id).values(signature_embedding=vec)
+    )
+    await session.commit()
+    return True
+
+
+async def backfill_signature_embeddings(session, *, limit: int = 500) -> dict[str, int]:
+    """signature_embedding 이 NULL 인 레코드를 일괄 채운다 (스케줄러 sweep + 1회 백필)."""
+    from sqlalchemy import select, update
+
+    from ..db.models import Record
+    from .embedding import get_embedder
+
+    rows = (
+        await session.execute(
+            select(Record)
+            .where(Record.signature_embedding.is_(None), Record.deleted_at.is_(None))
+            .limit(limit)
+        )
+    ).scalars().all()
+    if not rows:
+        return {"filled": 0, "remaining": 0}
+
+    emb = await asyncio.to_thread(get_embedder)
+    sigs = [_record_signature(r) for r in rows]
+    vecs = await asyncio.to_thread(emb.encode_many, sigs)
+    for r, v in zip(rows, vecs):
+        await session.execute(
+            update(Record).where(Record.id == r.id).values(signature_embedding=list(v))
+        )
+    await session.commit()
+
+    remaining = (
+        await session.execute(
+            select(Record).where(
+                Record.signature_embedding.is_(None), Record.deleted_at.is_(None)
+            ).limit(1)
+        )
+    ).first()
+    return {"filled": len(rows), "remaining": 1 if remaining else 0}
+
+
+__all__ = [
+    "suggest_by_similarity",
+    "set_signature_embedding",
+    "backfill_signature_embeddings",
+]
