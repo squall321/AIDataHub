@@ -310,6 +310,34 @@ async def patch_agent(*, agent_type: str, patch: dict[str, Any], api_key: str | 
         return {"status": "patched", "agent_type": row.agent_type}
 
 
+async def bind_records_to_agent(*, agent_type: str, api_key: str | None = None) -> dict[str, Any]:
+    """agent 의 기대 스키마(required_doc_type/tags/data_types)에 맞는 기존
+    레코드를 그 agent 에 자동 연결. create_agent 후 데이터를 붙이는 마지막 고리."""
+    if not agent_type:
+        return {"status": "error", "error": "agent_type required",
+                "code": "missing_field", "recoverable": True,
+                "suggestion": "연결할 agent_type 을 지정하세요."}
+    async with SessionLocal() as session:
+        _, err = await _authed(api_key, session)
+        if err:
+            return err
+        from . import agent_draft_svc, agent_svc
+        agent = await agent_svc.get_agent(session, agent_type)
+        if agent is None:
+            return {"status": "error", "error": f"agent not found: {agent_type}",
+                    "code": "not_found", "recoverable": True,
+                    "suggestion": "먼저 create_agent 로 만들거나 list_agents 로 확인하세요."}
+        result = await agent_draft_svc.bind_matching_records(
+            session,
+            agent_type=agent_type,
+            required_doc_type=agent.required_doc_type,
+            required_tags=list(agent.required_tags or []),
+            common_tags=list(agent.common_tags or []),
+            data_types=list(agent.data_types or []),
+        )
+        return {"status": "bound", **result}
+
+
 async def list_doc_types(*, api_key: str | None = None) -> dict[str, Any]:
     """등록된 doc_type(의미 분류) 목록 — create_agent 의 required_doc_type 선택용."""
     async with SessionLocal() as session:
@@ -458,6 +486,7 @@ __all__ = [
     "draft_agent",
     "create_agent",
     "patch_agent",
+    "bind_records_to_agent",
     "list_doc_types",
     "create_doc_type",
 ]

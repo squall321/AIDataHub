@@ -410,136 +410,23 @@ async def get_data_aggregate(
     ),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    """간단한 통계 집계 — 작은 AI 가 직접 계산하지 않아도 되게."""
+    """간단한 통계 집계 — 작은 AI 가 직접 계산하지 않아도 되게.
+
+    집계 수학은 services/data_svc.aggregate 에 위임 (MCP data_aggregate 와 공유).
+    """
+    from api.services import data_svc
+
     rec = _ensure_data_record(await _load_record(session, record_id))
-
-    headers = _extract_headers(rec)
-    units = _extract_units(rec)
-    rows = _extract_rows(rec)
-
-    # column 검증
-    if op != "count" and not column:
-        raise HTTPException(
-            status_code=422,
-            detail=f"op={op} requires 'column' parameter",
-        )
-    if column and column not in headers:
-        raise HTTPException(
-            status_code=422,
-            detail=f"unknown column {column!r} (available: {headers})",
-        )
-    if group_by and group_by not in headers:
-        raise HTTPException(
-            status_code=422,
-            detail=f"unknown group_by column {group_by!r} (available: {headers})",
-        )
-
-    # where 사전필터
-    if where:
-        if ":" not in where:
-            raise HTTPException(
-                status_code=422,
-                detail="where must be in 'column:value' format",
-            )
-        wcol, wval = where.split(":", 1)
-        wcol, wval = wcol.strip(), wval.strip()
-        if wcol not in headers:
-            raise HTTPException(
-                status_code=422,
-                detail=f"unknown where column {wcol!r}",
-            )
-        widx = headers.index(wcol)
-        rows = [r for r in rows if widx < len(r) and str(r[widx]) == wval]
-
-    col_idx = headers.index(column) if column else None
-    grp_idx = headers.index(group_by) if group_by else None
-
-    def _to_number(v: Any) -> float | None:
-        if isinstance(v, bool):
-            return None
-        if isinstance(v, (int, float)):
-            return float(v)
-        if isinstance(v, str):
-            try:
-                return float(v)
-            except ValueError:
-                return None
-        return None
-
-    def _agg(values: list[Any]) -> Any:
-        if op == "count":
-            return sum(1 for v in values if v is not None)
-        nums = [n for v in values if (n := _to_number(v)) is not None]
-        if not nums:
-            return None
-        if op == "avg":
-            return round(sum(nums) / len(nums), 6)
-        if op == "max":
-            return max(nums)
-        if op == "min":
-            return min(nums)
-        if op == "sum":
-            return round(sum(nums), 6)
-        return None  # unreachable
-
-    unit = None
-    if column and col_idx is not None and col_idx < len(units):
-        unit = units[col_idx]
-
-    if group_by is None:
-        if op == "count":
-            values = [
-                (r[col_idx] if col_idx is not None and col_idx < len(r) else None)
-                for r in rows
-            ] if col_idx is not None else list(rows)
-            result = sum(1 for r in rows if r is not None) if col_idx is None else _agg(values)
-        else:
-            values = [r[col_idx] for r in rows if col_idx is not None and col_idx < len(r)]
-            result = _agg(values)
-        return {
-            "record_id": rec.id,
-            "op": op,
-            "column": column,
-            "result": result,
-            "unit": unit,
-            "rows_considered": len(rows),
-        }
-
-    # group_by 모드
-    groups: dict[Any, list[Any]] = {}
-    for r in rows:
-        if grp_idx is not None and grp_idx < len(r):
-            key = r[grp_idx]
-        else:
-            key = None
-        if col_idx is not None and col_idx < len(r):
-            groups.setdefault(key, []).append(r[col_idx])
-        else:
-            groups.setdefault(key, []).append(None)
-
-    metric_key = f"{op}_{column}" if column else op
-    out_rows = []
-    for k, vals in groups.items():
-        out_rows.append({group_by: k, metric_key: _agg(vals)})
-
-    # 결과 정렬: numeric metric 이면 desc, 아니면 group key 정렬.
     try:
-        out_rows.sort(
-            key=lambda r: (r[metric_key] is None, -(r[metric_key] or 0)),
+        result = data_svc.aggregate(
+            headers=_extract_headers(rec),
+            units=_extract_units(rec),
+            rows=_extract_rows(rec),
+            op=op, column=column, group_by=group_by, where=where,
         )
-    except TypeError:
-        out_rows.sort(key=lambda r: str(r.get(group_by)))
-
-    return {
-        "record_id": rec.id,
-        "op": op,
-        "column": column,
-        "group_by": group_by,
-        "unit": unit,
-        "result": out_rows,
-        "groups": len(out_rows),
-        "rows_considered": len(rows),
-    }
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"record_id": rec.id, **result}
 
 
 __all__ = ["router"]

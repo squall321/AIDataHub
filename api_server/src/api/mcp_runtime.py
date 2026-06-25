@@ -706,6 +706,51 @@ async def list_records(
 
 
 @mcp.tool(
+    title="DATA 표 집계 (avg/max/min/sum/count + group_by)",
+    description=(
+        "DATA 레코드(표)의 통계를 서버가 계산해 돌려준다 — 전체 행을 받아 직접 "
+        "계산하지 않아도 된다. op=avg|max|min|sum|count, column=대상 컬럼명(count "
+        "외 필수), group_by=그룹 컬럼(옵션), where='컬럼:값' 사전필터(옵션). "
+        "예: record_id 의 stress 평균 → op=avg, column=stress. region 별 yield 최대 "
+        "→ op=max, column=yield, group_by=region. 큰 표일수록 토큰 절약 효과가 크다."
+    ),
+)
+async def data_aggregate(
+    record_id: str,
+    op: str,
+    column: str = "",
+    group_by: str = "",
+    where: str = "",
+) -> dict[str, Any]:
+    from sqlalchemy import select
+
+    from .db.models import Record
+    from .services import data_svc
+
+    async with SessionLocal() as session:
+        rec = (
+            await session.execute(select(Record).where(Record.id == record_id))
+        ).scalar_one_or_none()
+        if rec is None:
+            return {"error": f"record not found: {record_id}", "code": "not_found"}
+        if rec.data_type != "DATA":
+            return {"error": f"{record_id} is {rec.data_type}, not DATA (집계는 표 데이터만)",
+                    "code": "not_data"}
+        c = rec.content if isinstance(rec.content, dict) else {}
+        try:
+            result = data_svc.aggregate(
+                headers=list(c.get("headers") or []),
+                units=c.get("units") if isinstance(c.get("units"), list) else None,
+                rows=list(c.get("rows") or []),
+                op=op, column=column or None, group_by=group_by or None, where=where or None,
+            )
+        except ValueError as exc:
+            return {"error": str(exc), "code": "bad_request", "recoverable": True,
+                    "suggestion": "op/column/group_by 를 확인하세요 (data_columns 로 컬럼 목록 확인)."}
+        return {"record_id": rec.id, **result}
+
+
+@mcp.tool(
     title="Get full record by ID",
     description=(
         "Returns the full record document including content body and metadata. "
@@ -1009,6 +1054,20 @@ async def create_agent(agent: dict[str, Any], api_key: str = "") -> dict[str, An
 async def patch_agent(agent_type: str, patch: dict[str, Any], api_key: str = "") -> dict[str, Any]:
     from .services import mcp_write_svc
     return await mcp_write_svc.patch_agent(agent_type=agent_type, patch=patch, api_key=api_key or None)
+
+
+@mcp.tool(
+    title="Agent 에 매칭 레코드 연결",
+    description=(
+        "agent 의 기대 스키마(required_doc_type / required_tags / data_types)에 "
+        "부합하는 기존 레코드를 그 agent 에 자동 바인딩한다. create_agent 로 챗봇을 "
+        "정의한 뒤 '이 챗봇이 검색할 데이터를 연결'하는 마지막 단계. agent 정의에 "
+        "필터 조건이 있어야 매칭된다(없으면 0건)."
+    ),
+)
+async def bind_records_to_agent(agent_type: str, api_key: str = "") -> dict[str, Any]:
+    from .services import mcp_write_svc
+    return await mcp_write_svc.bind_records_to_agent(agent_type=agent_type, api_key=api_key or None)
 
 
 @mcp.tool(
