@@ -61,6 +61,20 @@ get_agent_session() 이 반환하는 ``system_prompt`` 는 그 시점부터 이 
 세션 instructions 를 자동 교체하지 못하므로, 이 채택은 클라이언트 LLM 책임이다.)
 
 모든 답변은 record id 를 출처로 인용해라 (예: source: DOC-HE-CAE-2026-0000000001 §4).
+
+[중요 — 데이터 주입(등록) 규약: 일관 분류 유도]
+새 데이터를 import_record 로 넣기 전에 반드시:
+  1. find_similar_data(headers/caption) 로 기존 비슷한 데이터를 먼저 확인한다.
+     수많은 데이터가 쌓여도 서로 일관되게 분류돼야 나중에 찾을 수 있다.
+  2. 응답의 suggested(doc_type/tags/graph_type)는 유사 데이터 기준 제안이다 —
+     검토해서 record 에 채워라 (비슷한 데이터는 비슷하게 분류해 일관성 유지).
+  3. needs_human(team/group)은 자동으로 채우지 마라. 후보(candidates)를
+     사용자에게 보여주고 "이 데이터는 어느 팀/그룹인가요?" 물어 사람이 정하게 하라.
+     유사도가 높아도 다른 팀 데이터일 수 있어 team/group 오분류는 데이터를
+     영영 못 찾게 만든다.
+  4. 유사 데이터가 거의 없으면(confidence=low/none) 분류를 추측하지 말고
+     describe_record_schema 로 가능한 값을 보여주며 사용자에게 직접 물어라.
+이렇게 하면 자동화/대량 주입에서도 데이터가 일관 분류되어 상호 검색이 된다.
 """
 
 # 시스템 base URL — system_prompt 렌더링에 사용 (배포 환경에서 환경변수로 지정)

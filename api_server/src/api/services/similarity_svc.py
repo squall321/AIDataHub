@@ -118,6 +118,7 @@ async def suggest_by_similarity(
         c = r.content if isinstance(r.content, dict) else {}
         neighbors.append({
             "id": r.id, "title": r.title, "team": r.team, "group": r.group,
+            "doc_type": r.doc_type, "tags": list(r.tags or []),
             "graph_type": c.get("graph_type"), "score": round(float(scores[int(i)]), 3),
         })
 
@@ -132,18 +133,47 @@ async def suggest_by_similarity(
         return max(set(vals), key=vals.count)
 
     suggested: dict[str, Any] = {}
-    for k in ("team", "group", "graph_type"):
+    # tags / doc_type / graph_type — 일관 추론 가능한 분류 메타. AI 가 채워 제안.
+    for k in ("doc_type", "graph_type"):
         v = _majority(k)
         if v is not None:
             suggested[k] = {"value": v, "source": f"유사 레코드 {strong[0]['id']} 등 {len(strong)}건",
                             "score": top_score}
+    # tags 는 strong 이웃들의 합집합 (등장 2회 이상 우선) — 일관 태깅 유도.
+    tag_freq: dict[str, int] = {}
+    for n in strong:
+        for t in n.get("tags") or []:
+            tag_freq[t] = tag_freq.get(t, 0) + 1
+    common_tags = [t for t, f in sorted(tag_freq.items(), key=lambda x: -x[1]) if f >= 1][:8]
+    if common_tags:
+        suggested["tags"] = {"value": common_tags,
+                             "source": f"유사 레코드 {len(strong)}건의 태그",
+                             "score": top_score}
 
-    note = ("이건 제안일 뿐입니다. team/group 은 사용자에게 확인하세요 "
-            "(유사도가 높아도 다른 종류일 수 있음).")
+    # team / group — 자동 확정 금지. 추론값은 '후보'로만 주고 사람이 확인하게 유도.
+    team_candidates = sorted({n["team"] for n in strong if n.get("team")})
+    group_candidates = sorted({n["group"] for n in strong if n.get("group")})
+    needs_human: dict[str, Any] = {}
+    if team_candidates:
+        needs_human["team"] = {"candidates": team_candidates,
+                               "most_similar": neighbors[0]["team"] if neighbors else None,
+                               "ask": "team 을 자동으로 정하지 말고 사용자에게 확인하세요."}
+    if group_candidates:
+        needs_human["group"] = {"candidates": group_candidates,
+                                "most_similar": neighbors[0]["group"] if neighbors else None,
+                                "ask": "group 을 자동으로 정하지 말고 사용자에게 확인하세요."}
+
+    note = ("doc_type/tags/graph_type 은 유사 데이터 기준 제안이니 검토 후 채우세요. "
+            "team/group 은 자동 확정하지 말고 needs_human 의 후보를 사용자에게 보여주고 "
+            "어디에 속하는지 물어보세요 (유사도가 높아도 다른 팀 데이터일 수 있음).")
+    if top_score < _MED:
+        note = ("유사도가 낮습니다 — 같은 종류 데이터가 거의 없습니다. 분류 메타를 "
+                "추측하지 말고 사용자에게 team/group/doc_type 을 직접 물어보세요.")
     if truncated:
-        note += f" [참고: {dt} 레코드가 {max_candidates}건 초과라 최근 {max_candidates}건만 비교]"
+        note += f" [참고: {dt} {max_candidates}건 초과라 최근 {max_candidates}건만 비교]"
 
     return {"neighbors": neighbors, "suggested": suggested,
+            "needs_human": needs_human,
             "confidence": _confidence(top_score), "note": note}
 
 
