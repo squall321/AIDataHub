@@ -413,6 +413,10 @@ async def write_record(
         existing.schema_version = record_in.schema_version
         existing.content = dict(record_in.content)
         existing.content_hash = content_hash
+        # 제목/내용 변경 → 시그니처 stale. NULL 로 리셋하면 매-tick 백필이
+        # 새 시그니처로 재계산 (find_similar_data 분류가 최신 내용 반영).
+        if hasattr(existing, "signature_embedding"):
+            existing.signature_embedding = None
         existing.source_file = record_in.source_file
         existing.author = record_in.author
         existing.department = record_in.department
