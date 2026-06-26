@@ -147,10 +147,15 @@ async def _scheduler_loop() -> None:
                 job_svc.register("embed", job_svc.embed_handler, payload={})
                 last_embed_sweep = time.monotonic()
                 log.info("embed sweep scheduled")
-                # 시그니처 임베딩 백필 — find_similar_data ANN 용 (배치 import/기존분).
-                await _signature_backfill_sweep(log)
         except Exception as exc:  # noqa: BLE001
             log.warning("embed sweep scheduling failed: %s", exc)
+
+        # --- signature 백필 (매 tick — REST 배치 import 가 ~1분 내 검색되게).
+        # NULL 0건이면 즉시 종료라 저렴. find_similar_data ANN 용.
+        try:
+            await _signature_backfill_sweep(log)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("signature backfill failed: %s", exc)
 
 
 async def _signature_backfill_sweep(log) -> None:

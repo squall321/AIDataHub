@@ -89,7 +89,9 @@ async def suggest_by_similarity(
     qsig = _signature(title=title, caption=caption, headers=headers, notes=notes)
 
     emb = await asyncio.to_thread(get_embedder)
-    qvec_list = await asyncio.to_thread(emb.encode_query, qsig)
+    # 시그니처는 passage 인코딩으로 통일 (저장분과 동일 공간). 백필(encode_many),
+    # inline(compute_signature_embedding), 질의 모두 passage → 대칭 비교.
+    qvec_list = await asyncio.to_thread(emb.encode, qsig)
 
     truncated = False
     if is_postgres(session):
@@ -216,11 +218,8 @@ async def _onthefly_neighbors(
         return [], truncated
     qvec = np.asarray(qvec_list, dtype="float32")
     sigs = [_record_signature(r) for r in rows]
-    # ANN 경로(compute_signature_embedding)와 동일하게 encode_query 로 통일 —
-    # 시그니처끼리의 대칭 비교 (클러스터링). encode_many(passage) 면 비대칭이 됨.
-    def _embed_q(texts):
-        return [emb.encode_query(t) for t in texts]
-    mat = np.asarray(await asyncio.to_thread(_embed_q, sigs), dtype="float32")
+    # ANN/백필과 동일하게 passage 인코딩(encode_many, 배치) — 대칭 비교.
+    mat = np.asarray(await asyncio.to_thread(emb.encode_many, sigs), dtype="float32")
     scores = mat @ qvec
     order = np.argsort(scores)[::-1][:top_k]
     return [_neighbor_dict(rows[int(i)], float(scores[int(i)])) for i in order], truncated
@@ -230,11 +229,11 @@ async def _onthefly_neighbors(
 # 시그니처 임베딩 쓰기/백필 — ANN 인덱스에 채워 넣는다.
 # ---------------------------------------------------------------------------
 async def compute_signature_embedding(rec: Any) -> list[float] | None:
-    """레코드 1건의 시그니처 임베딩 계산 (저장은 호출자)."""
+    """레코드 1건의 시그니처 임베딩 계산 (passage 인코딩 — 백필/질의와 통일)."""
     from .embedding import get_embedder
 
     emb = await asyncio.to_thread(get_embedder)
-    return await asyncio.to_thread(emb.encode_query, _record_signature(rec))
+    return await asyncio.to_thread(emb.encode, _record_signature(rec))
 
 
 async def set_signature_embedding(session, record_id: str) -> bool:
