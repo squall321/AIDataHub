@@ -280,6 +280,74 @@ async def test_session(test_session_maker) -> AsyncGenerator[Any, None]:
 
 
 # ---------------------------------------------------------------------------
+# PostgreSQL 통합 테스트 엔진/세션 — 실 pgvector 경로 검증 (2계층 테스트 상단)
+#
+# SQLite 폴백이 못 타는 프로덕션 전용 경로를 실제 PostgreSQL 로 검증한다:
+#   - suggest_by_similarity → _ann_neighbors  (vector <=> 연산자, ANN)
+#   - query_records tags    → array_contains  (@> 배열 포함 연산자)
+#   - paginate_rows         → SQL count()/limit/offset
+#
+# opt-in: AIDH_TEST_PG_URL (async URL: postgresql+asyncpg://user:pw@host:port/db)
+# 미설정이면 skip → dev box(설치 금지)·PG 미가용 CI 에서 안전하게 넘어간다.
+# 반드시 '폐기용 test DB' 를 가리켜라 (per-test 트랜잭션 롤백 + 안전상 drop_all 안 함).
+# 실행 예:
+#   EMBEDDING_PROVIDER=hash \
+#   AIDH_TEST_PG_URL=postgresql+asyncpg://aidh:pw@127.0.0.1:5435/aidh_test \
+#     .venv/bin/python -m pytest tests/test_pg_integration.py -q
+# ---------------------------------------------------------------------------
+@pytest_asyncio.fixture(scope="session")
+async def pg_engine():
+    """AIDH_TEST_PG_URL 로 실 PG 엔진 준비 (pgvector 확장 + 스키마 보장)."""
+    url = os.environ.get("AIDH_TEST_PG_URL")
+    if not url:
+        pytest.skip("AIDH_TEST_PG_URL 미설정 — PG 통합테스트 skip (타겟/CI 에서 실행)")
+
+    try:
+        from sqlalchemy.ext.asyncio import create_async_engine
+    except ImportError:  # pragma: no cover
+        pytest.skip("sqlalchemy[asyncio] 없음")
+
+    engine = create_async_engine(url, echo=False, future=True)
+    try:
+        from api.db.base import Base  # noqa: F401
+        import api.db.models  # noqa: F401  (metadata 에 테이블 등록)
+
+        async with engine.begin() as conn:
+            # Vector 컬럼 DDL 전 pgvector 확장 필요. 폐기용 DB 라 idempotent.
+            await conn.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector")
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as exc:  # 도달 불가/권한/확장 없음 → skip (실패 아님)
+        await engine.dispose()
+        pytest.skip(f"PG 도달·스키마 준비 실패 — skip: {exc}")
+
+    yield engine
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def pg_session(pg_engine) -> AsyncGenerator[Any, None]:
+    """실 PG 세션 — per-test 트랜잭션 롤백 (데이터 오염 없음).
+
+    커넥션에 외부 트랜잭션을 열고 세션을 savepoint 모드로 bind → 세션 내부
+    commit 조차 savepoint 해제로 흡수되고, 종료 시 외부 롤백이 전부 되돌린다.
+    """
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    conn = await pg_engine.connect()
+    trans = await conn.begin()
+    session = AsyncSession(
+        bind=conn, expire_on_commit=False, join_transaction_mode="create_savepoint"
+    )
+    try:
+        yield session
+    finally:
+        await session.close()
+        if trans.is_active:
+            await trans.rollback()
+        await conn.close()
+
+
+# ---------------------------------------------------------------------------
 # HTTP test client (ASGI transport)
 # ---------------------------------------------------------------------------
 @pytest_asyncio.fixture
