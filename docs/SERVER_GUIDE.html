@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<!-- AI Data Hub 서버 개요·사용 가이드 (자체 완결 단일 HTML, 오프라인 열람 가능) -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Data Hub — 서버 개요 및 사용 가이드</title>
+<style>
+/* ── 토큰: 라이트 기본 ─────────────────────────────────────────── */
+:root{
+  --bg:#EDF0F4; --surface:#FFFFFF; --surface-2:#F4F6F9;
+  --ink:#141A23; --ink-2:#33404F; --muted:#5A6675;
+  --line:#D8DEE7; --line-2:#E7ECF2;
+  --accent:#0B7A8C; --accent-strong:#095E6C; --accent-soft:#E1F0F2;
+  --good:#1E9E6A; --warn:#B57F1B; --crit:#CF4438;
+  --t-doc:#3E6FE0; --t-data:#0B9E8E; --t-sim:#9A55CF;
+  --t-cad:#D9821F; --t-log:#67727F; --t-form:#C24E68;
+  --shadow:0 1px 2px rgba(20,26,35,.05), 0 8px 24px -16px rgba(20,26,35,.25);
+  --font-sans:system-ui,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --font-mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+  --maxw:1180px;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0D1117; --surface:#151B24; --surface-2:#1B2330;
+    --ink:#E7ECF3; --ink-2:#C2CCD8; --muted:#93A1B2;
+    --line:#29323F; --line-2:#222A35;
+    --accent:#33C0D4; --accent-strong:#5BD2E3; --accent-soft:#10303A;
+    --good:#3CBE86; --warn:#D8A63F; --crit:#E8695E;
+    --t-doc:#6E9BF5; --t-data:#2CBDAC; --t-sim:#B47BE0;
+    --t-cad:#E7A24E; --t-log:#8B96A3; --t-form:#DB7288;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -18px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="light"]{
+  --bg:#EDF0F4; --surface:#FFFFFF; --surface-2:#F4F6F9;
+  --ink:#141A23; --ink-2:#33404F; --muted:#5A6675; --line:#D8DEE7; --line-2:#E7ECF2;
+  --accent:#0B7A8C; --accent-strong:#095E6C; --accent-soft:#E1F0F2;
+  --good:#1E9E6A; --warn:#B57F1B; --crit:#CF4438;
+  --t-doc:#3E6FE0; --t-data:#0B9E8E; --t-sim:#9A55CF; --t-cad:#D9821F; --t-log:#67727F; --t-form:#C24E68;
+}
+:root[data-theme="dark"]{
+  --bg:#0D1117; --surface:#151B24; --surface-2:#1B2330;
+  --ink:#E7ECF3; --ink-2:#C2CCD8; --muted:#93A1B2; --line:#29323F; --line-2:#222A35;
+  --accent:#33C0D4; --accent-strong:#5BD2E3; --accent-soft:#10303A;
+  --good:#3CBE86; --warn:#D8A63F; --crit:#E8695E;
+  --t-doc:#6E9BF5; --t-data:#2CBDAC; --t-sim:#B47BE0; --t-cad:#E7A24E; --t-log:#8B96A3; --t-form:#DB7288;
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:var(--font-sans); font-size:16px; line-height:1.62;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+}
+a{color:var(--accent-strong); text-decoration:none}
+a:hover{text-decoration:underline}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:3px}
+code,kbd,pre,.mono{font-family:var(--font-mono)}
+
+/* ── 상단 바 ──────────────────────────────────────────────────── */
+.topbar{
+  position:sticky; top:0; z-index:50;
+  display:flex; align-items:center; gap:14px;
+  padding:11px clamp(16px,4vw,40px);
+  background:color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter:saturate(1.4) blur(10px);
+  border-bottom:1px solid var(--line);
+}
+.topbar .brand{display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:-.01em}
+.topbar .dot{width:11px; height:11px; border-radius:50%; background:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-soft)}
+.topbar .brand small{font:600 11px/1 var(--font-mono); color:var(--muted); letter-spacing:.08em; text-transform:uppercase}
+.topbar .spacer{flex:1}
+.toggle{
+  font:600 12px/1 var(--font-mono); color:var(--ink-2);
+  background:var(--surface-2); border:1px solid var(--line);
+  padding:7px 11px; border-radius:6px; cursor:pointer; letter-spacing:.03em;
+}
+.toggle:hover{border-color:var(--accent)}
+
+/* ── 레이아웃 ─────────────────────────────────────────────────── */
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 clamp(16px,4vw,40px)}
+.masthead{padding:56px 0 30px; border-bottom:1px solid var(--line)}
+.eyebrow{font:600 12px/1 var(--font-mono); letter-spacing:.16em; text-transform:uppercase; color:var(--accent-strong)}
+.masthead h1{
+  font-size:clamp(30px,4.6vw,50px); line-height:1.04; letter-spacing:-.028em;
+  margin:16px 0 12px; font-weight:800; text-wrap:balance; max-width:20ch;
+}
+.masthead .lede{font-size:clamp(16px,2vw,19px); color:var(--ink-2); max-width:60ch; margin:0}
+.metaline{margin-top:22px; display:flex; flex-wrap:wrap; gap:8px}
+.metaline .pill{
+  font:600 12px/1 var(--font-mono); letter-spacing:.02em; color:var(--ink-2);
+  background:var(--surface); border:1px solid var(--line); padding:7px 10px; border-radius:999px;
+}
+.metaline .pill b{color:var(--accent-strong); font-weight:700}
+
+/* 통계 스트립 */
+.stats{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1px;
+  background:var(--line); border:1px solid var(--line); border-radius:10px; overflow:hidden;
+  margin:30px 0 8px;
+}
+.stat{background:var(--surface); padding:18px 18px}
+.stat .n{font:800 26px/1 var(--font-mono); letter-spacing:-.02em; color:var(--ink)}
+.stat .n span{font-size:14px; color:var(--muted); font-weight:600}
+.stat .k{margin-top:6px; font-size:12.5px; color:var(--muted); letter-spacing:.01em}
+
+/* 본문 그리드 + TOC */
+.layout{display:grid; grid-template-columns:212px minmax(0,1fr); gap:44px; padding:40px 0 80px}
+@media (max-width:900px){.layout{grid-template-columns:1fr; gap:24px}}
+.toc{position:sticky; top:70px; align-self:start; font-size:14px}
+@media (max-width:900px){.toc{position:static; border:1px solid var(--line); border-radius:10px; padding:14px 16px; background:var(--surface)}}
+.toc .t{font:600 11px/1 var(--font-mono); letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin-bottom:12px}
+.toc ol{list-style:none; margin:0; padding:0; counter-reset:s}
+.toc li{counter-increment:s; margin:2px 0}
+.toc a{display:flex; gap:9px; padding:6px 8px; border-radius:6px; color:var(--ink-2); align-items:baseline}
+.toc a::before{content:counter(s,decimal-leading-zero); font:600 11px/1 var(--font-mono); color:var(--accent-strong); min-width:20px}
+.toc a:hover{background:var(--surface-2); text-decoration:none; color:var(--ink)}
+
+/* 섹션 */
+.section{scroll-margin-top:72px; padding-bottom:14px; margin-bottom:40px; border-bottom:1px solid var(--line-2)}
+.section:last-of-type{border-bottom:none}
+.section > h2{
+  font-size:clamp(21px,2.6vw,27px); letter-spacing:-.02em; font-weight:800; margin:0 0 6px;
+  display:flex; align-items:baseline; gap:12px; text-wrap:balance;
+}
+.section > h2 .idx{font:700 13px/1 var(--font-mono); color:var(--accent-strong); letter-spacing:.04em}
+.section > .intro{color:var(--ink-2); max-width:70ch; margin:6px 0 22px}
+h3{font-size:16.5px; letter-spacing:-.01em; margin:26px 0 10px; font-weight:700}
+p{margin:0 0 12px; max-width:74ch}
+.section ul{max-width:74ch; padding-left:20px; margin:0 0 12px}
+.section li{margin:5px 0}
+
+/* 카드 */
+.cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px; margin:16px 0}
+.card{background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:18px; box-shadow:var(--shadow)}
+.card h4{margin:0 0 6px; font-size:15px; letter-spacing:-.01em; display:flex; align-items:center; gap:8px}
+.card p{font-size:14px; color:var(--ink-2); margin:0}
+.card .lead{font:700 12px/1 var(--font-mono); color:var(--accent-strong); letter-spacing:.06em; text-transform:uppercase; display:block; margin-bottom:9px}
+
+/* 코드 / 토큰 */
+code:not(pre code){
+  font-size:.88em; background:var(--surface-2); border:1px solid var(--line-2);
+  padding:1.5px 5px; border-radius:5px; color:var(--ink); white-space:nowrap;
+}
+pre{
+  background:var(--surface); color:var(--ink); border:1px solid var(--line);
+  border-radius:10px; padding:16px 18px; overflow-x:auto; margin:14px 0;
+  font-size:13.5px; line-height:1.66; box-shadow:var(--shadow);
+}
+pre .c{color:var(--muted)}
+pre .k{color:var(--accent-strong); font-weight:600}
+pre .s{color:var(--t-data)}
+
+/* 테이블 */
+.tblwrap{overflow-x:auto; border:1px solid var(--line); border-radius:10px; margin:16px 0; box-shadow:var(--shadow)}
+table{border-collapse:collapse; width:100%; font-size:13.6px; min-width:520px}
+th,td{text-align:left; padding:10px 14px; border-bottom:1px solid var(--line-2); vertical-align:top}
+thead th{background:var(--surface-2); font:700 11.5px/1.3 var(--font-mono); letter-spacing:.05em; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--line)}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--surface-2)}
+td.mono,th.mono{font-family:var(--font-mono); font-size:12.8px; white-space:nowrap; color:var(--ink)}
+.num{font-variant-numeric:tabular-nums}
+
+/* 데이터타입 칩 */
+.chip{display:inline-flex; align-items:center; gap:6px; font:700 11.5px/1 var(--font-mono);
+  padding:4px 8px; border-radius:6px; letter-spacing:.03em; white-space:nowrap}
+.chip::before{content:""; width:7px; height:7px; border-radius:2px; background:currentColor}
+.c-doc{color:var(--t-doc); background:color-mix(in srgb,var(--t-doc) 12%,transparent)}
+.c-data{color:var(--t-data); background:color-mix(in srgb,var(--t-data) 13%,transparent)}
+.c-sim{color:var(--t-sim); background:color-mix(in srgb,var(--t-sim) 13%,transparent)}
+.c-cad{color:var(--t-cad); background:color-mix(in srgb,var(--t-cad) 14%,transparent)}
+.c-log{color:var(--t-log); background:color-mix(in srgb,var(--t-log) 15%,transparent)}
+.c-form{color:var(--t-form); background:color-mix(in srgb,var(--t-form) 13%,transparent)}
+
+/* 레코드 ID 분해 다이어그램 */
+.idgram{margin:18px 0 6px; overflow-x:auto}
+.idgram .row{display:flex; align-items:stretch; gap:7px; min-width:560px}
+.idseg{flex:1; text-align:center}
+.idseg .v{font:800 clamp(15px,2.4vw,22px)/1.2 var(--font-mono); letter-spacing:.01em; color:var(--ink);
+  background:var(--surface); border:1.5px solid var(--line); border-radius:8px; padding:12px 6px; box-shadow:var(--shadow)}
+.idseg.hl .v{border-color:var(--accent); color:var(--accent-strong); background:var(--accent-soft)}
+.idseg .lab{margin-top:8px; font:600 11px/1.3 var(--font-mono); color:var(--muted); letter-spacing:.02em}
+.idseg .lab b{display:block; color:var(--ink-2); font-size:11.5px}
+.idsep{align-self:center; color:var(--muted); font:700 18px/1 var(--font-mono); padding-top:2px}
+
+/* 흐름(파이프라인) */
+.flow{display:flex; flex-wrap:wrap; align-items:stretch; gap:10px; margin:16px 0}
+.flow .step{flex:1; min-width:150px; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:14px 15px; position:relative; box-shadow:var(--shadow)}
+.flow .step .n{font:700 11px/1 var(--font-mono); color:var(--accent-strong); letter-spacing:.08em}
+.flow .step h4{margin:8px 0 4px; font-size:14px}
+.flow .step p{font-size:13px; color:var(--muted); margin:0}
+.flow .step code{white-space:normal}
+
+/* 노트 박스 */
+.note{border-left:3px solid var(--accent); background:var(--accent-soft);
+  border-radius:0 8px 8px 0; padding:13px 16px; margin:16px 0; font-size:14px; color:var(--ink-2)}
+.note b{color:var(--ink)}
+.note.warn{border-left-color:var(--warn); background:color-mix(in srgb,var(--warn) 10%,transparent)}
+
+/* 태그줄 */
+.taglead{font:600 11px/1 var(--font-mono); text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin:20px 0 8px}
+
+footer{border-top:1px solid var(--line); padding:26px 0 60px; color:var(--muted); font-size:13px}
+footer .mono{color:var(--ink-2)}
+.kbd{font:600 12px/1 var(--font-mono); background:var(--surface-2); border:1px solid var(--line); border-bottom-width:2px; padding:3px 6px; border-radius:5px}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="brand"><span class="dot"></span>AI Data Hub <small>Server Guide</small></span>
+  <span class="spacer"></span>
+  <button class="toggle" id="themeToggle" type="button" aria-label="라이트/다크 전환">THEME</button>
+</div>
+
+<div class="wrap">
+  <header class="masthead">
+    <div class="eyebrow">Mobile eXperience · 데이터 카탈로그 + RAG/MCP 서버</div>
+    <h1>사업부 엔지니어링 데이터를, 근거로 답하는 하나의 허브로.</h1>
+    <p class="lede">문서·측정·시뮬레이션·CAD·로그·양식을 한 카탈로그에 모으고, 임베딩 검색과
+    에이전트 페르소나로 <b>출처를 인용해</b> 답한다. 개인 PC의 Claude가 MCP로 직접 데이터를 넣고 찾는다.</p>
+    <div class="metaline">
+      <span class="pill">FastAPI · uvicorn <b>:8001</b></span>
+      <span class="pill">PostgreSQL + pgvector <b>:5435</b></span>
+      <span class="pill">MCP <b>26</b> tools</span>
+      <span class="pill">e5-base <b>768d</b></span>
+      <span class="pill">Apptainer rootless</span>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="n">26</div><div class="k">MCP 도구 (등록·조회·분석)</div></div>
+      <div class="stat"><div class="n">4<span>+RAG</span></div><div class="k">검색 모드 (tag·FTS·의미·하이브리드)</div></div>
+      <div class="stat"><div class="n">6</div><div class="k">데이터 타입 (DOC·DATA·SIM·CAD·LOG·FORM)</div></div>
+      <div class="stat"><div class="n">768</div><div class="k">임베딩 차원 (multilingual-e5-base)</div></div>
+      <div class="stat"><div class="n">21</div><div class="k">REST API 그룹 (<span class="mono">/api/*</span>)</div></div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="toc" aria-label="목차">
+      <div class="t">목차</div>
+      <ol>
+        <li><a href="#overview">개요 — 무엇을 푸는가</a></li>
+        <li><a href="#arch">아키텍처</a></li>
+        <li><a href="#model">데이터 모델</a></li>
+        <li><a href="#ingest">데이터 수집 — 어떻게 모으나</a></li>
+        <li><a href="#search">검색 — 어떻게 찾나</a></li>
+        <li><a href="#mcp">MCP 도구 26종</a></li>
+        <li><a href="#rest">REST API</a></li>
+        <li><a href="#ops">운영·배포</a></li>
+        <li><a href="#config">설정 (.env)</a></li>
+      </ol>
+    </nav>
+
+    <main>
+      <!-- 1 ─────────────────────────────────────────────────────── -->
+      <section class="section" id="overview">
+        <h2><span class="idx">01</span> 개요 — 무엇을 푸는가</h2>
+        <p class="intro">사업부 곳곳에 흩어진 엔지니어링 데이터를 한 곳에 모으고, 자연어로 물으면
+        <b>실제 레코드를 근거로 인용해</b> 답하게 만든 서버다. 두 가지 질문에 대한 답이 설계의 축이다.</p>
+
+        <div class="cards">
+          <div class="card">
+            <span class="lead">Q1 · 수집</span>
+            <h4>어떻게 DB를 모으나</h4>
+            <p>드래그&amp;드롭 표/문서를 Claude가 파싱해 넣고(<code>import_record</code>), 오피스 파일은 정밀 변환하며
+            (<code>convert_file</code>), 대시보드 업로드·외부 소스 동기화까지 4경로. 넣기 전 유사 데이터를 찾아
+            <b>일관 분류</b>를 유도한다.</p>
+          </div>
+          <div class="card">
+            <span class="lead">Q2 · 검색</span>
+            <h4>어떻게 찾나</h4>
+            <p>정확 태그·전문검색·의미(임베딩)·하이브리드(RRF) 4모드에, 에이전트 페르소나의 검색 설정을
+            자동 적용하는 <code>agent_search</code>. 답변은 항상 <b>record id로 인용</b>한다.</p>
+          </div>
+          <div class="card">
+            <span class="lead">설계 원칙</span>
+            <h4>독립 실행 · 상태 없음</h4>
+            <p>Apptainer rootless로 어떤 서버에서도 격리 실행. MCP 서버는 stateless — 행동의 주체는
+            클라이언트 LLM이고, 서버는 근거(데이터)와 규약만 제공한다.</p>
+          </div>
+        </div>
+
+        <div class="note"><b>핵심 개념 —</b> 이 허브는 "행동하는 에이전트"가 아니라 <b>검색용 페르소나 + 근거 데이터</b>의
+        카탈로그다. 개인 PC의 Claude가 MCP로 붙어, 데이터를 넣을 때는 일관 분류를 지키도록 유도받고,
+        찾을 때는 페르소나 규약에 따라 출처를 인용해 답한다.</div>
+      </section>
+
+      <!-- 2 ─────────────────────────────────────────────────────── -->
+      <section class="section" id="arch">
+        <h2><span class="idx">02</span> 아키텍처</h2>
+        <p class="intro">단일 FastAPI 앱이 REST(<code>/api</code>)와 MCP(<code>/mcp</code>)를 함께 노출하고,
+        같은 서비스 계층을 공유한다(단일 진실원). 데이터는 PostgreSQL+pgvector에, 임베딩은 같은 DB의 벡터 컬럼에 산다.</p>
+
+        <pre><span class="c"># 요청 경로</span>
+Claude Desktop  ──MCP(/mcp/, FastMCP, stateless)──┐
+브라우저 대시보드 ──REST(/api/*)─────────────────┤
+HWAX 포털       ──nginx(/ai-data-hub/ strip)─────┤
+VSCode 확장     ──REST(데이터/에이전트 작성)──────┘
+                          │
+                   <span class="k">FastAPI · uvicorn :8001</span>  (native venv)
+                    ├─ 서비스 계층 (검색·수집·분류·집계) <span class="c"># REST/MCP 공용</span>
+                    ├─ 임베딩 (multilingual-e5-base, 768d, query:/passage: 프리픽스)
+                    └─ 스케줄러 (시그니처 임베딩 백필, 매분)
+                          │
+                   <span class="k">PostgreSQL 15 + pgvector 0.8.2 :5435</span>  (Apptainer instance aidh_postgres)
+                    ├─ records / record_sections(RAG 청크+벡터)
+                    ├─ agents / doc_types / org_teams·org_groups
+                    └─ hnsw ANN 인덱스 (cosine)</pre>
+
+        <div class="cards">
+          <div class="card"><span class="lead">런타임</span><h4>Apptainer rootless</h4>
+            <p>PG는 Apptainer 인스턴스, API는 native venv. root 없이 어떤 서버에서도 격리 기동.
+            <code>boot.sh</code>가 재부팅 복구, <code>watchdog</code>가 매분 죽은 컴포넌트만 되살린다.</p></div>
+          <div class="card"><span class="lead">임베딩</span><h4>e5-base 768d</h4>
+            <p>E5 비대칭 인코딩 — 질의는 <code>query:</code>, 문서는 <code>passage:</code> 프리픽스.
+            섹션 임베딩(검색용)과 시그니처 임베딩(유사 분류용)을 분리 저장.</p></div>
+          <div class="card"><span class="lead">통합</span><h4>포털 · 확장 · 동기화</h4>
+            <p>HWAX 포털 서브패스(<code>/ai-data-hub/</code>), VSCode 확장, SignalForge·MXWP 외부 소스
+            동기화까지 한 서버에서 물린다.</p></div>
+        </div>
+      </section>
+
+      <!-- 3 ─────────────────────────────────────────────────────── -->
+      <section class="section" id="model">
+        <h2><span class="idx">03</span> 데이터 모델</h2>
+        <p class="intro">모든 레코드는 <b>기계가 읽는 ID 문법</b>을 가진다. 이 문법 하나로 데이터 타입·팀·그룹·연도·일련번호가
+        결정되고, 그래서 대량으로 쌓여도 서로 찾을 수 있다.</p>
+
+        <div class="idgram">
+          <div class="row">
+            <div class="idseg hl"><div class="v">DATA</div><div class="lab"><b>data_type</b>측정/문서/시뮬…</div></div>
+            <div class="idsep">-</div>
+            <div class="idseg"><div class="v">HE</div><div class="lab"><b>team</b>org_teams</div></div>
+            <div class="idsep">-</div>
+            <div class="idseg"><div class="v">CAE</div><div class="lab"><b>group</b>org_groups</div></div>
+            <div class="idsep">-</div>
+            <div class="idseg"><div class="v">2026</div><div class="lab"><b>year</b>연도</div></div>
+            <div class="idsep">-</div>
+            <div class="idseg"><div class="v">0000000001</div><div class="lab"><b>seq</b>자동 채번(10자리)</div></div>
+          </div>
+        </div>
+
+        <div class="taglead">데이터 타입</div>
+        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:6px">
+          <span class="chip c-doc">DOC 문서</span>
+          <span class="chip c-data">DATA 측정·표</span>
+          <span class="chip c-sim">SIM 시뮬레이션</span>
+          <span class="chip c-cad">CAD 도면</span>
+          <span class="chip c-log">LOG 로그</span>
+          <span class="chip c-form">FORM 양식</span>
+        </div>
+
+        <h3>records — 카탈로그의 중심 테이블</h3>
+        <div class="tblwrap"><table>
+          <thead><tr><th>컬럼</th><th>타입</th><th>역할</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">id</td><td class="mono">str(80)</td><td>위 ID 문법 = 기본키</td></tr>
+            <tr><td class="mono">data_type / team / group</td><td class="mono">str</td><td>분류 축. team/group은 <b>사람이 결정</b></td></tr>
+            <tr><td class="mono">year / seq</td><td class="mono">int</td><td>연도 + 자동 채번 일련번호</td></tr>
+            <tr><td class="mono">title / summary</td><td class="mono">text</td><td>제목·요약</td></tr>
+            <tr><td class="mono">doc_type</td><td class="mono">str(40)</td><td>세부 문서종류(test_plan 등). 유사도로 <b>제안</b></td></tr>
+            <tr><td class="mono">tags[]</td><td class="mono">text[]</td><td>검색용 태그. 유사 레코드 합집합으로 제안</td></tr>
+            <tr><td class="mono">agents[]</td><td class="mono">text[]</td><td>연결된 검색 에이전트(페르소나)</td></tr>
+            <tr><td class="mono">content</td><td class="mono">JSONB</td><td>본문 — 표(headers/rows), 섹션, caption, graph_type 등</td></tr>
+            <tr><td class="mono">content_hash</td><td class="mono">str(64)</td><td>중복 방지(멱등). 변경 시 시그니처 재계산 트리거</td></tr>
+            <tr><td class="mono">signature_embedding</td><td class="mono">vector(768)</td><td>유사 분류용 ANN 대상(hnsw)</td></tr>
+            <tr><td class="mono">deleted_at</td><td class="mono">timestamptz</td><td>소프트 삭제(기본 조회에서 제외)</td></tr>
+          </tbody>
+        </table></div>
+
+        <h3>주변 테이블</h3>
+        <div class="tblwrap"><table>
+          <thead><tr><th>테이블</th><th>역할</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">record_sections</td><td>RAG 청크 + 섹션 임베딩(<code>vector(768)</code>) — 의미 검색·인용 단위</td></tr>
+            <tr><td class="mono">agents / agent_records / agents_history</td><td>검색 페르소나 정의 + 매칭 레코드 + 변경 이력</td></tr>
+            <tr><td class="mono">agent_sample_embeddings</td><td>에이전트 sample_queries 임베딩 → recommend_agents 매칭</td></tr>
+            <tr><td class="mono">doc_types</td><td>세부 문서종류 사전(코드↔라벨)</td></tr>
+            <tr><td class="mono">org_teams / org_groups</td><td>팀·그룹 조직 분류(team/group 값의 원천)</td></tr>
+            <tr><td class="mono">sync_sources / sync_runs</td><td>외부 데이터 소스 정의 + 실행 이력</td></tr>
+            <tr><td class="mono">external_id_map</td><td>외부 시스템 ID ↔ record id (UPSERT 재수집 안전)</td></tr>
+            <tr><td class="mono">api_keys / users / audit_log</td><td>인증 키·사용자·감사로그</td></tr>
+            <tr><td class="mono">mcp_uploads / mcp_upstreams / mcp_proxy_calls</td><td>MCP 업로드 인박스·업스트림 프록시·호출 로그</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <!-- 4 ─────────────────────────────────────────────────────── -->
+      <section class="section" id="ingest">
+        <h2><span class="idx">04</span> 데이터 수집 — 어떻게 모으나</h2>
+        <p class="intro">데이터가 들어오는 경로는 네 갈래다. MCP는 바이너리를 못 받으므로, 파일은
+        <b>Claude가 파싱</b>하거나 <b>서버가 변환</b>하거나 <b>대시보드가 업로드</b>한다. 공통으로,
+        넣기 전에 유사 데이터를 찾아 일관 분류를 유도한다.</p>
+
+        <div class="flow">
+          <div class="step"><div class="n">경로 A</div><h4>import_record</h4>
+            <p>드래그&amp;드롭한 표/문서를 Claude가 구조화(headers/rows/섹션)해 저장. dry-run 지원.</p></div>
+          <div class="step"><div class="n">경로 B</div><h4>convert_file</h4>
+            <p>docx·xlsx·pdf·pptx를 서버가 정밀 변환 → record. 인박스 경로, 경로탈출 차단.</p></div>
+          <div class="step"><div class="n">경로 C</div><h4>대시보드 업로드</h4>
+            <p><code>/api/mcp_tools/upload</code>·<code>/api/convert</code> — 사람이 직접 파일 업로드.</p></div>
+          <div class="step"><div class="n">경로 D</div><h4>외부 소스 동기화</h4>
+            <p><code>/api/sync</code> — SignalForge·MXWP 등 외부에서 주기적으로 끌어옴.</p></div>
+        </div>
+
+        <h3>일관 분류 규약 — 대량으로 쌓여도 서로 찾히게</h3>
+        <p>임의의 데이터가 들어올 때, 추측으로 분류하면 나중에 못 찾는다. 그래서 <code>import_record</code> 전에
+        반드시 다음을 거친다.</p>
+        <ol style="max-width:74ch; padding-left:20px">
+          <li><b><code>find_similar_data</code></b> — headers/caption으로 기존 유사 레코드를 임베딩 유사도로 찾는다.</li>
+          <li><b>AI가 채울 제안</b> — <code>doc_type·tags·graph_type</code>은 유사 레코드 기준으로 제안(다수결/합집합). 검토 후 채운다.</li>
+          <li><b>사람이 정할 것</b> — <code>team·group</code>은 자동 확정 금지. 후보를 보여주고 "어느 팀/그룹인가요?" 물어 사람이 정한다.
+            (유사도가 높아도 다른 팀 데이터일 수 있어, 오분류는 데이터를 영영 못 찾게 만든다.)</li>
+          <li><b>유사 데이터가 없으면</b>(confidence=low/none) 추측하지 말고 <code>describe_record_schema</code>로 가능한 값을 보여주며 직접 묻는다.</li>
+        </ol>
+
+        <div class="note"><b>왜 규칙표가 아니라 임베딩 유사도인가 —</b> 선언적 규칙표는 데이터가 수만 건으로
+        늘면 유지가 불가능하다. "비슷한 건 비슷하게 분류"를 임베딩 유사도로 자동 유도하면, 자동/대량 주입에서도
+        분류가 스스로 수렴한다. 팀/그룹만은 예외로 사람이 결정한다.</div>
+
+        <p class="mono" style="font-size:13px; color:var(--muted)">멱등성 · content_hash 중복 차단 · external_id_map UPSERT · deleted_at 소프트삭제 · 시그니처 임베딩 매분 백필</p>
+      </section>
+
+      <!-- 5 ─────────────────────────────────────────────────────── -->
+      <section class="section" id="search">
+        <h2><span class="idx">05</span> 검색 — 어떻게 찾나</h2>
+        <p class="intro">네 가지 검색 모드가 있고, 그 위에 에이전트 페르소나가 검색 설정을 자동 적용한다.
+        정상 흐름은 "에이전트 추천 → 세션 초기화 → 에이전트 검색 → 섹션 인용"이다.</p>
+
+        <div class="tblwrap"><table>
+          <thead><tr><th>모드</th><th class="mono">MCP 도구</th><th>원리</th><th>언제</th></tr></thead>
+          <tbody>
+            <tr><td>정확 태그</td><td class="mono">tag_search</td><td>tags 배열 정확 일치</td><td>태그를 이미 알 때</td></tr>
+            <tr><td>전문검색(FTS)</td><td class="mono">fts_search</td><td>PostgreSQL 전문검색(키워드)</td><td>정확한 단어/코드</td></tr>
+            <tr><td>의미 검색</td><td class="mono">semantic_search</td><td>pgvector 코사인 kNN(768d)</td><td>뜻으로 찾을 때</td></tr>
+            <tr><td>하이브리드</td><td class="mono">hybrid_search</td><td>의미+FTS를 <b>RRF</b>(상호순위융합)로 결합</td><td>기본 추천 — 가장 견고</td></tr>
+          </tbody>
+        </table></div>
+
+        <h3>에이전트 기반 RAG 흐름</h3>
+        <div class="flow">
+          <div class="step"><div class="n">1</div><h4>recommend_agents</h4><p>자연어 의도 → 적합한 페르소나 랭킹(+관련 도구).</p></div>
+          <div class="step"><div class="n">2</div><h4>get_agent_session</h4><p>persona system_prompt + retrieval_config 초기화. 이후 답변의 지배 규칙.</p></div>
+          <div class="step"><div class="n">3</div><h4>agent_search</h4><p>페르소나의 검색 설정 자동 적용해 검색.</p></div>
+          <div class="step"><div class="n">4</div><h4>get_record_sections</h4><p>상세 RAG 청크 확보 → <code>id §섹션</code>으로 인용.</p></div>
+        </div>
+
+        <div class="note"><b>페르소나 채택은 클라이언트 책임 —</b> MCP는 stateless라 서버가 세션 규칙을
+        자동 교체하지 못한다. <code>get_agent_session</code>이 준 <code>system_prompt</code>를 그 시점부터
+        지배 규칙으로 삼고, 모든 답변을 <code>source: DATA-HE-CAE-2026-…​ §4</code> 형태로 인용한다.</div>
+
+        <h3>표(DATA) 위에서 바로 집계</h3>
+        <p><code>data_aggregate</code>로 저장된 표에서 <code>avg·max·min·sum·count</code>를 <code>group_by/where</code>와 함께
+        즉시 계산한다(REST <code>/api/data/{id}/aggregate</code>와 동일 로직). 컬럼·행 조회는
+        <code>/api/data/{id}/columns·/rows</code>.</p>
+      </section>
+
+      <!-- 6 ─────────────────────────────────────────────────────── -->
+      <section class="section" id="mcp">
+        <h2><span class="idx">06</span> MCP 도구 26종</h2>
+        <p class="intro">개인 PC의 Claude Desktop이 붙는 주 인터페이스. 발견 → 검색 → 상세 → (필요시) 수집·에이전트 작성 순으로 쓴다.
+        정상 운영에선 MCP 직접 호출이 1순위, REST 폴백은 <code>aidatahub</code> 서브에이전트가 담당.</p>
+
+        <div class="tblwrap"><table>
+          <thead><tr><th>그룹</th><th class="mono">도구</th><th>하는 일</th></tr></thead>
+          <tbody>
+            <tr><td>발견</td><td class="mono">discover · list_agents · recommend_agents</td><td>카탈로그 전모 · 에이전트 목록 · 자연어로 에이전트 추천</td></tr>
+            <tr><td>세션</td><td class="mono">get_agent_session · get_context_bundle</td><td>페르소나+검색설정 초기화 · LLM용 컨텍스트 번들</td></tr>
+            <tr><td>검색</td><td class="mono">agent_search · semantic_search · hybrid_search · fts_search · tag_search</td><td>에이전트 검색 + 4모드 직접 검색</td></tr>
+            <tr><td>목록·집계</td><td class="mono">list_records · data_aggregate</td><td>정형 필터 조회 · 표 집계(group_by/where)</td></tr>
+            <tr><td>상세</td><td class="mono">get_record · get_record_sections</td><td>전체 레코드 · RAG 섹션 청크</td></tr>
+            <tr><td>안내</td><td class="mono">describe_data_capability · describe_record_schema · describe_agent_schema</td><td>타입별 형태 룰 · 메타 보강 가이드 · 에이전트 폼</td></tr>
+            <tr><td>수집</td><td class="mono">find_similar_data · import_record · convert_file</td><td>유사 확인(제안형 분류) · 레코드 저장 · 파일 변환</td></tr>
+            <tr><td>에이전트 작성</td><td class="mono">draft_agent · create_agent · patch_agent · bind_records_to_agent</td><td>초안 · 등록 · 부분수정 · 매칭 레코드 연결</td></tr>
+            <tr><td>DocType</td><td class="mono">list_doc_types · create_doc_type</td><td>세부 문서종류 목록·등록</td></tr>
+          </tbody>
+        </table></div>
+
+        <h3>Claude Desktop 연결</h3>
+        <p>MCP 서버는 <code>http://&lt;HOST_IP&gt;:8001/mcp/</code>에 마운트(stateless_http). Claude Desktop
+        MCP 설정에 HTTP 커넥터로 등록하면 26개 도구가 노출된다. 외부 호스트 접속 시 FastMCP의 DNS rebinding
+        보호 때문에 Host 화이트리스트/해제가 필요할 수 있다.</p>
+      </section>
+
+      <!-- 7 ─────────────────────────────────────────────────────── -->
+      <section class="section" id="rest">
+        <h2><span class="idx">07</span> REST API</h2>
+        <p class="intro">대시보드·확장·외부 통합이 쓰는 HTTP 인터페이스. 모두 <code>/api</code> 프리픽스,
+        MCP와 같은 서비스 계층을 공유한다. 문서: <code>/docs</code> (OpenAPI).</p>
+
+        <div class="tblwrap"><table>
+          <thead><tr><th class="mono">엔드포인트</th><th>용도</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">GET /api/system/health</td><td>헬스체크(기동 검증용)</td></tr>
+            <tr><td class="mono">GET /api/discover · /schema · /hints</td><td>카탈로그 요약 · 스키마 · 힌트</td></tr>
+            <tr><td class="mono">POST /api/ask</td><td>LLM 질의(선택, OpenAI 호환 백엔드)</td></tr>
+            <tr><td class="mono">GET /api/search · /search/faceted · /search/by-tags</td><td>검색 · 패싯 · 태그</td></tr>
+            <tr><td class="mono">GET/DELETE /api/records · POST /api/records/import</td><td>레코드 조회·삭제·일괄 수집</td></tr>
+            <tr><td class="mono">GET /api/records/{id}/lineage · /diff · /suggest-parent</td><td>계보 · 버전 비교 · 부모 제안</td></tr>
+            <tr><td class="mono">GET /api/data/{id}/rows · /columns · /aggregate</td><td>표 행·열·집계</td></tr>
+            <tr><td class="mono">/api/agents · POST /api/recommend/agents</td><td>에이전트 CRUD · 추천</td></tr>
+            <tr><td class="mono">/api/sync/sources · /runs</td><td>외부 소스 관리·실행·이력</td></tr>
+            <tr><td class="mono">/api/convert · /api/doc-types · /api/taxonomy · /api/org/teams</td><td>변환 · 문서종류 · 분류 · 조직</td></tr>
+            <tr><td class="mono">/api/analytics/* · /api/metrics</td><td>분포·태그·타임라인·사용량 · 메트릭</td></tr>
+            <tr><td class="mono">/api/auth/keys · /api/mcp/upstreams</td><td>API 키 · MCP 업스트림 프록시</td></tr>
+          </tbody>
+        </table></div>
+        <div class="note"><b>인증 —</b> 현재 <code>AUTH_REQUIRED=false</code>(사내 폐쇄망 전제). 켜면
+        <code>X-API-Key</code> 헤더 필요. 키는 <code>api_keys</code> 테이블 + 부트스트랩 키로 관리.</div>
+      </section>
+
+      <!-- 8 ─────────────────────────────────────────────────────── -->
+      <section class="section" id="ops">
+        <h2><span class="idx">08</span> 운영·배포</h2>
+        <p class="intro">모든 운영 스크립트는 <code>deploy/apptainer/</code>에 있다. 한 줄로 기동·복구·업데이트·백업이 된다.</p>
+
+        <div class="tblwrap"><table>
+          <thead><tr><th class="mono">스크립트</th><th>역할</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">boot.sh</td><td>재부팅 후 복구 — stale 정리 → 포트검사 → PG → API(alembic) → health. <code>--force</code>로 재배포 재기동</td></tr>
+            <tr><td class="mono">update.sh</td><td><b>최신화 원샷</b> — <code>git pull</code> → boot --force. 코드+스키마 최신, 로컬 데이터 보존</td></tr>
+            <tr><td class="mono">restart.sh</td><td>stop+start(<code>--pg</code>/<code>--api</code>) — 설정 변경 반영</td></tr>
+            <tr><td class="mono">start_api.sh / start_postgres.sh</td><td>개별 컴포넌트 기동(venv 동기화·마이그레이션 포함)</td></tr>
+            <tr><td class="mono">status.sh / stop.sh / diag.sh</td><td>상태 · 정지 · 진단(로그 tail)</td></tr>
+            <tr><td class="mono">backup-to-drive.sh / sync-from-drive.sh</td><td>Google Drive로 DB 덤프 백업 · 최신 덤프 복원(코드 pull 포함)</td></tr>
+            <tr><td class="mono">watchdog.sh (cron 매분)</td><td>죽은 컴포넌트만 자동 복구. <code>@reboot boot.sh</code>와 짝</td></tr>
+          </tbody>
+        </table></div>
+
+        <h3>코드 배포 흐름</h3>
+        <p>CI 자동배포는 없다(GitHub Actions·서버 자동 pull 없음). 최신 코드를 서버에 반영하려면 두 단계.</p>
+        <pre><span class="c"># 1) 개발 PC — GitHub로 push</span>
+<span class="k">git</span> push origin main
+
+<span class="c"># 2) 타겟 서버 — 최신화 원샷 (git pull → alembic → 재기동 → health)</span>
+<span class="k">cd</span> ~/claude/AIDataHub
+<span class="k">bash</span> deploy/apptainer/update.sh</pre>
+
+        <div class="tblwrap"><table>
+          <thead><tr><th>구분</th><th class="mono">값</th></tr></thead>
+          <tbody>
+            <tr><td>API 포트</td><td class="mono">8001</td></tr>
+            <tr><td>PostgreSQL 포트</td><td class="mono">5435</td></tr>
+            <tr><td>대시보드</td><td class="mono">http://&lt;HOST_IP&gt;:8001/dashboard/</td></tr>
+            <tr><td>MCP</td><td class="mono">http://&lt;HOST_IP&gt;:8001/mcp/</td></tr>
+            <tr><td>헬스</td><td class="mono">http://&lt;HOST_IP&gt;:8001/api/system/health</td></tr>
+            <tr><td>포털 서브패스</td><td class="mono">/ai-data-hub/ (nginx strip)</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <!-- 9 ─────────────────────────────────────────────────────── -->
+      <section class="section" id="config">
+        <h2><span class="idx">09</span> 설정 (.env)</h2>
+        <p class="intro"><code>deploy/apptainer/.env</code>가 단일 설정원. <code>start_api.sh</code>가 이 값으로
+        <code>DATABASE_URL</code> 등을 조합한다.</p>
+
+        <div class="tblwrap"><table>
+          <thead><tr><th class="mono">키</th><th class="mono">기본</th><th>의미</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">API_PORT / API_HOST</td><td class="mono">8001 / 0.0.0.0</td><td>API 바인드</td></tr>
+            <tr><td class="mono">POSTGRES_PORT / _DB / _USER</td><td class="mono">5435 / aidh / aidh</td><td>PG 접속</td></tr>
+            <tr><td class="mono">EMBEDDING_PROVIDER</td><td class="mono">e5_base</td><td>임베더(hash·e5_small·e5_base·openai)</td></tr>
+            <tr><td class="mono">EMBEDDING_DIM</td><td class="mono">768</td><td>벡터 차원(임베더와 정합 필수)</td></tr>
+            <tr><td class="mono">AUTO_EMBED_ON_INSERT</td><td class="mono">true</td><td>수집 시 자동 임베딩</td></tr>
+            <tr><td class="mono">AUTH_REQUIRED</td><td class="mono">false</td><td>API 키 강제 여부</td></tr>
+            <tr><td class="mono">HOST_IP</td><td class="mono">110.15.177.120</td><td>외부 노출 IP(URL 생성용)</td></tr>
+            <tr><td class="mono">AIDH_DRIVE_REMOTE</td><td class="mono">rclone remote</td><td>백업/복원 Drive 경로</td></tr>
+          </tbody>
+        </table></div>
+
+        <div class="note warn"><b>임베딩 차원 주의 —</b> <code>EMBEDDING_PROVIDER</code>를 바꾸면
+        <code>EMBEDDING_DIM</code>과 DB의 <code>vector(N)</code> 컬럼이 함께 맞아야 한다. e5_base=768,
+        e5_small/hash=384. 불일치 시 임베딩 삽입이 실패한다.</div>
+      </section>
+
+      <footer>
+        <p class="mono">AI Data Hub · Mobile eXperience · FastAPI + PostgreSQL/pgvector + MCP(26) · e5-base 768d</p>
+        <p>기동 <code>bash deploy/apptainer/boot.sh</code> · 최신화 <code>bash deploy/apptainer/update.sh</code> ·
+        진단 <code>bash deploy/apptainer/diag.sh --tail-logs</code>. 상단 <span class="kbd">THEME</span>로 라이트/다크 전환.</p>
+      </footer>
+    </main>
+  </div>
+</div>
+
+<script>
+// 라이트/다크 토글 — prefers-color-scheme 기본, 클릭 시 data-theme 로 고정.
+(function(){
+  var root=document.documentElement, btn=document.getElementById('themeToggle');
+  btn.addEventListener('click',function(){
+    var cur=root.getAttribute('data-theme');
+    if(!cur){ cur=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'; }
+    root.setAttribute('data-theme', cur==='dark'?'light':'dark');
+  });
+})();
+</script>
+</body>
+</html>
