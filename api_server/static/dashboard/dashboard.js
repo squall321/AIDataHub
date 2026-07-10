@@ -1969,3 +1969,191 @@ window.addEventListener("DOMContentLoaded", () => {
     if (e.key === "Enter") runGroupsAuto();
   });
 });
+
+// ============================================================================
+// Section: 데이터 챗 (메인) — vLLM + 로컬 도구 tool-calling, SSE 수신
+// EventSource 대신 fetch+ReadableStream (POST + X-API-Key 헤더가 필요하므로).
+// ============================================================================
+const chatMessages = []; // {role, content} — 대화 히스토리 전량 왕복
+
+function chatLogEl() {
+  return document.getElementById("chat-log");
+}
+
+function chatBubble(role, text) {
+  const wrap = el("div", { class: "chat-msg chat-" + role });
+  wrap.appendChild(el("div", { class: "chat-who", text: role === "user" ? "나" : "AI" }));
+  const body = el("div", { class: "chat-body", text: text || "" });
+  wrap.appendChild(body);
+  chatLogEl().appendChild(wrap);
+  chatLogEl().scrollTop = chatLogEl().scrollHeight;
+  return { wrap, body };
+}
+
+function chatStatus(node, text) {
+  let s = node.wrap.querySelector(".chat-status");
+  if (!s) {
+    s = el("div", { class: "chat-status" });
+    node.wrap.appendChild(s);
+  }
+  s.textContent = "· " + text + " …";
+  chatLogEl().scrollTop = chatLogEl().scrollHeight;
+}
+
+function chatClearStatus(node) {
+  const s = node.wrap.querySelector(".chat-status");
+  if (s) s.remove();
+}
+
+function chatToolTrace(node, trace) {
+  if (!trace || !trace.length) return;
+  const det = el("details", { class: "chat-trace" });
+  det.appendChild(el("summary", { text: "도구 " + trace.length + "회 호출" }));
+  for (const t of trace) {
+    det.appendChild(
+      el("pre", {
+        class: "chat-trace-item",
+        text:
+          t.tool + "(" + JSON.stringify(t.args) + ")\n→ " +
+          JSON.stringify(t.result, null, 2).slice(0, 1200),
+      })
+    );
+  }
+  node.wrap.appendChild(det);
+}
+
+async function chatSend() {
+  const input = document.getElementById("chat-input");
+  const sendBtn = document.getElementById("chat-send");
+  const text = (input.value || "").trim();
+  if (!text) return;
+
+  chatMessages.push({ role: "user", content: text });
+  chatBubble("user", text);
+  input.value = "";
+  input.disabled = true;
+  sendBtn.disabled = true;
+
+  const node = chatBubble("assistant", "");
+  chatStatus(node, "생각 중");
+
+  try {
+    const headers = { "Content-Type": "application/json", Accept: "text/event-stream" };
+    const key = getApiKey();
+    if (key) headers["X-API-Key"] = key;
+    const resp = await fetch(BASE + "/api/chat", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ messages: chatMessages }),
+    });
+    if (!resp.ok || !resp.body) {
+      chatClearStatus(node);
+      node.body.textContent = "요청 실패 (HTTP " + resp.status + ")";
+      node.wrap.classList.add("chat-err");
+      return;
+    }
+    await chatReadSSE(resp, node);
+  } catch (e) {
+    chatClearStatus(node);
+    node.body.textContent = "연결 오류: " + e;
+    node.wrap.classList.add("chat-err");
+  } finally {
+    input.disabled = false;
+    sendBtn.disabled = false;
+    input.focus();
+  }
+}
+
+async function chatReadSSE(resp, node) {
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      const frame = buf.slice(0, i);
+      buf = buf.slice(i + 2);
+      chatHandleFrame(frame, node);
+    }
+  }
+}
+
+function chatHandleFrame(frame, node) {
+  let ev = "message";
+  let data = "";
+  for (const line of frame.split("\n")) {
+    if (line.startsWith("event:")) ev = line.slice(6).trim();
+    else if (line.startsWith("data:")) data += line.slice(5).trim();
+  }
+  let obj = {};
+  try {
+    obj = JSON.parse(data || "{}");
+  } catch (_) {
+    obj = {};
+  }
+  if (ev === "status") {
+    chatStatus(node, obj.step || "처리 중");
+  } else if (ev === "result") {
+    chatClearStatus(node);
+    node.body.textContent = obj.content || "(빈 응답)";
+    chatToolTrace(node, obj.tool_trace);
+    if (obj.content) chatMessages.push({ role: "assistant", content: obj.content });
+  } else if (ev === "error") {
+    chatClearStatus(node);
+    node.body.textContent = obj.message || "오류";
+    node.wrap.classList.add("chat-err");
+  }
+}
+
+function chatInitDrop() {
+  const drop = document.getElementById("chat-drop");
+  const input = document.getElementById("chat-input");
+  if (!drop) return;
+  ["dragenter", "dragover"].forEach((e) =>
+    drop.addEventListener(e, (ev) => {
+      ev.preventDefault();
+      drop.classList.add("chat-drag");
+    })
+  );
+  ["dragleave", "drop"].forEach((e) =>
+    drop.addEventListener(e, (ev) => {
+      ev.preventDefault();
+      drop.classList.remove("chat-drag");
+    })
+  );
+  drop.addEventListener("drop", async (ev) => {
+    const file = ev.dataTransfer.files && ev.dataTransfer.files[0];
+    if (!file) return;
+    // 텍스트/CSV/표만 여기서 읽는다. 바이너리(docx 등)는 convert_file 경로 안내.
+    if (/\.(xlsx|docx|pdf|pptx)$/i.test(file.name)) {
+      input.value +=
+        "\n[첨부: " + file.name + " — 바이너리는 '연결 소스'/convert_file 로 변환 후 넣으세요]";
+      return;
+    }
+    const txt = await file.text();
+    input.value += (input.value ? "\n" : "") + txt;
+    input.focus();
+  });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const sendBtn = document.getElementById("chat-send");
+  const input = document.getElementById("chat-input");
+  if (!sendBtn || !input) return; // 챗 패널 없으면 스킵
+  sendBtn.addEventListener("click", chatSend);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      chatSend();
+    }
+  });
+  chatInitDrop();
+  chatBubble(
+    "assistant",
+    "안녕하세요. 표나 문서를 붙여넣고 '넣어줘'라고 하거나, '○○ 데이터 찾아줘'라고 물어보세요. " +
+      "넣기 전에 비슷한 기존 데이터로 분류를 확인하고, 팀·그룹은 어디에 속하는지 여쭤봅니다."
+  );
+});

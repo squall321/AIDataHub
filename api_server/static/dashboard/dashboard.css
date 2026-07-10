@@ -1331,3 +1331,59 @@ pre.docs-output {
 .btn-sm { padding: 3px 9px; font-size: 11px; margin-right: 4px; }
 
 .state.error { color: #f87171; }
+
+/* ============================================================================
+   데이터 챗 (메인 탭) — 대화로 데이터 올리고 찾기
+   ============================================================================ */
+nav.tabs button.tab-main { color: var(--accent); font-weight: 700; }
+nav.tabs button.tab-main .tab-num { color: var(--accent); font-weight: 700; }
+nav.tabs button.tab-main.active { box-shadow: inset 0 -2px 0 var(--accent); }
+
+.chat-wrap { display: flex; flex-direction: column; gap: 14px; min-height: 62vh; }
+.chat-head h2 { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; }
+.chat-badge {
+  font: 700 10px/1 var(--mono); letter-spacing: .1em; color: #fff;
+  background: var(--accent); padding: 4px 7px; border-radius: 4px;
+}
+
+.chat-log {
+  flex: 1 1 auto; min-height: 300px; max-height: 56vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 14px;
+  background: var(--bg-soft); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 18px;
+}
+
+.chat-msg { max-width: 80%; display: flex; flex-direction: column; gap: 4px; }
+.chat-user { align-self: flex-end; align-items: flex-end; }
+.chat-assistant { align-self: flex-start; align-items: flex-start; }
+.chat-who { font: 700 10.5px/1 var(--mono); letter-spacing: .08em; color: var(--text-faint); }
+.chat-body {
+  white-space: pre-wrap; word-break: break-word; line-height: 1.6;
+  padding: 11px 14px; border-radius: 10px; box-shadow: var(--shadow-sm);
+}
+.chat-user .chat-body { background: var(--accent); color: #fff; border-bottom-right-radius: 3px; }
+.chat-assistant .chat-body { background: var(--surface); color: var(--text); border-bottom-left-radius: 3px; }
+.chat-msg.chat-err .chat-body { background: var(--err-soft); color: var(--err); }
+
+.chat-status { font: italic 13px/1.5 var(--body, inherit); color: var(--text-muted); padding-left: 4px; }
+.chat-trace { margin-top: 4px; font-size: 12px; }
+.chat-trace summary { cursor: pointer; color: var(--text-muted); font: 600 11.5px/1 var(--mono); }
+.chat-trace-item {
+  margin: 6px 0 0; padding: 8px 10px; background: var(--bg-soft);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font: 11.5px/1.5 var(--mono); overflow-x: auto; white-space: pre; color: var(--text-muted);
+}
+
+.chat-composer {
+  display: flex; flex-direction: column; gap: 8px;
+  border: 1.5px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); padding: 12px; transition: border-color .15s;
+}
+.chat-composer.chat-drag { border-color: var(--accent); background: var(--accent-soft); }
+#chat-input {
+  width: 100%; resize: vertical; border: none; outline: none; background: transparent;
+  font: 14.5px/1.6 inherit; color: var(--text); min-height: 58px;
+}
+.chat-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.chat-hint { font-size: 11.5px; color: var(--text-faint); }
+.chat-hint b { color: var(--text-muted); }

@@ -27,6 +27,7 @@ from . import (
     attachments,
     auth,
     bundle,
+    chat,
     convert,
     data,
     discover,
@@ -118,6 +119,8 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(sync.router)
     # /api/discover, /api/schema, /api/hints, /api/docs/llm.txt, /api/ask
     app.include_router(discover.router)
+    # /api/chat — 자체 챗 (vLLM + 로컬 도구 tool-calling) SSE. 메인 페이지 챗.
+    app.include_router(chat.router)
     if settings.enable_metrics:
         app.include_router(metrics.router)
     # /api/metrics/mcp — JSONL tail 분석 (Prometheus 와 무관) — 항상 활성.

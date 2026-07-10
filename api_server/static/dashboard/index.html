@@ -27,7 +27,8 @@
 </header>
 
 <nav class="tabs">
-  <button data-tab="guide" class="active"><span class="tab-num">01</span>시작 가이드</button>
+  <button data-tab="chat" class="active tab-main"><span class="tab-num">＊</span>데이터 챗</button>
+  <button data-tab="guide"><span class="tab-num">01</span>시작 가이드</button>
   <button data-tab="status"><span class="tab-num">02</span>상태</button>
   <button data-tab="catalog"><span class="tab-num">03</span>카탈로그</button>
   <button data-tab="search"><span class="tab-num">04</span>검색</button>
@@ -42,9 +43,29 @@
 <main>
 
   <!-- ============================================================ -->
+  <!-- Section: 데이터 챗 (메인) — 대화로 데이터 올리고 찾기 -->
+  <!-- ============================================================ -->
+  <section class="panel active" data-panel="chat">
+    <div class="chat-wrap">
+      <div class="chat-head">
+        <h2>데이터 챗 <span class="chat-badge">MAIN</span></h2>
+        <p class="panel-sub">표·문서를 붙여넣거나 파일을 끌어다 놓고 말하면, AI가 비슷한 기존 데이터로 분류를 확인해 카탈로그에 넣습니다. 팀·그룹은 자동으로 정하지 않고 물어봅니다. 데이터를 찾을 때도 출처를 인용해 답합니다.</p>
+      </div>
+      <div id="chat-log" class="chat-log" aria-live="polite"></div>
+      <div id="chat-drop" class="chat-composer">
+        <textarea id="chat-input" rows="3" placeholder="예) 이 인장시험 표 넣어줘 — 아래에 표를 붙여넣으세요 / 예) SUS304 관련 데이터 찾아줘"></textarea>
+        <div class="chat-actions">
+          <span class="chat-hint">파일을 여기로 끌어다 놓기 · 표 붙여넣기 · <b>Enter</b> 전송 · <b>Shift+Enter</b> 줄바꿈</span>
+          <button id="chat-send" class="btn">전송</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
   <!-- Section 0: 시작 가이드 (표준 절차) -->
   <!-- ============================================================ -->
-  <section class="panel active" data-panel="guide">
+  <section class="panel" data-panel="guide">
     <div class="panel-head">
       <div>
         <h2>시작 가이드 — 표준 절차</h2>
