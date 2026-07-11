@@ -51,6 +51,38 @@
         <h2>데이터 챗 <span class="chat-badge">MAIN</span></h2>
         <p class="panel-sub">표·문서를 붙여넣거나 파일을 끌어다 놓고 말하면, AI가 비슷한 기존 데이터로 분류를 확인해 카탈로그에 넣습니다. 팀·그룹은 자동으로 정하지 않고 물어봅니다. 데이터를 찾을 때도 출처를 인용해 답합니다.</p>
       </div>
+
+      <details class="chat-settings" id="chat-settings">
+        <summary>
+          <span>LLM 연결 설정</span>
+          <span id="chat-conn-badge" class="chat-conn">확인 중…</span>
+        </summary>
+        <div class="chat-settings-body">
+          <p class="chat-settings-note">기본은 상암 프로덕션 LLM입니다. 다른 vLLM(예: 개발 박스)로 바꾸려면 주소·모델만 고쳐 저장하세요. (ReportArchive 규칙 — OpenAI 호환 <code>base</code>는 <code>/v1</code>까지 포함)</p>
+          <div class="chat-field">
+            <label for="cfg-base">Base URL</label>
+            <input id="cfg-base" type="text" placeholder="http://10.198.143.137:10000/v1">
+          </div>
+          <div class="chat-field">
+            <label for="cfg-model">Model</label>
+            <input id="cfg-model" type="text" placeholder="GLM-5-2">
+          </div>
+          <div class="chat-field">
+            <label for="cfg-backend">Backend</label>
+            <select id="cfg-backend">
+              <option value="openai">openai (vLLM 연결)</option>
+              <option value="off">off (연결 안 함)</option>
+            </select>
+          </div>
+          <div class="chat-settings-actions">
+            <button id="cfg-save" class="btn">저장</button>
+            <button id="cfg-test" class="btn ghost">연결 테스트</button>
+            <button id="cfg-reset" class="btn ghost">기본(상암)으로</button>
+            <span id="cfg-status" class="chat-cfg-status"></span>
+          </div>
+        </div>
+      </details>
+
       <div id="chat-log" class="chat-log" aria-live="polite"></div>
       <div id="chat-drop" class="chat-composer">
         <textarea id="chat-input" rows="3" placeholder="예) 이 인장시험 표 넣어줘 — 아래에 표를 붙여넣으세요 / 예) SUS304 관련 데이터 찾아줘"></textarea>

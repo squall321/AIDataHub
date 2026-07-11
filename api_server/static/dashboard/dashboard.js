@@ -2139,6 +2139,84 @@ function chatInitDrop() {
   });
 }
 
+// ── LLM 연결 설정 UI (기본 상암, 런타임 override) ──────────────────
+function chatConnBadge(cfg) {
+  const b = document.getElementById("chat-conn-badge");
+  if (!b) return;
+  if (cfg.connected) {
+    b.textContent = cfg.model + " · " + (cfg.source || "");
+    b.className = "chat-conn ok";
+  } else {
+    b.textContent = "연결 안 함 (" + (cfg.backend || "off") + ")";
+    b.className = "chat-conn off";
+  }
+}
+
+async function chatLoadConfig() {
+  try {
+    const cfg = await apiFetch("/api/chat/config");
+    document.getElementById("cfg-base").value = cfg.base_url || "";
+    document.getElementById("cfg-model").value = cfg.model || "";
+    document.getElementById("cfg-backend").value = cfg.backend || "openai";
+    chatConnBadge(cfg);
+  } catch (e) {
+    const b = document.getElementById("chat-conn-badge");
+    if (b) { b.textContent = "설정 조회 실패"; b.className = "chat-conn off"; }
+  }
+}
+
+function chatCfgStatus(text, ok) {
+  const s = document.getElementById("cfg-status");
+  if (!s) return;
+  s.textContent = text;
+  s.className = "chat-cfg-status " + (ok === true ? "ok" : ok === false ? "err" : "");
+}
+
+async function chatSaveConfig() {
+  const body = {
+    backend: document.getElementById("cfg-backend").value,
+    base_url: document.getElementById("cfg-base").value.trim(),
+    model: document.getElementById("cfg-model").value.trim(),
+  };
+  chatCfgStatus("저장 중…");
+  try {
+    const cfg = await apiFetch("/api/chat/config", { method: "PUT", body: JSON.stringify(body) });
+    chatConnBadge(cfg);
+    chatCfgStatus("저장됨 · " + (cfg.source || ""), true);
+  } catch (e) {
+    chatCfgStatus("저장 실패: " + e, false);
+  }
+}
+
+async function chatTestConfig() {
+  chatCfgStatus("연결 테스트 중…");
+  try {
+    const r = await apiFetch("/api/chat/config/test", { method: "POST" });
+    if (r.ok) {
+      const served = r.model_served === false ? " (단, 이 모델은 목록에 없음)" : "";
+      chatCfgStatus("연결 OK · " + (r.detail || "") + served, true);
+    } else {
+      chatCfgStatus("연결 실패: " + (r.detail || ""), false);
+    }
+  } catch (e) {
+    chatCfgStatus("테스트 오류: " + e, false);
+  }
+}
+
+async function chatResetConfig() {
+  chatCfgStatus("초기화 중…");
+  try {
+    const cfg = await apiFetch("/api/chat/config", { method: "DELETE" });
+    document.getElementById("cfg-base").value = cfg.base_url || "";
+    document.getElementById("cfg-model").value = cfg.model || "";
+    document.getElementById("cfg-backend").value = cfg.backend || "openai";
+    chatConnBadge(cfg);
+    chatCfgStatus("기본(상암)으로 복귀", true);
+  } catch (e) {
+    chatCfgStatus("초기화 실패: " + e, false);
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   const sendBtn = document.getElementById("chat-send");
   const input = document.getElementById("chat-input");
@@ -2151,6 +2229,14 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
   chatInitDrop();
+  // 연결 설정 UI 배선
+  const save = document.getElementById("cfg-save");
+  if (save) {
+    save.addEventListener("click", chatSaveConfig);
+    document.getElementById("cfg-test").addEventListener("click", chatTestConfig);
+    document.getElementById("cfg-reset").addEventListener("click", chatResetConfig);
+    chatLoadConfig();
+  }
   chatBubble(
     "assistant",
     "안녕하세요. 표나 문서를 붙여넣고 '넣어줘'라고 하거나, '○○ 데이터 찾아줘'라고 물어보세요. " +

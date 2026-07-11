@@ -228,20 +228,80 @@ _TOOL_LABELS = {
 # ---------------------------------------------------------------------------
 # vLLM (OpenAI 호환) 클라이언트 — httpx 직접
 # ---------------------------------------------------------------------------
-def _llm_config() -> dict[str, str] | None:
-    """env 에서 vLLM 접속 설정. base_url+model 이 없으면 None (미설정)."""
-    base = (os.environ.get("OPENAI_BASE_URL") or "").strip().rstrip("/")
-    model = (os.environ.get("CHAT_MODEL") or os.environ.get("OPENAI_ASK_MODEL") or "").strip()
+# 기본 = 상암 B300 프로덕션 LLM (OpenAI 호환). .env / 설정 UI 로 override.
+# ReportArchive 규칙과 동일: LLM_BACKEND=openai + LLM_BASE_URL(/v1 포함) + LLM_MODEL.
+_SANGAM_BASE = "http://10.198.143.137:10000/v1"
+_SANGAM_MODEL = "GLM-5-2"
+
+
+def _runtime_config_path():
+    """설정 UI 가 저장하는 런타임 override 파일 경로 (data dir 내 JSON)."""
+    from pathlib import Path
+
+    from ..config import settings
+
+    return Path(settings.attachments_dir).parent / "chat_llm_config.json"
+
+
+def _read_runtime_override() -> dict[str, Any]:
+    """설정 UI override 읽기 (없으면 {}). base_url/model/backend 만."""
+    try:
+        p = _runtime_config_path()
+        if p.exists():
+            data = json.loads(p.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+    except Exception:  # 손상/권한 → env 기본으로 폴백
+        pass
+    return {}
+
+
+def _bool_env(name: str, default: bool) -> bool:
+    v = os.environ.get(name)
+    if v is None:
+        return default
+    return v.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _llm_config() -> dict[str, Any] | None:
+    """유효 LLM 접속 설정. 우선순위: 런타임 override(UI) → env → 상암 기본.
+
+    backend 가 off/mock/none 이면 None(미연결) 을 돌려 graceful degrade.
+    """
+    ov = _read_runtime_override()
+    backend = (ov.get("backend") or os.environ.get("LLM_BACKEND") or "openai").strip().lower()
+    if backend in ("off", "mock", "none", "disabled", ""):
+        return None
+    base = (
+        ov.get("base_url")
+        or os.environ.get("LLM_BASE_URL")
+        or os.environ.get("OPENAI_BASE_URL")  # 하위호환
+        or _SANGAM_BASE
+    ).strip().rstrip("/")
+    model = (
+        ov.get("model")
+        or os.environ.get("LLM_MODEL")
+        or os.environ.get("CHAT_MODEL")  # 하위호환
+        or os.environ.get("OPENAI_ASK_MODEL")
+        or _SANGAM_MODEL
+    ).strip()
     if not base or not model:
         return None
     return {
+        "backend": backend,
         "base": base,
         "model": model,
-        "key": (os.environ.get("OPENAI_API_KEY") or "EMPTY").strip(),
+        "key": (os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY") or "EMPTY").strip(),
+        "timeout": float(os.environ.get("LLM_TIMEOUT_S") or _VLLM_TIMEOUT),
+        # 폐쇄망(상암) 직결 — httpx 가 HTTP_PROXY env 를 우회. ReportArchive LLM_NO_PROXY 규칙.
+        "no_proxy": _bool_env("LLM_NO_PROXY", True),
     }
 
 
-async def _vllm_chat(cfg: dict[str, str], messages: list[dict[str, Any]]) -> dict[str, Any]:
+def _http_client(cfg: dict[str, Any]) -> httpx.AsyncClient:
+    return httpx.AsyncClient(timeout=cfg.get("timeout", _VLLM_TIMEOUT), trust_env=not cfg.get("no_proxy", True))
+
+
+async def _vllm_chat(cfg: dict[str, Any], messages: list[dict[str, Any]]) -> dict[str, Any]:
     """OpenAI 호환 chat.completions (non-stream, tools). choices[0].message 반환."""
     payload = {
         "model": cfg["model"],
@@ -252,11 +312,73 @@ async def _vllm_chat(cfg: dict[str, str], messages: list[dict[str, Any]]) -> dic
         "stream": False,
     }
     headers = {"Authorization": f"Bearer {cfg['key']}", "Content-Type": "application/json"}
-    async with httpx.AsyncClient(timeout=_VLLM_TIMEOUT) as client:
+    async with _http_client(cfg) as client:
         resp = await client.post(f"{cfg['base']}/chat/completions", json=payload, headers=headers)
         resp.raise_for_status()
         data = resp.json()
     return data["choices"][0]["message"]
+
+
+# ---------------------------------------------------------------------------
+# 설정 UI 지원 — 유효 설정 조회 / override 저장 / 연결 테스트
+# ---------------------------------------------------------------------------
+def get_effective_config() -> dict[str, Any]:
+    """현재 유효 설정 (api_key 값은 절대 노출 안 함). 설정 UI GET 용."""
+    ov = _read_runtime_override()
+    cfg = _llm_config()
+    if cfg is None:
+        backend = (ov.get("backend") or os.environ.get("LLM_BACKEND") or "off").strip().lower()
+        return {"backend": backend, "base_url": "", "model": "", "connected": False,
+                "source": "runtime" if ov else "env", "has_key": bool(os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY"))}
+    return {
+        "backend": cfg["backend"], "base_url": cfg["base"], "model": cfg["model"],
+        "connected": True, "no_proxy": cfg["no_proxy"],
+        "source": "runtime" if ov else ("env" if (os.environ.get("LLM_BASE_URL") or os.environ.get("OPENAI_BASE_URL")) else "default(상암)"),
+        "has_key": cfg["key"] != "EMPTY",
+    }
+
+
+def set_runtime_config(*, backend: str | None = None, base_url: str | None = None,
+                       model: str | None = None) -> dict[str, Any]:
+    """설정 UI PUT — override JSON 저장 후 유효 설정 반환."""
+    data = _read_runtime_override()
+    if backend is not None:
+        data["backend"] = backend.strip().lower()
+    if base_url is not None:
+        data["base_url"] = base_url.strip()
+    if model is not None:
+        data["model"] = model.strip()
+    p = _runtime_config_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return get_effective_config()
+
+
+def clear_runtime_config() -> dict[str, Any]:
+    """override 삭제 → env/상암 기본으로 복귀."""
+    try:
+        _runtime_config_path().unlink(missing_ok=True)
+    except Exception:
+        pass
+    return get_effective_config()
+
+
+async def test_connection() -> dict[str, Any]:
+    """사용자 트리거 연결 테스트 — GET {base}/models. (§8: 자동 프로빙 아님, UI 버튼)."""
+    cfg = _llm_config()
+    if cfg is None:
+        return {"ok": False, "detail": "backend 가 off/mock 이거나 base/model 미설정."}
+    try:
+        async with _http_client(cfg) as client:
+            resp = await client.get(f"{cfg['base']}/models",
+                                    headers={"Authorization": f"Bearer {cfg['key']}"}, timeout=10.0)
+        if resp.status_code == 200:
+            ids = [m.get("id") for m in (resp.json().get("data") or [])]
+            served = cfg["model"] in ids if ids else None
+            return {"ok": True, "detail": f"{cfg['base']} 응답 200", "models": ids[:20], "model_served": served}
+        return {"ok": False, "detail": f"HTTP {resp.status_code} @ {cfg['base']}/models"}
+    except Exception as exc:
+        return {"ok": False, "detail": f"연결 실패: {exc}"}
 
 
 # ---------------------------------------------------------------------------
@@ -360,4 +482,7 @@ async def stream_chat(
     yield _ev("done", {})
 
 
-__all__ = ["TOOL_SPECS", "TOOL_EXECUTORS", "stream_chat"]
+__all__ = [
+    "TOOL_SPECS", "TOOL_EXECUTORS", "stream_chat",
+    "get_effective_config", "set_runtime_config", "clear_runtime_config", "test_connection",
+]

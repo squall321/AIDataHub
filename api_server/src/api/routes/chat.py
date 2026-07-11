@@ -63,4 +63,35 @@ async def post_chat(
     )
 
 
+# ---------------------------------------------------------------------------
+# LLM 연결 설정 (설정 UI) — 기본 상암, 런타임 override
+# ---------------------------------------------------------------------------
+class ChatConfigIn(BaseModel):
+    backend: str | None = Field(None, description="openai | off (mock)")
+    base_url: str | None = Field(None, description="OpenAI 호환 base (/v1 포함)")
+    model: str | None = Field(None, description="served model 이름")
+
+
+@router.get("/config", summary="현재 LLM 연결 설정 (api_key 미노출)")
+async def get_chat_config() -> dict:
+    return chat_svc.get_effective_config()
+
+
+@router.put("/config", summary="LLM 연결 설정 저장 (런타임 override)")
+async def put_chat_config(payload: ChatConfigIn) -> dict:
+    return chat_svc.set_runtime_config(
+        backend=payload.backend, base_url=payload.base_url, model=payload.model
+    )
+
+
+@router.delete("/config", summary="설정 초기화 → env/상암 기본 복귀")
+async def delete_chat_config() -> dict:
+    return chat_svc.clear_runtime_config()
+
+
+@router.post("/config/test", summary="연결 테스트 (사용자 트리거) — GET {base}/models")
+async def test_chat_config() -> dict:
+    return await chat_svc.test_connection()
+
+
 __all__ = ["router"]

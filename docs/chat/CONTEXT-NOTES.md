@@ -44,6 +44,19 @@ event: error   data: {"code":"llm_unconfigured|vllm_down|timeout|bad_input","mes
 event: done    data: {}
 ```
 
+## LLM 연결 설정 (2차 — 상암 기본 + 설정 UI)
+- **기본 = 상암 프로덕션 LLM(B300).** `http://10.198.143.137:10000/v1`, 모델 `GLM-5-2`
+  (ReportArchive backend/app/config.py 의 B300 OpenAI 호환 예시 = 상암. 사용자 "137" 확인).
+- **.env 규칙 = ReportArchive 동일.** `LLM_BACKEND`(openai|off) · `LLM_BASE_URL`(/v1 포함) ·
+  `LLM_MODEL` · `LLM_API_KEY` · `LLM_TIMEOUT_S` · `LLM_NO_PROXY`(폐쇄망 직결, 기본 true).
+  하위호환으로 OPENAI_BASE_URL/CHAT_MODEL/OPENAI_ASK_MODEL 도 읽음.
+- **우선순위:** 런타임 override(설정 UI) → env → 상암 기본. `_llm_config()` 가 매 요청 계산.
+- **설정 UI** = 대시보드 '데이터 챗 > LLM 연결 설정'(접이식). base_url/model/backend 편집 +
+  저장/연결 테스트/기본복귀. `GET/PUT/DELETE /api/chat/config`, `POST /api/chat/config/test`.
+  override 는 `{DATA_DIR}/chat_llm_config.json` 에 저장(마이그레이션 없음). **api_key 는 UI 미노출**
+  (env 전용, dev↔prod 는 base_url·model 만 스왑 — §3-1).
+- **연결 테스트**는 사용자 버튼 트리거(GET {base}/models). §8 자동 프로빙 아님.
+
 ## 미결/후속 (이번 범위 밖)
 - 포털 MCP Gateway 등록(AIDataHub MCP를 gateway에), 포털 글로벌 챗 연동.
 - 대화 히스토리 영속화(현재 요청 바디에 messages 전량 왕복 = 세션 메모리).

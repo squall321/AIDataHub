@@ -126,6 +126,73 @@ async def test_tool_failure_is_returned_to_llm(monkeypatch):
     assert evs[-1]["event"] == "done"
 
 
+# ── LLM 연결 설정 (기본 상암 · 런타임 override) ──────────────────
+_LLM_ENV = ("LLM_BACKEND", "LLM_BASE_URL", "LLM_MODEL", "LLM_API_KEY",
+            "OPENAI_BASE_URL", "CHAT_MODEL", "OPENAI_ASK_MODEL")
+
+
+def _isolate_cfg(monkeypatch, tmp_path):
+    monkeypatch.setattr(chat_svc, "_runtime_config_path", lambda: tmp_path / "cfg.json")
+    for k in _LLM_ENV:
+        monkeypatch.delenv(k, raising=False)
+
+
+def test_config_default_is_sangam(monkeypatch, tmp_path):
+    _isolate_cfg(monkeypatch, tmp_path)
+    cfg = chat_svc.get_effective_config()
+    assert cfg["base_url"] == "http://10.198.143.137:10000/v1"
+    assert cfg["model"] == "GLM-5-2"
+    assert cfg["connected"] is True and cfg["source"] == "default(상암)"
+
+
+def test_config_override_and_clear(monkeypatch, tmp_path):
+    _isolate_cfg(monkeypatch, tmp_path)
+    chat_svc.set_runtime_config(base_url="http://192.168.1.100:8000/v1", model="qwen2.5-7b-dev")
+    c = chat_svc._llm_config()
+    assert c["base"] == "http://192.168.1.100:8000/v1" and c["model"] == "qwen2.5-7b-dev"
+    # backend off → 미연결(degrade)
+    chat_svc.set_runtime_config(backend="off")
+    assert chat_svc._llm_config() is None
+    # 초기화 → 상암 기본 복귀
+    chat_svc.clear_runtime_config()
+    assert chat_svc._llm_config()["base"] == "http://10.198.143.137:10000/v1"
+
+
+def test_config_env_over_default(monkeypatch, tmp_path):
+    _isolate_cfg(monkeypatch, tmp_path)
+    monkeypatch.setenv("LLM_BASE_URL", "http://env-host:9000/v1")
+    monkeypatch.setenv("LLM_MODEL", "env-model")
+    c = chat_svc._llm_config()
+    assert c["base"] == "http://env-host:9000/v1" and c["model"] == "env-model"
+
+
+def test_config_never_exposes_key(monkeypatch, tmp_path):
+    _isolate_cfg(monkeypatch, tmp_path)
+    monkeypatch.setenv("LLM_API_KEY", "supersecret")
+    cfg = chat_svc.get_effective_config()
+    assert "supersecret" not in json.dumps(cfg, ensure_ascii=False)
+    assert cfg["has_key"] is True
+
+
+@pytest.mark.asyncio
+async def test_test_connection_off(monkeypatch, tmp_path):
+    _isolate_cfg(monkeypatch, tmp_path)
+    chat_svc.set_runtime_config(backend="off")
+    r = await chat_svc.test_connection()  # 네트워크 안 탐 (backend off)
+    assert r["ok"] is False
+
+
+@pytest.mark.asyncio
+async def test_config_endpoints(test_client, monkeypatch, tmp_path):
+    _isolate_cfg(monkeypatch, tmp_path)
+    r = await test_client.get("/api/chat/config")
+    assert r.status_code == 200 and r.json()["connected"] is True
+    r = await test_client.put("/api/chat/config", json={"base_url": "http://x:1/v1", "model": "m"})
+    assert r.json()["base_url"] == "http://x:1/v1" and r.json()["source"] == "runtime"
+    r = await test_client.delete("/api/chat/config")
+    assert "10.198.143.137" in r.json()["base_url"]
+
+
 # ── POST /api/chat 라우트 (in-process ASGI, echo 모드 = PG/vLLM 불필요) ──
 @pytest.mark.asyncio
 async def test_chat_route_sse_echo(test_client):
