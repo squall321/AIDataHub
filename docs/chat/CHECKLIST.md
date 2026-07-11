@@ -17,7 +17,9 @@
 - [x] `dashboard.css` — 챗 레이아웃 스타일 (버블/상태/trace/드롭존)
 
 ## 설정
-- [x] `.env.example` — CHAT_MODEL + OPENAI_BASE_URL/OPENAI_API_KEY 문서화 (§8 config-only)
+- [x] `.env.example` — ReportArchive 규칙(LLM_BACKEND/LLM_BASE_URL/LLM_MODEL/LLM_API_KEY/
+  LLM_TIMEOUT_S/LLM_NO_PROXY) 문서화, 기본=상암. 하위호환 OPENAI_* 유지 (§8 config-only)
+- [x] 설정 UI (GET/PUT/DELETE /api/chat/config + test) — 기본 상암 + 런타임 override
 
 ## 테스트/검증
 - [x] `tests/test_chat_svc.py` — mock vLLM 툴루프 + echo + degrade + 스펙 + 라우트 SSE (7 tests)

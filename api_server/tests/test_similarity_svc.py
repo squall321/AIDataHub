@@ -33,7 +33,8 @@ async def _seed(session, rid, **over):
     # title 을 query caption 과 동일("인장")하게 둬 _record_signature(title 우선)와
     # query _signature(caption)가 같은 문자열 → hash embedder 동일 벡터 → score≈1.0.
     base = dict(
-        id=rid, data_type="DATA", team="HE", group="CAE", year=2026, seq=1,
+        id=rid, data_type="DATA", team="HE", group="CAE", year=2026,
+        seq=int(rid.rsplit("-", 1)[-1]),  # id 끝번호 = 고유 seq (자연키 uq 충돌 방지)
         title=over.pop("title", "인장"), summary="", tags=[], agents=[],
         content=over.pop("content", {"caption": "인장", "headers": ["strain", "stress"]}),
     )

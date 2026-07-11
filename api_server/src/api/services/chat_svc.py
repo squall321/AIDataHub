@@ -257,9 +257,46 @@ def _read_runtime_override() -> dict[str, Any]:
 
 def _bool_env(name: str, default: bool) -> bool:
     v = os.environ.get(name)
-    if v is None:
+    # 빈 문자열(빈 .env 대입은 set -a 로 ""으로 export)도 default 로 —
+    # 다른 LLM_* 의 ``X or default`` 체인과 의미를 통일. (없으면 폐쇄망 직결 유지)
+    if v is None or v.strip() == "":
         return default
     return v.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _float_env(name: str, default: float) -> float:
+    """방어적 float 파싱 — 이상값이 스트림을 죽이지 않게 default 로 폴백."""
+    v = os.environ.get(name)
+    if v is None or not v.strip():
+        return default
+    try:
+        f = float(v)
+        return f if f > 0 else default
+    except (ValueError, TypeError):
+        return default
+
+
+def _validate_base_url(url: str) -> str:
+    """설정 UI 로 들어온 base_url 검증 — SSRF/자격증명 유출 방지.
+
+    http(s) 만 허용하고, 클라우드 메타데이터·링크로컬 등 위험 호스트를 차단한다.
+    잘못되면 ValueError (라우트가 400 으로 변환).
+    """
+    from urllib.parse import urlparse
+
+    u = (url or "").strip()
+    if not u:
+        return u
+    p = urlparse(u)
+    if p.scheme not in ("http", "https"):
+        raise ValueError("base_url 은 http/https 만 허용합니다.")
+    host = (p.hostname or "").lower()
+    if not host:
+        raise ValueError("base_url 에 host 가 없습니다.")
+    # 클라우드 메타데이터 엔드포인트 명시 차단 (자격증명 탈취 벡터).
+    if host in ("169.254.169.254", "metadata.google.internal", "metadata"):
+        raise ValueError("차단된 host 입니다 (metadata 엔드포인트).")
+    return u.rstrip("/")
 
 
 def _llm_config() -> dict[str, Any] | None:
@@ -291,7 +328,7 @@ def _llm_config() -> dict[str, Any] | None:
         "base": base,
         "model": model,
         "key": (os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY") or "EMPTY").strip(),
-        "timeout": float(os.environ.get("LLM_TIMEOUT_S") or _VLLM_TIMEOUT),
+        "timeout": _float_env("LLM_TIMEOUT_S", _VLLM_TIMEOUT),
         # 폐쇄망(상암) 직결 — httpx 가 HTTP_PROXY env 를 우회. ReportArchive LLM_NO_PROXY 규칙.
         "no_proxy": _bool_env("LLM_NO_PROXY", True),
     }
@@ -330,22 +367,29 @@ def get_effective_config() -> dict[str, Any]:
         backend = (ov.get("backend") or os.environ.get("LLM_BACKEND") or "off").strip().lower()
         return {"backend": backend, "base_url": "", "model": "", "connected": False,
                 "source": "runtime" if ov else "env", "has_key": bool(os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY"))}
+    # source 는 base_url 이 실제로 어디서 왔는지로 판단 (override 에 backend 만 있어도 runtime 오표기 방지).
+    if ov.get("base_url"):
+        source = "runtime"
+    elif os.environ.get("LLM_BASE_URL") or os.environ.get("OPENAI_BASE_URL"):
+        source = "env"
+    else:
+        source = "default(상암)"
     return {
         "backend": cfg["backend"], "base_url": cfg["base"], "model": cfg["model"],
         "connected": True, "no_proxy": cfg["no_proxy"],
-        "source": "runtime" if ov else ("env" if (os.environ.get("LLM_BASE_URL") or os.environ.get("OPENAI_BASE_URL")) else "default(상암)"),
+        "source": source,
         "has_key": cfg["key"] != "EMPTY",
     }
 
 
 def set_runtime_config(*, backend: str | None = None, base_url: str | None = None,
                        model: str | None = None) -> dict[str, Any]:
-    """설정 UI PUT — override JSON 저장 후 유효 설정 반환."""
+    """설정 UI PUT — override JSON 저장 후 유효 설정 반환. base_url 은 검증(SSRF 방지)."""
     data = _read_runtime_override()
     if backend is not None:
         data["backend"] = backend.strip().lower()
     if base_url is not None:
-        data["base_url"] = base_url.strip()
+        data["base_url"] = _validate_base_url(base_url)  # 잘못되면 ValueError → 라우트 400
     if model is not None:
         data["model"] = model.strip()
     p = _runtime_config_path()
@@ -412,8 +456,8 @@ async def stream_chat(
     if cfg is None:
         yield _ev("error", {
             "code": "llm_unconfigured",
-            "message": "LLM(vLLM)이 연결되지 않았습니다. .env 의 OPENAI_BASE_URL 과 "
-                       "CHAT_MODEL(또는 OPENAI_ASK_MODEL)을 설정하세요. 데이터 등록은 대시보드 "
+            "message": "LLM 이 연결되지 않았습니다 (backend=off). '데이터 챗 > LLM 연결 설정' 또는 "
+                       ".env 의 LLM_BASE_URL / LLM_MODEL 을 설정하세요. 데이터 등록은 대시보드 "
                        "'MCP 도구'/'검색' 탭 또는 REST /api/records/import 로도 가능합니다.",
         })
         yield _ev("done", {})
@@ -430,8 +474,20 @@ async def stream_chat(
             yield _ev("error", {"code": "timeout", "message": "LLM 응답 시간 초과."})
             yield _ev("done", {})
             return
-        except Exception as exc:  # 연결/HTTP 오류
-            yield _ev("error", {"code": "vllm_down", "message": f"LLM 호출 실패: {exc}"})
+        except httpx.HTTPStatusError as exc:  # 4xx/5xx — 상태코드를 그대로 알려 오진단 방지
+            sc = exc.response.status_code
+            hint = " (LLM_API_KEY 확인)" if sc in (401, 403) else ""
+            yield _ev("error", {"code": "vllm_http_error",
+                                 "message": f"LLM HTTP {sc}{hint} @ {cfg['base']}"})
+            yield _ev("done", {})
+            return
+        except (KeyError, IndexError, ValueError) as exc:  # 응답 스키마 이상(choices 등)
+            yield _ev("error", {"code": "vllm_bad_response",
+                                 "message": f"LLM 응답 형식 오류: {exc}"})
+            yield _ev("done", {})
+            return
+        except Exception as exc:  # 연결/전송 오류
+            yield _ev("error", {"code": "vllm_down", "message": f"LLM 연결 실패: {exc}"})
             yield _ev("done", {})
             return
 
@@ -445,6 +501,11 @@ async def stream_chat(
             yield _ev("done", {})
             return
 
+        # id 없는 tool_call 은 합성 — assistant echo 와 tool 메시지의 tool_call_id 매칭 보장
+        # (일부 OpenAI 호환 서버가 id 를 생략하면 엄격한 서버가 후속 턴을 거부).
+        for _i, tc in enumerate(tool_calls):
+            if not tc.get("id"):
+                tc["id"] = f"call_{_round}_{_i}"
         # assistant 의 tool_calls 를 대화에 반영 후 각 도구 실행.
         convo.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": tool_calls})
         for tc in tool_calls:
@@ -468,7 +529,7 @@ async def stream_chat(
             tool_trace.append({"tool": name, "args": args, "result": out})
             convo.append({
                 "role": "tool",
-                "tool_call_id": tc.get("id", ""),
+                "tool_call_id": tc["id"],  # 위에서 항상 채워짐 (합성 포함)
                 "name": name,
                 "content": json.dumps(out, ensure_ascii=False, default=str),
             })

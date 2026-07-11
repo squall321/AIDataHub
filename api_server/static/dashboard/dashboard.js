@@ -2028,7 +2028,10 @@ async function chatSend() {
   const text = (input.value || "").trim();
   if (!text) return;
 
-  chatMessages.push({ role: "user", content: text });
+  const userMsg = { role: "user", content: text };
+  chatMessages.push(userMsg);
+  // 히스토리 상한 — 전량 왕복이라 무한 증가 방지 (최근 30개 유지).
+  if (chatMessages.length > 30) chatMessages.splice(0, chatMessages.length - 30);
   chatBubble("user", text);
   input.value = "";
   input.disabled = true;
@@ -2058,6 +2061,9 @@ async function chatSend() {
     node.body.textContent = "연결 오류: " + e;
     node.wrap.classList.add("chat-err");
   } finally {
+    // 이번 턴에 assistant 응답이 안 붙었으면(실패) user 메시지를 히스토리에서 제거 —
+    // 다음 요청에 user 롤 2연속으로 vLLM 챗 템플릿 롤 교대가 깨지는 것 방지 (버블은 화면에 남김).
+    if (chatMessages[chatMessages.length - 1] === userMsg) chatMessages.pop();
     input.disabled = false;
     sendBtn.disabled = false;
     input.focus();

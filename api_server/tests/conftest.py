@@ -242,6 +242,36 @@ async def test_engine():
     await engine.dispose()
 
 
+from contextlib import contextmanager as _contextmanager
+
+
+@_contextmanager
+def _sqlite_neutralize_pg_casts(metadata):
+    """SQLite ``create_all`` 동안 ``'{}'::jsonb`` 류 PG 전용 캐스트 server_default 를 중립화.
+
+    ``text("'{}'::jsonb")`` 은 SQLite 파서가 ``:`` 에서 거부(``unrecognized token``)해
+    create_all 전체가 실패한다. 캐스트만 벗겨 ``'{}'`` 로 바꿔 테이블 생성이 되게 하고,
+    with 종료 시 원복해 PostgreSQL 경로(pg_session)엔 전혀 영향을 주지 않는다.
+    """
+    from sqlalchemy import text as _text
+    from sqlalchemy.schema import DefaultClause
+
+    saved = []
+    for tbl in metadata.tables.values():
+        for col in tbl.columns:
+            sd = col.server_default
+            arg = getattr(sd, "arg", None)
+            s = getattr(arg, "text", None)
+            if s and "::" in s:
+                saved.append((col, sd))
+                col.server_default = DefaultClause(_text(s.split("::", 1)[0]))
+    try:
+        yield
+    finally:
+        for col, sd in saved:
+            col.server_default = sd
+
+
 @pytest_asyncio.fixture
 async def test_session_maker(test_engine):
     """함수 스코프: Base.metadata 기반 테이블 생성/세션메이커 반환."""
@@ -254,10 +284,11 @@ async def test_session_maker(test_engine):
     except ImportError as exc:  # pragma: no cover
         pytest.skip(f"Agent 1 DB modules missing: {exc}")
 
-    # 테이블 생성 (PG 전용 타입이면 여기서 OperationalError 발생 → skip)
+    # 테이블 생성 — PG 전용 ::jsonb server_default 는 SQLite 용으로 중립화(with 종료 시 원복).
     try:
-        async with test_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        with _sqlite_neutralize_pg_casts(Base.metadata):
+            async with test_engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
     except Exception as exc:
         pytest.skip(f"DB schema create_all failed on SQLite (PG-only types?): {exc}")
 

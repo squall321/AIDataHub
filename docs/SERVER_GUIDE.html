@@ -499,6 +499,8 @@ VSCode 확장     ──REST(데이터/에이전트 작성)──────┘
             <tr><td class="mono">GET /api/system/health</td><td>헬스체크(기동 검증용)</td></tr>
             <tr><td class="mono">GET /api/discover · /schema · /hints</td><td>카탈로그 요약 · 스키마 · 힌트</td></tr>
             <tr><td class="mono">POST /api/ask</td><td>LLM 질의(선택, OpenAI 호환 백엔드)</td></tr>
+            <tr><td class="mono">POST /api/chat</td><td><b>데이터 챗</b>(SSE) — vLLM + 로컬 도구로 대화형 수집·검색. 대시보드 메인</td></tr>
+            <tr><td class="mono">GET/PUT/DELETE /api/chat/config</td><td>챗 LLM 연결 설정(기본 상암, 런타임 override)</td></tr>
             <tr><td class="mono">GET /api/search · /search/faceted · /search/by-tags</td><td>검색 · 패싯 · 태그</td></tr>
             <tr><td class="mono">GET/DELETE /api/records · POST /api/records/import</td><td>레코드 조회·삭제·일괄 수집</td></tr>
             <tr><td class="mono">GET /api/records/{id}/lineage · /diff · /suggest-parent</td><td>계보 · 버전 비교 · 부모 제안</td></tr>
@@ -569,6 +571,8 @@ VSCode 확장     ──REST(데이터/에이전트 작성)──────┘
             <tr><td class="mono">EMBEDDING_DIM</td><td class="mono">768</td><td>벡터 차원(임베더와 정합 필수)</td></tr>
             <tr><td class="mono">AUTO_EMBED_ON_INSERT</td><td class="mono">true</td><td>수집 시 자동 임베딩</td></tr>
             <tr><td class="mono">AUTH_REQUIRED</td><td class="mono">false</td><td>API 키 강제 여부</td></tr>
+            <tr><td class="mono">LLM_BASE_URL / LLM_MODEL</td><td class="mono">상암 / GLM-5-2</td><td>데이터 챗 LLM(OpenAI 호환, /v1 포함). 기본 상암 B300 <code>10.198.143.137:10000/v1</code></td></tr>
+            <tr><td class="mono">LLM_BACKEND / LLM_NO_PROXY</td><td class="mono">openai / true</td><td>off=연결 안 함 · no_proxy=폐쇄망 직결(프록시 우회)</td></tr>
             <tr><td class="mono">HOST_IP</td><td class="mono">110.15.177.120</td><td>외부 노출 IP(URL 생성용)</td></tr>
             <tr><td class="mono">AIDH_DRIVE_REMOTE</td><td class="mono">rclone remote</td><td>백업/복원 Drive 경로</td></tr>
           </tbody>

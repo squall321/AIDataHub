@@ -32,7 +32,8 @@ async def _seed(session, rid, **over):
     from api.db.models import Record
 
     base = dict(
-        id=rid, data_type="DATA", team="HE", group="CAE", year=2026, seq=1,
+        id=rid, data_type="DATA", team="HE", group="CAE", year=2026,
+        seq=int(rid.rsplit("-", 1)[-1]),  # id 끝번호 = 고유 seq (자연키 uq 충돌 방지)
         title="인장", summary="", tags=[], agents=[],
         content={"caption": "인장", "headers": ["strain", "stress"]},
     )

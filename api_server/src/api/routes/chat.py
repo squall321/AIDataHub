@@ -10,10 +10,11 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from api.auth.dependencies import Principal, require_api_key
 from api.services import chat_svc
 
 log = logging.getLogger(__name__)
@@ -78,19 +79,29 @@ async def get_chat_config() -> dict:
 
 
 @router.put("/config", summary="LLM 연결 설정 저장 (런타임 override)")
-async def put_chat_config(payload: ChatConfigIn) -> dict:
-    return chat_svc.set_runtime_config(
-        backend=payload.backend, base_url=payload.base_url, model=payload.model
-    )
+async def put_chat_config(
+    payload: ChatConfigIn,
+    _principal: Principal = Depends(require_api_key),  # 쓰기 = 인증 필요 (SSRF/키유출 방지)
+) -> dict:
+    try:
+        return chat_svc.set_runtime_config(
+            backend=payload.backend, base_url=payload.base_url, model=payload.model
+        )
+    except ValueError as exc:  # base_url 검증 실패
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.delete("/config", summary="설정 초기화 → env/상암 기본 복귀")
-async def delete_chat_config() -> dict:
+async def delete_chat_config(
+    _principal: Principal = Depends(require_api_key),
+) -> dict:
     return chat_svc.clear_runtime_config()
 
 
 @router.post("/config/test", summary="연결 테스트 (사용자 트리거) — GET {base}/models")
-async def test_chat_config() -> dict:
+async def test_chat_config(
+    _principal: Principal = Depends(require_api_key),  # 외부로 키 실린 요청 발생 → 인증 필요
+) -> dict:
     return await chat_svc.test_connection()
 
 

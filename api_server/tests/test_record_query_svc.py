@@ -11,9 +11,10 @@ import pytest
 async def _seed(session, **over):
     from api.db.models import Record
 
+    _id = over.get("id", "DOC-HE-CAE-2026-0000000001")
     base = dict(
-        id=over.get("id", "DOC-HE-CAE-2026-0000000001"),
-        data_type="DOC", team="HE", group="CAE", year=2026, seq=1,
+        id=_id, data_type="DOC", team="HE", group="CAE", year=2026,
+        seq=int(_id.rsplit("-", 1)[-1]),  # id 끝번호 = 고유 seq (자연키 uq 충돌 방지)
         title="seed", summary="", tags=[], agents=[], content={},
     )
     base.update(over)

@@ -182,15 +182,105 @@ async def test_test_connection_off(monkeypatch, tmp_path):
     assert r["ok"] is False
 
 
+def test_bool_env_empty_is_default(monkeypatch):
+    # 빈 .env 대입(set -a 로 ""으로 export)도 default — 상암 폐쇄망 직결 유지 (NO_PROXY 회귀).
+    monkeypatch.setenv("LLM_NO_PROXY", "")
+    assert chat_svc._bool_env("LLM_NO_PROXY", True) is True
+    monkeypatch.setenv("LLM_NO_PROXY", "false")
+    assert chat_svc._bool_env("LLM_NO_PROXY", True) is False
+    monkeypatch.delenv("LLM_NO_PROXY", raising=False)
+    assert chat_svc._bool_env("LLM_NO_PROXY", True) is True
+
+
+def test_no_proxy_default_reaches_sangam(monkeypatch, tmp_path):
+    # 빈 LLM_NO_PROXY 에서도 no_proxy=True (trust_env off) → 사내 프록시 우회, 상암 직결.
+    _isolate_cfg(monkeypatch, tmp_path)
+    monkeypatch.setenv("LLM_NO_PROXY", "")  # .env 빈 대입 재현
+    assert chat_svc._llm_config()["no_proxy"] is True
+
+
+def test_float_env_defensive(monkeypatch):
+    monkeypatch.setenv("LLM_TIMEOUT_S", "abc")
+    assert chat_svc._float_env("LLM_TIMEOUT_S", 120.0) == 120.0  # 이상값 → default
+    monkeypatch.setenv("LLM_TIMEOUT_S", "0")
+    assert chat_svc._float_env("LLM_TIMEOUT_S", 120.0) == 120.0  # 0 → default
+    monkeypatch.setenv("LLM_TIMEOUT_S", "30")
+    assert chat_svc._float_env("LLM_TIMEOUT_S", 120.0) == 30.0
+
+
+def test_base_url_validation_blocks_ssrf(monkeypatch, tmp_path):
+    _isolate_cfg(monkeypatch, tmp_path)
+    with pytest.raises(ValueError):
+        chat_svc.set_runtime_config(base_url="http://169.254.169.254/latest/meta-data")  # 메타데이터 차단
+    with pytest.raises(ValueError):
+        chat_svc.set_runtime_config(base_url="ftp://x/v1")  # 스킴
+    # 정상 vLLM 주소는 통과
+    chat_svc.set_runtime_config(base_url="http://192.168.1.100:8000/v1", model="m")
+    assert chat_svc._llm_config()["base"] == "http://192.168.1.100:8000/v1"
+
+
+def test_config_override_beats_env(monkeypatch, tmp_path):
+    # override 와 env 가 동시에 있을 때 override 우선 (우선순위 회귀).
+    _isolate_cfg(monkeypatch, tmp_path)
+    monkeypatch.setenv("LLM_BASE_URL", "http://env-host:9000/v1")
+    monkeypatch.setenv("LLM_MODEL", "env-model")
+    chat_svc.set_runtime_config(base_url="http://ov-host:1/v1", model="ov-model")
+    c = chat_svc._llm_config()
+    assert c["base"] == "http://ov-host:1/v1" and c["model"] == "ov-model"
+
+
+@pytest.mark.asyncio
+async def test_max_rounds_exhaustion(monkeypatch):
+    # LLM 이 매 턴 tool_call 만 반환 → 무한루프 방지(_MAX_ROUNDS) 안전장치 검증.
+    monkeypatch.setattr(chat_svc, "_llm_config", lambda: {"base": "x", "model": "m", "key": "k"})
+
+    async def always_tool(cfg, messages):
+        return {"content": "", "tool_calls": [
+            {"id": "c", "function": {"name": "list_doc_types", "arguments": "{}"}}]}
+
+    async def fake_exec(args, api_key):
+        return {"ok": 1}
+
+    monkeypatch.setattr(chat_svc, "_vllm_chat", always_tool)
+    monkeypatch.setitem(chat_svc.TOOL_EXECUTORS, "list_doc_types", fake_exec)
+
+    evs = await _collect(chat_svc.stream_chat([{"role": "user", "content": "loop"}]))
+    result = next(e for e in evs if e["event"] == "result")
+    assert "상한" in result["data"]["content"]  # 상한 도달 메시지
+    assert len(result["data"]["tool_trace"]) == chat_svc._MAX_ROUNDS
+    assert evs[-1]["event"] == "done"
+
+
 @pytest.mark.asyncio
 async def test_config_endpoints(test_client, monkeypatch, tmp_path):
     _isolate_cfg(monkeypatch, tmp_path)
-    r = await test_client.get("/api/chat/config")
-    assert r.status_code == 200 and r.json()["connected"] is True
-    r = await test_client.put("/api/chat/config", json={"base_url": "http://x:1/v1", "model": "m"})
-    assert r.json()["base_url"] == "http://x:1/v1" and r.json()["source"] == "runtime"
-    r = await test_client.delete("/api/chat/config")
-    assert "10.198.143.137" in r.json()["base_url"]
+    # 쓰기 엔드포인트는 require_api_key — 테스트는 인증 의존성을 override 로 우회.
+    from api.auth.dependencies import Principal, require_api_key
+    from api.main import app
+
+    app.dependency_overrides[require_api_key] = lambda: Principal(
+        name="test", agent_scopes=["*"], is_anonymous=False
+    )
+    try:
+        r = await test_client.get("/api/chat/config")  # GET 은 무인증
+        assert r.status_code == 200 and r.json()["connected"] is True
+        r = await test_client.put("/api/chat/config", json={"base_url": "http://x:1/v1", "model": "m"})
+        assert r.status_code == 200 and r.json()["base_url"] == "http://x:1/v1"
+        # SSRF 차단 → 400
+        r = await test_client.put("/api/chat/config", json={"base_url": "http://169.254.169.254/v1"})
+        assert r.status_code == 400
+        r = await test_client.delete("/api/chat/config")
+        assert "10.198.143.137" in r.json()["base_url"]
+    finally:
+        app.dependency_overrides.pop(require_api_key, None)
+
+
+@pytest.mark.asyncio
+async def test_config_put_requires_auth(test_client, monkeypatch, tmp_path):
+    # override 없이(익명) 쓰기 → 401 (SSRF/키유출 방지 가드 확인).
+    _isolate_cfg(monkeypatch, tmp_path)
+    r = await test_client.put("/api/chat/config", json={"base_url": "http://x/v1"})
+    assert r.status_code == 401
 
 
 # ── POST /api/chat 라우트 (in-process ASGI, echo 모드 = PG/vLLM 불필요) ──
