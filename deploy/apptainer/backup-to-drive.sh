@@ -82,6 +82,13 @@ bash deploy/apptainer/restore-db.sh --yes deploy/apptainer/backups/$(basename "$
 > 주의: \`restore-db.sh\` 는 자동 안전백업 후 DROP+CREATE+restore (기존 데이터 덮어씀).
 EOF
 
+# 3b) 업로드 전 최종 안전장치 — Drive 보존정책(RETAIN)이 파괴적이라, 빈/손상 덤프를
+#     올려 정상 백업을 밀어내는 것을 막는다 (backup-db.sh 가 이미 검증하지만 이중 방어).
+if ! gzip -t "$DUMP" 2>/dev/null || [[ "$(stat -c%s "$DUMP" 2>/dev/null || echo 0)" -lt 1000 ]]; then
+  echo "[ERROR] 업로드 중단 — 덤프가 손상/비어있음: $DUMP" >&2
+  exit 1
+fi
+
 # 4) 업로드 (dump + sha256 + guide)
 echo "→ Drive 업로드: $REMOTE"
 rclone copy --progress "$DUMP"        "$REMOTE/"
