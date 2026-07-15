@@ -107,6 +107,10 @@ deploy/apptainer/cache/
 # DB backups (drive sync 로컬 캐시 — 재생성 가능)
 deploy/apptainer/backups/
 
+# 머지 동기화 export/import JSONL (재생성 가능 — records/agents 데이터)
+deploy/apptainer/sync-export/
+deploy/apptainer/sync-import/
+
 # Wave-5 운영 산출물 (sif/build_log/업로드 zip 풀린 디렉토리)
 api_server/mcp_uploads/_uploads/
 api_server/logs/
