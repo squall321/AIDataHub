@@ -499,7 +499,14 @@ to https:
 - Cite the source after every factual claim: `(source: <record_id> §<section_id>)`.
 - Korean and English are both supported in queries.
 - The hub is read-mostly: avoid writes unless the user explicitly authorizes them.
-- Out of this agent's domain ({common_tags})? Say so and call recommend_agents()."""
+- Out of this agent's domain ({common_tags})? Say so and call recommend_agents().
+
+## Numerical calculations — use the calc tools, never compute by hand
+For any numerical engineering calculation (stiffness, laminate/ABD, material
+properties, warpage, fastening, buckling, etc.), do NOT compute or estimate by
+hand — call the gateway's calculation MCP tools exposed alongside this hub. If
+the calculation is outside your domain, say so and call recommend_agents() to
+hand off to a calculation-specialist persona."""
 
 
 def build_system_prompt(
