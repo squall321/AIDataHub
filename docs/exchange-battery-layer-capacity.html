@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<!-- AI Data Hub 교환형 협진 — 배터리 층수 증가로 용량 키우기 (9전문가 토론, 자체 완결 HTML) -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>교환형 협진 — 배터리 층수↑로 용량 키우기</title>
+<style>
+:root{
+  --bg:#ECF0ED; --surface:#FFFFFF; --panel:#F3F7F4;
+  --ink:#141A16; --ink-2:#33403A; --muted:#5C6862;
+  --line:#D8E0DB; --line-2:#E6ECE8;
+  --accent:#1E7A50; --accent-strong:#155C3B; --accent-soft:#DDF0E5;
+  --open:#1E7A50; --rebut:#C6403A; --mediate:#2E6E8E; --interject:#B5701A; --verdict:#6A4FA0;
+  --crit:#C6403A;
+  --shadow:0 1px 2px rgba(20,26,22,.05), 0 10px 30px -18px rgba(20,26,22,.30);
+  --sans:"Helvetica Neue","Segoe UI",Roboto,system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+  --maxw:940px;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0C110E; --surface:#151B17; --panel:#1A221D; --ink:#E6EDE9; --ink-2:#B4C2BA; --muted:#7E8C84;
+  --line:#28332C; --line-2:#202824; --accent:#4FC08A; --accent-strong:#6FD0A0; --accent-soft:#0F2E20;
+  --open:#4FC08A; --rebut:#EA6B64; --mediate:#5FA0BF; --interject:#DCA24A; --verdict:#A48BD8; --crit:#EA6B64;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 14px 34px -20px rgba(0,0,0,.8);
+}}
+:root[data-theme="light"]{
+  --bg:#ECF0ED; --surface:#FFFFFF; --panel:#F3F7F4; --ink:#141A16; --ink-2:#33403A; --muted:#5C6862;
+  --line:#D8E0DB; --line-2:#E6ECE8; --accent:#1E7A50; --accent-strong:#155C3B; --accent-soft:#DDF0E5;
+  --open:#1E7A50; --rebut:#C6403A; --mediate:#2E6E8E; --interject:#B5701A; --verdict:#6A4FA0; --crit:#C6403A;
+}
+:root[data-theme="dark"]{
+  --bg:#0C110E; --surface:#151B17; --panel:#1A221D; --ink:#E6EDE9; --ink-2:#B4C2BA; --muted:#7E8C84;
+  --line:#28332C; --line-2:#202824; --accent:#4FC08A; --accent-strong:#6FD0A0; --accent-soft:#0F2E20;
+  --open:#4FC08A; --rebut:#EA6B64; --mediate:#5FA0BF; --interject:#DCA24A; --verdict:#A48BD8; --crit:#EA6B64;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans); font-size:16px; line-height:1.62; -webkit-font-smoothing:antialiased}
+code,.mono{font-family:var(--mono)}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:3px}
+.bar{position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:12px; padding:10px clamp(16px,4vw,34px); background:color-mix(in srgb,var(--surface) 86%,transparent); backdrop-filter:saturate(1.4) blur(9px); border-bottom:1px solid var(--line)}
+.bar b{font-weight:800; letter-spacing:-.01em}
+.bar .tag{font:600 10.5px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+.bar .sp{flex:1}
+.toggle{font:600 11.5px/1 var(--mono); color:var(--ink-2); background:var(--panel); border:1px solid var(--line); padding:7px 10px; border-radius:6px; cursor:pointer; letter-spacing:.04em}
+.toggle:hover{border-color:var(--accent)}
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 clamp(16px,4vw,34px)}
+.hero{padding:48px 0 26px; border-bottom:1px solid var(--line)}
+.eyebrow{font:600 12px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--accent-strong)}
+.hero h1{font-size:clamp(24px,3.8vw,38px); line-height:1.08; letter-spacing:-.025em; font-weight:800; margin:14px 0 12px; max-width:22ch; text-wrap:balance}
+.hero .q{font-size:clamp(15px,1.9vw,18px); color:var(--ink-2); max-width:62ch; margin:0}
+.hero .q b{color:var(--ink)}
+.legend{display:flex; flex-wrap:wrap; gap:8px; margin-top:20px}
+.lg{font:600 11px/1 var(--mono); letter-spacing:.04em; padding:5px 9px; border-radius:999px; color:#fff}
+.lg.o{background:var(--open)} .lg.r{background:var(--rebut)} .lg.m{background:var(--mediate)} .lg.i{background:var(--interject)} .lg.v{background:var(--verdict)}
+section{padding:34px 0}
+.sh{font:600 11.5px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--accent-strong); margin:0 0 16px}
+.thread{display:flex; flex-direction:column; gap:0; position:relative}
+.thread::before{content:""; position:absolute; left:19px; top:8px; bottom:34px; width:2px; background:var(--line)}
+@media (max-width:620px){.thread::before{display:none}}
+.turn{position:relative; padding:0 0 18px 52px}
+@media (max-width:620px){.turn{padding-left:0}}
+.turn .dot{position:absolute; left:11px; top:3px; width:18px; height:18px; border-radius:50%; background:var(--surface); border:3px solid var(--stance); z-index:2}
+@media (max-width:620px){.turn .dot{display:none}}
+.turn.o{--stance:var(--open)} .turn.r{--stance:var(--rebut)} .turn.m{--stance:var(--mediate)} .turn.i{--stance:var(--interject)} .turn.v{--stance:var(--verdict)}
+.card{background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--stance); border-radius:10px; padding:15px 17px; box-shadow:var(--shadow)}
+.thead{display:flex; align-items:baseline; flex-wrap:wrap; gap:8px 10px; margin-bottom:7px}
+.rnd{font:700 10px/1 var(--mono); letter-spacing:.06em; color:#fff; background:var(--stance); padding:4px 7px; border-radius:5px}
+.who{font:700 12.5px/1 var(--mono); color:var(--stance)}
+.role{font-size:13px; color:var(--muted)}
+.quote{font-size:14.5px; color:var(--ink); margin:0}
+.quote b{color:var(--ink); background:color-mix(in srgb,var(--stance) 14%,transparent); padding:0 3px; border-radius:3px}
+.reto{margin-top:8px; font-size:12px; color:var(--muted); font-style:italic}
+.reto b{color:var(--stance); font-style:normal}
+.cites{display:flex; flex-wrap:wrap; gap:5px; margin-top:10px; padding-top:10px; border-top:1px solid var(--line-2)}
+.cite{font:600 10.5px/1 var(--mono); color:var(--ink-2); background:var(--panel); border:1px solid var(--line); padding:4px 7px; border-radius:5px; white-space:nowrap}
+.consensus{background:var(--accent-soft); border:1px solid color-mix(in srgb,var(--accent) 25%,var(--line)); border-radius:12px; padding:6px 8px; margin-top:6px}
+.tblwrap{overflow-x:auto}
+table{border-collapse:collapse; width:100%; font-size:13.5px; min-width:480px}
+th,td{text-align:left; padding:10px 14px; border-bottom:1px solid color-mix(in srgb,var(--accent) 15%,var(--line)); vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+thead th{font:700 11px/1.3 var(--mono); letter-spacing:.05em; text-transform:uppercase; color:var(--accent-strong)}
+td.who2{font-family:var(--mono); font-size:11.5px; color:var(--accent-strong); white-space:nowrap}
+.takeaway{margin-top:18px; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:15px 18px; font-size:14.5px; box-shadow:var(--shadow)}
+.takeaway b{color:var(--accent-strong)}
+footer{padding:24px 0 60px; color:var(--muted); font-size:12.5px; border-top:1px solid var(--line); margin-top:20px}
+footer .src{font-family:var(--mono); color:var(--ink-2); word-break:break-all}
+</style>
+</head>
+<body>
+<div class="bar"><b>AI Data Hub</b><span class="tag">교환형 협진 · 9전문가 토론</span><span class="sp"></span>
+  <button class="toggle" id="tt" type="button" aria-label="라이트/다크 전환">THEME</button></div>
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow">다중 전문가 의견 교환 · 하나의 손잡이, 여섯 개의 반대급부</div>
+    <h1>배터리 층수를 늘려 용량을 키우면 무슨 일이 생기나</h1>
+    <p class="q">"층을 늘리면 용량이 는다"는 한 줄에 <b>9명의 전문가가 각자 다른 벽을 들이민다.</b> 소재·전기화학·충전·스웰링·기구·안전·해석이 서로의 대책을 반박하며, 이득 하나에 대가 여섯이 붙는 것을 드러낸다. 모든 발언은 실제 record 로 인용된다.</p>
+    <div class="legend"><span class="lg o">개시</span><span class="lg m">보강</span><span class="lg i">끼어듦</span><span class="lg r">반박</span><span class="lg v">종합</span></div>
+  </header>
+
+  <section>
+    <p class="sh">토론</p>
+    <div class="thread">
+      <div class="turn o"><span class="dot"></span><div class="card">
+        <div class="thead"><span class="rnd">라운드 1 · 개시</span><span class="who">pwr-cell-design</span><span class="role">셀 전극·구조</span></div>
+        <p class="quote">"층을 늘리면 용량이 는다"는 절반만 맞다. 셀 부피가 고정이면 층마다 <b>집전체·분리막이라는 비활성 두께가 고정비</b>로 붙어 이득이 선형이 아니다. 그리고 로딩(두꺼운 전극)↑는 에너지밀도는 올리지만 <b>충전 율특성·리튬 석출 마진은 악화</b>다 — 방향은 확정적이다.</p>
+        <div class="cites"><span class="cite">DOC-CCT-PWR-093</span><span class="cite">-100</span><span class="cite">-091</span></div>
+      </div></div>
+
+      <div class="turn m"><span class="dot"></span><div class="card">
+        <div class="thead"><span class="rnd">라운드 2 · 보강</span><span class="who">pwr-cell-chemistry</span><span class="role">셀 소재·화학</span></div>
+        <p class="quote">근본적으로 에너지밀도를 올리는 수단은 <b>전압↑·소재(실리콘)↑·비활성↓ 셋뿐</b>이다. 층수는 "비활성/부피" 축을 건드리는 것. 실리콘을 더 넣어 층당 용량을 키우려 하면 <b>체적변화·SEI 소모·수명의 벽</b>에 막힌다.</p>
+        <p class="reto"><b>↳ 응답:</b> 구조의 "비활성 비율"에 소재 축의 한계를 더함</p>
+        <div class="cites"><span class="cite">DOC-CCT-PWR-061</span><span class="cite">-078</span><span class="cite">-072</span></div>
+      </div></div>
+
+      <div class="turn m"><span class="dot"></span><div class="card">
+        <div class="thead"><span class="rnd">라운드 3 · 보강</span><span class="who">sim-battery-electrochem</span><span class="role">전기화학 해석</span></div>
+        <p class="quote">두꺼운 전극이 왜 위험한지 물리로 말하겠다. 확산 경로가 길어져 국부 음극 전위가 내려가 <b>리튬 석출</b>이 시작된다. 판정은 <b>평균이 아니라 분리막 계면 최악점</b>이고 — 정상 전압 범위 안에서도 저온·고SOC·고율이면 난다. 셀 외부 전압엔 안 보인다.</p>
+        <p class="reto"><b>↳ 응답:</b> 설계의 "율특성 악화"를 음극 전위 물리로 근거화</p>
+        <div class="cites"><span class="cite">DOC-CCT-SIM-123</span><span class="cite">-139</span><span class="cite">-131</span></div>
+      </div></div>
+
+      <div class="turn i"><span class="dot"></span><div class="card">
+        <div class="thead"><span class="rnd">라운드 4 · 끼어듦</span><span class="who">pwr-charging-algorithm</span><span class="role">충전 알고리즘</span></div>
+        <p class="quote">충전 관점을 더하겠다. 용량↑에 충전 시간을 유지하려면 전류↑, <b>비가역 발열은 전류의 제곱</b>이다. 게다가 두꺼운 전극은 수용 전류가 낮아 같은 C-rate라도 음극 전위 마진이 줄어 <b>충전이 느려지거나 석출</b>한다. 핵심은 충전기 W 가 아니라 <b>음극 전위 마진</b>이다.</p>
+        <p class="reto"><b>↳ 응답:</b> 해석의 "석출"을 충전 프로파일 제약으로 연결</p>
+        <div class="cites"><span class="cite">DOC-CCT-PWR-036</span><span class="cite">-048</span><span class="cite">-038</span></div>
+      </div></div>
+
+      <div class="turn i"><span class="dot"></span><div class="card">
+        <div class="thead"><span class="rnd">라운드 5 · 끼어듦</span><span class="who">pwr-swelling</span><span class="role">스웰링·가스</span></div>
+        <p class="quote">전기화학만 문제가 아니다. 층·두께↑ = <b>스웰링 팽창력↑</b>. 설계 갭을 소진하면 팽창력이 디스플레이 배면으로 전달돼 <b>OLED 무라·디스플레이 들뜸·백커버 벌어짐</b>이 난다. 이건 "두께 몇 mm"가 아니라 <b>"힘 몇 N이 어디에 걸리나"</b>의 문제다.</p>
+        <p class="reto"><b>↳ 응답:</b> 전기·충전 축에 기구(세트 변형) 축을 추가</p>
+        <div class="cites"><span class="cite">DOC-CCT-PWR-514</span><span class="cite">-525</span></div>
+      </div></div>
+
+      <div class="turn r"><span class="dot"></span><div class="card">
+        <div class="thead"><span class="rnd">라운드 6 · 반박</span><span class="who">pwr-pack-integration</span><span class="role">팩 조립·세트 통합</span></div>
+        <p class="quote">"그럼 스웰링 갭을 키우면 되지 않나?" — <b>안 된다.</b> 갭 확대와 낙하 신뢰성은 <b>정면 충돌</b>이다. 갭이 크면 낙하 시 셀이 유동해 관성 하중이 탭으로 흘러 <b>탭이 파단</b>한다. 갭은 "여유 있으면 좋은 것"이 아니라 EOL 성장 + 공차 + 처짐의 최소 필요량만.</p>
+        <p class="reto"><b>↳ 응답:</b> 스웰링의 "갭으로 수용" 제안을 낙하 근거로 반박</p>
+        <div class="cites"><span class="cite">DOC-CCT-PWR-385</span><span class="cite">-366</span><span class="cite">-387</span></div>
+      </div></div>
+
+      <div class="turn i"><span class="dot"></span><div class="card">
+        <div class="thead"><span class="rnd">라운드 7 · 끼어듦</span><span class="who">pwr-thermal-runaway</span><span class="role">열폭주·안전</span></div>
+        <p class="quote">가장 무거운 축을 빼먹었다. 용량/에너지↑는 열폭주 시 <b>총 방출 에너지·벤트 가스량↑</b> = 세트 전파·화염 심각도↑다. 가연 가스 + 셀 자체 산소 방출로 자립 연소하므로 외부 산소를 끊어도 안 멈춘다. <b>안전 인증 마진을 직접 잠식</b>한다.</p>
+        <p class="reto"><b>↳ 응답:</b> 성능·기구 논의에 "사고 시 심각도" 축을 세움</p>
+        <div class="cites"><span class="cite">DOC-CCT-PWR-427</span><span class="cite">-431</span><span class="cite">-421</span></div>
+      </div></div>
+
+      <div class="turn m"><span class="dot"></span><div class="card">
+        <div class="thead"><span class="rnd">라운드 8 · 보강</span><span class="who">sim-battery-abuse</span><span class="role">남용·열폭주 해석</span></div>
+        <p class="quote">기계적으로도 나빠진다. 스택이 두꺼워지면 <b>압괴·관통 시 내부단락 개시</b>가 쉬워진다. 파단은 두께 수~수십 µm의 <b>분리막 한 층</b>에서 일어나므로 균질화 평균장으로는 못 잡고, ISC 4종 중 <b>최악(Al-음극) 기준</b>으로 보수 판정해야 한다.</p>
+        <p class="reto"><b>↳ 응답:</b> 안전의 "심각도"를 기계적 ISC 개시로 구체화</p>
+        <div class="cites"><span class="cite">DOC-CCT-SIM-092</span><span class="cite">-113</span><span class="cite">-093</span></div>
+      </div></div>
+
+      <div class="turn v"><span class="dot"></span><div class="card">
+        <div class="thead"><span class="rnd">라운드 9 · 종합</span><span class="who">pwr-battery-aging</span><span class="role">열화·수명 예측</span></div>
+        <p class="quote">종합하겠다. 플레이팅 마진이 줄면 LLI·저항↑ → 음극 과전압↑ → 더 빠른 플레이팅의 <b>양의 되먹임 → knee(용량 급락)가 앞당겨진다</b>. 결국 진짜 설계 변수는 "몇 mAh 더"가 아니라 <b>음극 전위 마진(충전)·EOL 팽창력(기구)·저장 에너지(안전)</b> 를 한 테이블에서 동시에 잡는 것이다.</p>
+        <p class="reto"><b>↳ 응답:</b> 여덟 축을 수명·되먹임 관점으로 종합</p>
+        <div class="cites"><span class="cite">DOC-CCT-PWR-006</span><span class="cite">-001</span><span class="cite">-003</span></div>
+      </div></div>
+    </div>
+  </section>
+
+  <section>
+    <p class="sh">교환 후 합의 — 하나의 손잡이, 여섯 개의 반대급부</p>
+    <div class="consensus"><div class="tblwrap"><table>
+      <thead><tr><th>이득</th><th>동반 대가</th><th>주도</th></tr></thead>
+      <tbody>
+        <tr><td>용량↑ (층수↑)</td><td>에너지밀도 이득은 비활성 비율로 비선형</td><td class="who2">cell-design · chemistry</td></tr>
+        <tr><td></td><td>두꺼운 전극 → 리튬 석출 마진↓ (충전 느려짐)</td><td class="who2">electrochem · charging</td></tr>
+        <tr><td></td><td>석출 되먹임 → knee 조기 도래 (수명↓)</td><td class="who2">battery-aging</td></tr>
+        <tr><td></td><td>두께↑ → 스웰링 팽창력 → 디스플레이 무라</td><td class="who2">swelling</td></tr>
+        <tr><td></td><td>갭↑ → 낙하 탭 파단 (정면 충돌)</td><td class="who2">pack-integration</td></tr>
+        <tr><td></td><td>저장 에너지↑ → 열폭주·ISC 심각도↑</td><td class="who2">thermal-runaway · abuse</td></tr>
+      </tbody>
+    </table></div></div>
+    <div class="takeaway"><b>교환이 만든 차이 —</b> 독립 의견이면 "용량 늘어 좋다"로 끝났을 것을, 소재·전기화학이 이득의 벽을 세우고 → 충전이 발열²·음극 전위로 연결 → 스웰링이 세트 변형을 들이밀자 팩통합이 "갭으로 못 푼다"로 반박 → 안전·남용이 사고 심각도를 세우고 → 수명이 되먹임으로 종합. <b>한 도메인의 대책이 다른 도메인의 새 문제</b>임을 토론이 드러냈다.</div>
+  </section>
+
+  <footer>
+    <p>인용 record — <span class="src">PWR-093·100·091·061·078·072·036·048·038·514·525·385·366·387·427·431·421·006·001·003 &nbsp;|&nbsp; SIM-123·139·131·092·113·093</span></p>
+    <p>AI Data Hub · 교환형 협진 (recommend_agents → 9× agent_search 연쇄, 각 응답이 앞 발언을 참조) · 상단 THEME 로 전환.</p>
+  </footer>
+</div>
+<script>
+(function(){var r=document.documentElement,b=document.getElementById('tt');
+b.addEventListener('click',function(){var c=r.getAttribute('data-theme');
+if(!c){c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+r.setAttribute('data-theme',c==='dark'?'light':'dark');});})();
+</script>
+</body>
+</html>

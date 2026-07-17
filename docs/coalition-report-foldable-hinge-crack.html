@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<!-- AI Data Hub 다중 전문가 협진 답변서 — 폴더블 힌지 디스플레이 크랙 (자체 완결 HTML) -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>협진 답변서 — 폴더블 힌지 디스플레이 크랙</title>
+<style>
+/* ── 토큰 (라이트 기본) — 테마: 저온 파단 아이스블루 + 균열 경고 ───────── */
+:root{
+  --bg:#EEF1F5; --surface:#FFFFFF; --panel:#F4F7FA;
+  --ink:#131C25; --ink-2:#35485A; --muted:#647A8C;
+  --line:#D9E1E9; --line-2:#E7ECF1;
+  --ice:#0C6E8F; --ice-strong:#084F68; --ice-soft:#E1F0F5;
+  --crit:#C6403A; --crit-soft:#FBE4E2; --warn:#B5701A; --warn-soft:#FBEBD5;
+  --dom-rel:#B87524; --dom-disp:#0C7C93; --dom-mech:#6A5AA6;
+  --shadow:0 1px 2px rgba(19,28,37,.05), 0 10px 30px -18px rgba(19,28,37,.30);
+  --sans:"Helvetica Neue","Segoe UI",Roboto,system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+  --maxw:1080px;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0B1118; --surface:#131C25; --panel:#18232F;
+    --ink:#E6EDF3; --ink-2:#B4C2CF; --muted:#7E90A0;
+    --line:#263340; --line-2:#1E2A36;
+    --ice:#45B8D8; --ice-strong:#6ECAE4; --ice-soft:#0F2E3A;
+    --crit:#EA6B64; --crit-soft:#301616; --warn:#DCA24A; --warn-soft:#2C2110;
+    --dom-rel:#D69A4C; --dom-disp:#3FB2C8; --dom-mech:#9C8DD6;
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 14px 34px -20px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="light"]{
+  --bg:#EEF1F5; --surface:#FFFFFF; --panel:#F4F7FA;
+  --ink:#131C25; --ink-2:#35485A; --muted:#647A8C; --line:#D9E1E9; --line-2:#E7ECF1;
+  --ice:#0C6E8F; --ice-strong:#084F68; --ice-soft:#E1F0F5;
+  --crit:#C6403A; --crit-soft:#FBE4E2; --warn:#B5701A; --warn-soft:#FBEBD5;
+  --dom-rel:#B87524; --dom-disp:#0C7C93; --dom-mech:#6A5AA6;
+  --shadow:0 1px 2px rgba(19,28,37,.05), 0 10px 30px -18px rgba(19,28,37,.30);
+}
+:root[data-theme="dark"]{
+  --bg:#0B1118; --surface:#131C25; --panel:#18232F;
+  --ink:#E6EDF3; --ink-2:#B4C2CF; --muted:#7E90A0; --line:#263340; --line-2:#1E2A36;
+  --ice:#45B8D8; --ice-strong:#6ECAE4; --ice-soft:#0F2E3A;
+  --crit:#EA6B64; --crit-soft:#301616; --warn:#DCA24A; --warn-soft:#2C2110;
+  --dom-rel:#D69A4C; --dom-disp:#3FB2C8; --dom-mech:#9C8DD6;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 14px 34px -20px rgba(0,0,0,.8);
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{animation:none!important}}
+body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
+  font-size:16px; line-height:1.62; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility}
+code,.mono{font-family:var(--mono)}
+:focus-visible{outline:2px solid var(--ice); outline-offset:2px; border-radius:3px}
+
+/* 상단 바 */
+.bar{position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:12px;
+  padding:10px clamp(16px,4vw,34px); background:color-mix(in srgb,var(--surface) 86%,transparent);
+  backdrop-filter:saturate(1.4) blur(9px); border-bottom:1px solid var(--line)}
+.bar b{font-weight:800; letter-spacing:-.01em}
+.bar .tag{font:600 10.5px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+.bar .sp{flex:1}
+.toggle{font:600 11.5px/1 var(--mono); color:var(--ink-2); background:var(--panel);
+  border:1px solid var(--line); padding:7px 10px; border-radius:6px; cursor:pointer; letter-spacing:.04em}
+.toggle:hover{border-color:var(--ice)}
+
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 clamp(16px,4vw,34px)}
+
+/* 히어로 — 폴딩축·균열 모티프 */
+.hero{position:relative; padding:52px 0 34px; border-bottom:1px solid var(--line); overflow:hidden}
+.eyebrow{font:600 12px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--ice-strong)}
+.hero h1{font-size:clamp(27px,4.3vw,44px); line-height:1.08; letter-spacing:-.025em; font-weight:800;
+  margin:15px 0 12px; max-width:19ch; text-wrap:balance}
+.hero .q{font-size:clamp(15px,1.9vw,18px); color:var(--ink-2); max-width:60ch; margin:0}
+.hero .q b{color:var(--ink)}
+/* 폴딩축 스파인 + 균열 기점 (히어로 우측 장식, 서브젝트 근거) */
+.foldviz{position:absolute; top:0; right:clamp(8px,4vw,40px); height:100%; width:120px; pointer-events:none; opacity:.9}
+.foldviz .axis{position:absolute; left:50%; top:14%; bottom:10%; width:0; border-left:2px dashed var(--ice);
+  animation:grow 1.1s ease both}
+.foldviz .lbl{position:absolute; left:calc(50% + 10px); top:12%; font:600 9.5px/1.3 var(--mono);
+  color:var(--muted); letter-spacing:.04em; writing-mode:vertical-rl}
+.foldviz .crack{position:absolute; left:calc(50% - 30px); top:52%; width:30px; height:2px; background:var(--crit);
+  transform-origin:right center; transform:rotate(-8deg); box-shadow:0 0 0 .5px var(--crit)}
+.foldviz .crack::after{content:""; position:absolute; right:0; top:-3px; width:5px; height:8px;
+  background:var(--crit); clip-path:polygon(100% 0,0 50%,100% 100%)}
+@keyframes grow{from{opacity:0; transform:scaleY(.2)}to{opacity:1; transform:scaleY(1)}}
+@media (max-width:720px){.foldviz{display:none}}
+
+.strip{display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:1px;
+  background:var(--line); border:1px solid var(--line); border-radius:10px; overflow:hidden; margin:26px 0 4px; max-width:640px}
+.strip .c{background:var(--surface); padding:14px 16px}
+.strip .n{font:800 22px/1 var(--mono); letter-spacing:-.02em; color:var(--ink); font-variant-numeric:tabular-nums}
+.strip .n small{font-size:12px; color:var(--muted); font-weight:600}
+.strip .k{margin-top:5px; font-size:11.5px; color:var(--muted)}
+
+/* 섹션 */
+section{padding:38px 0; border-bottom:1px solid var(--line-2)}
+section:last-of-type{border-bottom:none}
+.sh{font:600 11.5px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--ice-strong); margin:0 0 4px}
+h2{font-size:clamp(20px,2.5vw,26px); letter-spacing:-.02em; font-weight:800; margin:0 0 16px; text-wrap:balance}
+h2 .sub{display:block; font:400 14px/1.5 var(--sans); color:var(--muted); letter-spacing:0; margin-top:5px}
+p{margin:0 0 12px; max-width:72ch}
+
+/* 협진 방식 — 3스텝 */
+.flow{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:6px 0}
+@media (max-width:680px){.flow{grid-template-columns:1fr}}
+.step{background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:15px 16px; box-shadow:var(--shadow)}
+.step .t{font:700 11px/1 var(--mono); color:var(--ice-strong); letter-spacing:.05em}
+.step h4{margin:8px 0 5px; font-size:14.5px; letter-spacing:-.01em}
+.step p{font-size:13px; color:var(--muted); margin:0}
+.step code{font-size:12px}
+
+/* 전문가 카드 */
+.experts{display:grid; grid-template-columns:1fr; gap:16px}
+.expert{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:20px 22px;
+  box-shadow:var(--shadow); border-left:4px solid var(--dom)}
+.expert.rel{--dom:var(--dom-rel)} .expert.disp{--dom:var(--dom-disp)} .expert.mech{--dom:var(--dom-mech)}
+.ehead{display:flex; align-items:baseline; flex-wrap:wrap; gap:10px 12px; margin-bottom:4px}
+.ehead .at{font:700 13px/1 var(--mono); color:var(--dom)}
+.ehead .nm{font-weight:800; letter-spacing:-.01em; font-size:16px}
+.ehead .dom{font:600 10.5px/1 var(--mono); letter-spacing:.06em; text-transform:uppercase; color:var(--dom);
+  background:color-mix(in srgb,var(--dom) 13%,transparent); padding:4px 8px; border-radius:5px; margin-left:auto}
+.expert h5{margin:14px 0 5px; font-size:12px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); font-family:var(--mono); font-weight:600}
+.expert p{font-size:14.5px; margin:0 0 8px}
+.expert .kw{background:color-mix(in srgb,var(--warn) 12%,transparent); border-left:3px solid var(--warn);
+  border-radius:0 7px 7px 0; padding:11px 14px; margin:6px 0 8px; font-size:14px}
+.expert .kw b{color:var(--ink)}
+.cites{display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; padding-top:12px; border-top:1px solid var(--line-2)}
+.cite{font:600 11px/1 var(--mono); color:var(--ink-2); background:var(--panel);
+  border:1px solid var(--line); padding:5px 8px; border-radius:5px; white-space:nowrap}
+.cite.card{color:var(--ice-strong); border-color:color-mix(in srgb,var(--ice) 35%,var(--line))}
+
+/* 종합 결론 — 3층위 진단 */
+.layers{display:flex; flex-direction:column; gap:12px; margin:4px 0 22px; counter-reset:L}
+.layer{counter-increment:L; display:grid; grid-template-columns:44px 1fr; gap:14px; align-items:start;
+  background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px}
+.layer::before{content:counter(L); grid-row:1/3; font:800 22px/1 var(--mono); color:var(--ice);
+  background:var(--surface); border:1.5px solid var(--ice); border-radius:8px; width:44px; height:44px;
+  display:flex; align-items:center; justify-content:center}
+.layer h4{margin:0 0 4px; font-size:15.5px; letter-spacing:-.01em; align-self:center}
+.layer p{margin:0; font-size:14px; color:var(--ink-2); grid-column:2}
+
+.prio{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:10px 0 22px}
+.prio .p{font:600 12.5px/1.3 var(--sans); background:var(--surface); border:1px solid var(--line);
+  border-radius:7px; padding:9px 12px; box-shadow:var(--shadow)}
+.prio .p b{display:block; font:700 9.5px/1.4 var(--mono); color:var(--ice-strong); letter-spacing:.05em}
+.prio .arw{color:var(--muted); font-weight:700}
+
+.chain{background:var(--ice-soft); border:1px solid color-mix(in srgb,var(--ice) 25%,var(--line));
+  border-radius:10px; padding:14px 16px; font-size:13.5px; color:var(--ink-2)}
+.chain .flowline{font-family:var(--mono); font-size:12.5px; color:var(--ice-strong); font-weight:600;
+  margin-top:6px; overflow-x:auto; white-space:nowrap; padding-bottom:2px}
+
+/* 오케스트레이션 노트 */
+.note{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:20px 22px; box-shadow:var(--shadow)}
+.note .guard{display:flex; align-items:center; gap:10px; margin:0 0 12px; font-weight:800; font-size:15px}
+.note .guard .pill{font:700 10px/1 var(--mono); letter-spacing:.06em; color:#fff; background:var(--crit); padding:5px 8px; border-radius:5px}
+.note ol{margin:0; padding-left:20px; max-width:72ch}
+.note li{margin:7px 0; font-size:14.5px; color:var(--ink-2)}
+.note li b{color:var(--ink)}
+
+footer{padding:26px 0 60px; color:var(--muted); font-size:12.5px}
+footer .src{font-family:var(--mono); color:var(--ink-2); word-break:break-all}
+.hl{color:var(--crit); font-weight:700}
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <b>AI Data Hub</b><span class="tag">협진 답변서</span>
+  <span class="sp"></span>
+  <button class="toggle" id="tt" type="button" aria-label="라이트/다크 전환">THEME</button>
+</div>
+
+<div class="wrap">
+  <header class="hero">
+    <div class="foldviz" aria-hidden="true">
+      <span class="axis"></span>
+      <span class="lbl">FOLD AXIS</span>
+      <span class="crack"></span>
+    </div>
+    <div class="eyebrow">다중 전문가 협진 · 205 도메인 에이전트 중 자동 선별</div>
+    <h1>폴더블 힌지 근처 디스플레이는 왜 크랙이 나는가</h1>
+    <p class="q">질문 — <b>폴더블 폰을 반복적으로 접었다 폈을 때 힌지 근처 디스플레이에 크랙이 생기는 원인과 대책.</b>
+    허브의 서로 다른 도메인 전문가 에이전트들이 각자의 지식베이스를 근거로 협진해 답한다. 모든 소견은 실제 record 로 인용된다.</p>
+
+    <div class="strip">
+      <div class="c"><div class="n">205</div><div class="k">허브 전문가 에이전트</div></div>
+      <div class="c"><div class="n">6</div><div class="k">질문에 자동 선별</div></div>
+      <div class="c"><div class="n">3</div><div class="k">직접 온토픽 협진</div></div>
+      <div class="c"><div class="n">-20<small>℃</small></div><div class="k">핵심 고장모드 스위치</div></div>
+    </div>
+  </header>
+
+  <!-- 협진 방식 -->
+  <section>
+    <p class="sh">협진 방식</p>
+    <h2>한 질문 → 전문가 자동 선별 → 병렬 협진 → 종합</h2>
+    <div class="flow">
+      <div class="step"><div class="t">STEP 1</div><h4>전문가 선별</h4>
+        <p><code>recommend_agents</code> 가 질문 하나로 관련 도메인 전문가 6명을 랭킹.</p></div>
+      <div class="step"><div class="t">STEP 2</div><h4>병렬 근거 검색</h4>
+        <p>각 전문가의 <code>agent_search</code> 로 지식카드를 동시 조회 (retrieval_config 자동 적용).</p></div>
+      <div class="step"><div class="t">STEP 3</div><h4>인용 종합</h4>
+        <p>소견을 record id 인용과 함께 하나의 답변서로 통합.</p></div>
+    </div>
+  </section>
+
+  <!-- 전문가별 소견 -->
+  <section>
+    <p class="sh">전문가별 소견</p>
+    <h2>세 전문가가 본 서로 다른 층<span class="sub">각 카드는 해당 에이전트의 실제 지식카드에서 인용됨.</span></h2>
+
+    <div class="experts">
+      <!-- rel -->
+      <article class="expert rel">
+        <div class="ehead">
+          <span class="at">rel-repetitive-durability</span>
+          <span class="nm">반복 작동 내구 전문가</span>
+          <span class="dom">신뢰성 · 내구</span>
+        </div>
+        <h5>핵심</h5>
+        <p>상온 폴딩 <b>20만회를 통과해도 -20℃ 병행에서는 5만회 부근에 UTG 크랙</b>이 난다. 크랙은 폴딩축과 나란한 직선으로 시작하고 파면은 취성 파단, 주로 엣지 기점.</p>
+        <h5>원인</h5>
+        <p>저온에서 힌지 그리스 점도↑ 와 UTG/PI 점탄성 강성↑ 이 겹쳐 굽힘부 곡률반경이 조여지고 변형이 집중된다.</p>
+        <h5>대책</h5>
+        <p>온도를 시험 파라미터가 아니라 <b>고장모드 스위치</b>로 다뤄라. 저온군을 별도 시료로 필드 각속도에서 시험하고, 설계측은 UTG 엣지 가공(에칭·강화)과 굽힘부 곡률반경 확대.</p>
+        <div class="cites">
+          <span class="cite">DOC-CCT-REL-2026-0000000373</span>
+          <span class="cite">DOC-CCT-REL-2026-0000000384</span>
+          <span class="cite card">[RRD-R-003]</span>
+        </div>
+      </article>
+
+      <!-- disp -->
+      <article class="expert disp">
+        <div class="ehead">
+          <span class="at">disp-tfe-encap</span>
+          <span class="nm">박막봉지(TFE) 전문가</span>
+          <span class="dom">디스플레이 · 봉지</span>
+        </div>
+        <div class="kw"><b>오진 경고 —</b> "접힘부 다크스팟 = 무기막 크랙" 은 <span class="hl">가장 흔한 오진</span>이다. 크랙과 계면 딜라미네이션을 먼저 갈라야 한다. 대책이 정반대다.</div>
+        <h5>판별</h5>
+        <p>비파괴(OCT·공초점) 를 우선한다. 크랙은 선형으로 좁게, 딜라미네이션은 넓은 간섭무늬로 나타난다.</p>
+        <h5>대책 (크랙 확정 시)</h5>
+        <p><code>disp-foldable-stackup</code> 에 TFE 허용 변형률 한계를 제시하고 <b>중립면 재배치</b>를 요구 → 무기막 박막화(배리어 재평가 필수) → 응력완충층 추가 순. 박막화만으로는 딜라미네이션을 못 고친다.</p>
+        <div class="cites">
+          <span class="cite">DOC-CCT-DISP-2026-0000000343</span>
+          <span class="cite">DOC-CCT-DISP-2026-0000000348</span>
+          <span class="cite card">[DTE-R-004]</span>
+        </div>
+      </article>
+
+      <!-- mech -->
+      <article class="expert mech">
+        <div class="ehead">
+          <span class="at">mech-drop-impact</span>
+          <span class="nm">낙하·충격 기구설계 전문가</span>
+          <span class="dom">기구 · 인접 관점</span>
+        </div>
+        <h5>강성 역설</h5>
+        <p>코너를 두껍게·단단하게 올리면 디스플레이 에지 크랙이 <b>오히려 늘어난다</b>(프레임은 멀쩡하고 글라스만 깨짐). 코너는 "안 깨지는 구조" 가 아니라 <b>에너지를 태우는 구조</b>로 설계해야 한다.</p>
+        <h5>힌지로의 전이</h5>
+        <p>낙하 맥락의 원리지만 동일하게 적용된다 — 힌지 근처도 국부 강성을 무작정 올리면 하중이 디스플레이 에지로 전가된다. 강성은 올리는 게 아니라 배분한다.</p>
+        <div class="cites">
+          <span class="cite">DOC-CCT-MECH-2026-0000000051</span>
+          <span class="cite">DOC-CCT-MECH-2026-0000000056</span>
+          <span class="cite">DOC-CCT-MECH-2026-0000000032</span>
+          <span class="cite card">[MDI-C-002]</span>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- 종합 결론 -->
+  <section>
+    <p class="sh">종합 결론</p>
+    <h2>단일 원인이 아니라, 먼저 갈라야 할 세 층위</h2>
+    <div class="layers">
+      <div class="layer"><h4>고장모드부터 확정한다</h4>
+        <p>접힘부 결함을 크랙이라 단정하지 말고 비파괴로 크랙/딜라미네이션을 먼저 판별한다. 크랙이면 파면으로 취성·기점(엣지 vs 면)까지 확정한다 (→ <code>rel-fa-physical</code> 협진).</p></div>
+      <div class="layer"><h4>온도를 고장모드 스위치로 본다</h4>
+        <p>상온 통과는 겨울 필드를 보증하지 않는다. 저온에서 점탄성 강성과 그리스 점도가 올라 곡률이 조여지며 조기 파단하므로, 저온 별도 시료군이 필수다.</p></div>
+      <div class="layer"><h4>강성은 올리지 말고 배분한다</h4>
+        <p>국부 강성 과다는 하중을 디스플레이로 넘긴다. UTG 곡률반경과 중립면 재배치로 굽힘부 변형을 낮춘다.</p></div>
+    </div>
+
+    <p class="sh" style="margin-bottom:8px">대책 우선순위</p>
+    <div class="prio">
+      <span class="p"><b>1차</b>비파괴 판별<br>크랙 / 딜라미</span>
+      <span class="arw">→</span>
+      <span class="p"><b>2차</b>저온 재현<br>진짜 마진 확인</span>
+      <span class="arw">→</span>
+      <span class="p"><b>3차</b>UTG 엣지·곡률<br>중립면(TFE 변형률)</span>
+      <span class="arw">→</span>
+      <span class="p"><b>4차</b>강성 배분<br>국부 과다 회피</span>
+    </div>
+
+    <div class="chain">
+      <b>협진 체인</b> — 각 전문가가 다음 전문가를 명시적으로 호출한다. 데이터 자체가 협진을 전제로 설계돼 있다.
+      <div class="flowline">rel-repetitive-durability → rel-fa-physical → disp-tfe-encap · disp-foldable-stackup → mech-drop-impact</div>
+    </div>
+  </section>
+
+  <!-- 오케스트레이션 노트 -->
+  <section>
+    <p class="sh">이 협진이 인상적인 이유</p>
+    <h2>추측하지 않는 오케스트레이션</h2>
+    <div class="note">
+      <p class="guard"><span class="pill">GUARDRAIL</span>근거가 없으면 전문가는 답을 거부한다</p>
+      <ol>
+        <li><code>recommend_agents</code> 한 번에 서로 다른 도메인의 전문가 <b>6명이 자동 선별</b>됐다.</li>
+        <li>모호한 질의로 첫 검색하니 <b>5명 전원이 "근거 부족" 으로 답변을 거부</b>했다 — 허브의 환각 방지 가드레일이 작동해 추측하지 않는다.</li>
+        <li>각 전문가의 실제 sample 표현에 맞춘 질의로 <b>4명이 근거(record) 를 반환</b>했고, 그중 3명이 이 질문에 직접 온토픽이었다.</li>
+        <li>각 카드가 카드 안에서 <b>다른 전문가를 명시적으로 호출</b>한다 (봉지 → foldable-stackup 중립면, 내구 → FA 파면 판독). 협진은 설계된 구조다.</li>
+      </ol>
+    </div>
+  </section>
+
+  <footer>
+    <p>인용 record — <span class="src">DOC-CCT-REL-373 · 384 &nbsp;|&nbsp; DOC-CCT-DISP-343 · 348 &nbsp;|&nbsp; DOC-CCT-MECH-51 · 56 · 43 · 32</span></p>
+    <p>AI Data Hub · 205 도메인 전문가 에이전트 · <code>recommend_agents</code> → <code>agent_search</code> → 종합 (MCP 오케스트레이션). 상단 THEME 로 라이트/다크 전환.</p>
+  </footer>
+</div>
+
+<script>
+// 라이트/다크 토글 — prefers-color-scheme 기본, 클릭 시 data-theme 로 고정.
+(function(){
+  var r=document.documentElement, b=document.getElementById('tt');
+  b.addEventListener('click',function(){
+    var c=r.getAttribute('data-theme');
+    if(!c){ c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'; }
+    r.setAttribute('data-theme', c==='dark'?'light':'dark');
+  });
+})();
+</script>
+</body>
+</html>

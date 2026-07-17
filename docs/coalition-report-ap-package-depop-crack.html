@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<!-- AI Data Hub 다중 전문가 협진 답변서 — AP 패키지 depop 넓은 피치 볼 크랙 (자체 완결 HTML) -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>협진 답변서 — AP 패키지 depop 볼 크랙</title>
+<style>
+/* ── 토큰 (라이트 기본) — 테마: 다이 발열(써멀 카퍼) + 솔더 스틸 + 균열 경고 ── */
+:root{
+  --bg:#ECEEF1; --surface:#FFFFFF; --panel:#F4F6F8;
+  --ink:#171B20; --ink-2:#384049; --muted:#626C77;
+  --line:#DBE0E6; --line-2:#E8ECF0;
+  --heat:#C0611C; --heat-strong:#9A4A12; --heat-soft:#F6E7D6;
+  --crit:#C6403A; --crit-soft:#FBE4E2; --warn:#9C6A14; --warn-soft:#F6ECD6;
+  --dom-solder:#3E6B86; --dom-cpi:#B5651D; --dom-warp:#6A5AA6; --dom-fa:#5E7A55;
+  --shadow:0 1px 2px rgba(23,27,32,.05), 0 10px 30px -18px rgba(23,27,32,.30);
+  --sans:"Helvetica Neue","Segoe UI",Roboto,system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+  --maxw:1080px;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0E1216; --surface:#161B21; --panel:#1B2229;
+    --ink:#E7ECF1; --ink-2:#B7C1CB; --muted:#7F8B96;
+    --line:#28313A; --line-2:#202830;
+    --heat:#E08A3E; --heat-strong:#EFA560; --heat-soft:#33220F;
+    --crit:#EA6B64; --crit-soft:#301616; --warn:#D8A34A; --warn-soft:#2A2110;
+    --dom-solder:#6D9AB7; --dom-cpi:#DD9455; --dom-warp:#9C8DD6; --dom-fa:#8CAE80;
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 14px 34px -20px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="light"]{
+  --bg:#ECEEF1; --surface:#FFFFFF; --panel:#F4F6F8;
+  --ink:#171B20; --ink-2:#384049; --muted:#626C77; --line:#DBE0E6; --line-2:#E8ECF0;
+  --heat:#C0611C; --heat-strong:#9A4A12; --heat-soft:#F6E7D6;
+  --crit:#C6403A; --crit-soft:#FBE4E2; --warn:#9C6A14; --warn-soft:#F6ECD6;
+  --dom-solder:#3E6B86; --dom-cpi:#B5651D; --dom-warp:#6A5AA6; --dom-fa:#5E7A55;
+  --shadow:0 1px 2px rgba(23,27,32,.05), 0 10px 30px -18px rgba(23,27,32,.30);
+}
+:root[data-theme="dark"]{
+  --bg:#0E1216; --surface:#161B21; --panel:#1B2229;
+  --ink:#E7ECF1; --ink-2:#B7C1CB; --muted:#7F8B96; --line:#28313A; --line-2:#202830;
+  --heat:#E08A3E; --heat-strong:#EFA560; --heat-soft:#33220F;
+  --crit:#EA6B64; --crit-soft:#301616; --warn:#D8A34A; --warn-soft:#2A2110;
+  --dom-solder:#6D9AB7; --dom-cpi:#DD9455; --dom-warp:#9C8DD6; --dom-fa:#8CAE80;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 14px 34px -20px rgba(0,0,0,.8);
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{animation:none!important}}
+body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
+  font-size:16px; line-height:1.62; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility}
+code,.mono{font-family:var(--mono)}
+:focus-visible{outline:2px solid var(--heat); outline-offset:2px; border-radius:3px}
+
+.bar{position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:12px;
+  padding:10px clamp(16px,4vw,34px); background:color-mix(in srgb,var(--surface) 86%,transparent);
+  backdrop-filter:saturate(1.4) blur(9px); border-bottom:1px solid var(--line)}
+.bar b{font-weight:800; letter-spacing:-.01em}
+.bar .tag{font:600 10.5px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+.bar .sp{flex:1}
+.toggle{font:600 11.5px/1 var(--mono); color:var(--ink-2); background:var(--panel);
+  border:1px solid var(--line); padding:7px 10px; border-radius:6px; cursor:pointer; letter-spacing:.04em}
+.toggle:hover{border-color:var(--heat)}
+
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 clamp(16px,4vw,34px)}
+
+/* 히어로 — 물리식이 논지 */
+.hero{padding:50px 0 34px; border-bottom:1px solid var(--line)}
+.eyebrow{font:600 12px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--heat-strong)}
+.hero h1{font-size:clamp(26px,4.2vw,42px); line-height:1.08; letter-spacing:-.025em; font-weight:800;
+  margin:15px 0 16px; max-width:20ch; text-wrap:balance}
+.eqn{display:inline-flex; align-items:center; gap:10px; flex-wrap:wrap; background:var(--surface);
+  border:1px solid var(--line); border-left:4px solid var(--heat); border-radius:10px;
+  padding:13px 18px; box-shadow:var(--shadow); margin:0 0 16px}
+.eqn .f{font:700 clamp(15px,2.4vw,20px)/1 var(--mono); color:var(--ink); letter-spacing:.01em}
+.eqn .lab{font:600 11px/1.4 var(--mono); color:var(--muted); letter-spacing:.02em}
+.hero .q{font-size:clamp(15px,1.9vw,18px); color:var(--ink-2); max-width:62ch; margin:0}
+.hero .q b{color:var(--ink)}
+
+.strip{display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:1px;
+  background:var(--line); border:1px solid var(--line); border-radius:10px; overflow:hidden; margin:26px 0 4px; max-width:660px}
+.strip .c{background:var(--surface); padding:14px 16px}
+.strip .n{font:800 22px/1 var(--mono); letter-spacing:-.02em; color:var(--ink); font-variant-numeric:tabular-nums}
+.strip .n small{font-size:12px; color:var(--muted); font-weight:600}
+.strip .k{margin-top:5px; font-size:11.5px; color:var(--muted)}
+
+section{padding:38px 0; border-bottom:1px solid var(--line-2)}
+section:last-of-type{border-bottom:none}
+.sh{font:600 11.5px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--heat-strong); margin:0 0 4px}
+h2{font-size:clamp(20px,2.5vw,26px); letter-spacing:-.02em; font-weight:800; margin:0 0 16px; text-wrap:balance}
+h2 .sub{display:block; font:400 14px/1.5 var(--sans); color:var(--muted); letter-spacing:0; margin-top:5px}
+p{margin:0 0 12px; max-width:72ch}
+
+/* 왜 그 볼인가 — 다이어그램 + 3요인 */
+.why{display:grid; grid-template-columns:300px 1fr; gap:28px; align-items:center}
+@media (max-width:760px){.why{grid-template-columns:1fr}}
+.bga{position:relative; aspect-ratio:1; max-width:300px; margin:0 auto; border:1px solid var(--line);
+  border-radius:12px; background:var(--panel); overflow:hidden; box-shadow:var(--shadow)}
+/* 솔더 볼 그리드 (점 패턴) */
+.bga::before{content:""; position:absolute; inset:26px;
+  background:radial-gradient(circle, var(--ink-2) 2px, transparent 2.4px) 0 0 / 30px 30px; opacity:.55}
+/* 다이 중앙 발열 글로우 */
+.bga::after{content:""; position:absolute; inset:0;
+  background:radial-gradient(circle at 50% 50%, color-mix(in srgb,var(--heat) 55%,transparent) 0%, transparent 42%)}
+/* depop 빈 영역 (중앙 볼 제거) */
+.bga .depop{position:absolute; left:50%; top:50%; width:96px; height:96px; transform:translate(-50%,-50%);
+  border-radius:50%; background:var(--panel); box-shadow:0 0 0 1px color-mix(in srgb,var(--heat) 40%,transparent) inset}
+.bga .depop span{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  font:600 9px/1 var(--mono); letter-spacing:.08em; color:var(--heat-strong)}
+/* 깨진 넓은-피치 볼 (경계) */
+.bga .cracked{position:absolute; left:calc(50% + 62px); top:calc(50% - 6px); width:15px; height:15px;
+  transform:translate(-50%,-50%); border-radius:50%; background:var(--crit); z-index:3;
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--crit) 22%,transparent)}
+.bga .cracked::after{content:""; position:absolute; left:50%; top:50%; width:14px; height:2px;
+  background:var(--surface); transform:translate(-50%,-50%) rotate(32deg)}
+.bga .cap{position:absolute; left:8px; bottom:8px; font:600 9.5px/1.3 var(--mono); color:var(--muted)}
+
+.factors{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:12px}
+.factors li{display:grid; grid-template-columns:30px 1fr; gap:12px; align-items:start;
+  background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:13px 15px; box-shadow:var(--shadow)}
+.factors .m{font:800 14px/1 var(--mono); color:var(--heat); background:var(--heat-soft);
+  border-radius:7px; width:30px; height:30px; display:flex; align-items:center; justify-content:center}
+.factors h4{margin:0 0 3px; font-size:14.5px; letter-spacing:-.01em}
+.factors p{margin:0; font-size:13.5px; color:var(--ink-2)}
+.tag-eq{font-family:var(--mono); font-size:12px; color:var(--heat-strong)}
+
+/* 전문가 카드 */
+.experts{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+@media (max-width:720px){.experts{grid-template-columns:1fr}}
+.expert{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:18px 20px;
+  box-shadow:var(--shadow); border-left:4px solid var(--dom)}
+.expert.solder{--dom:var(--dom-solder)} .expert.cpi{--dom:var(--dom-cpi)}
+.expert.warp{--dom:var(--dom-warp)} .expert.fa{--dom:var(--dom-fa)}
+.ehead{display:flex; align-items:baseline; flex-wrap:wrap; gap:8px 10px; margin-bottom:8px}
+.ehead .at{font:700 12.5px/1 var(--mono); color:var(--dom)}
+.ehead .dom{font:600 10px/1 var(--mono); letter-spacing:.05em; text-transform:uppercase; color:var(--dom);
+  background:color-mix(in srgb,var(--dom) 14%,transparent); padding:4px 7px; border-radius:5px; margin-left:auto}
+.expert .nm{font-weight:800; font-size:14.5px; letter-spacing:-.01em; margin-bottom:6px}
+.expert p{font-size:14px; margin:0 0 6px; color:var(--ink-2)}
+.expert p b{color:var(--ink)}
+.cites{display:flex; flex-wrap:wrap; gap:5px; margin-top:11px; padding-top:11px; border-top:1px solid var(--line-2)}
+.cite{font:600 10.5px/1 var(--mono); color:var(--ink-2); background:var(--panel);
+  border:1px solid var(--line); padding:4px 7px; border-radius:5px; white-space:nowrap}
+
+/* 리스크 표 */
+.tblwrap{overflow-x:auto; border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); margin:6px 0}
+table{border-collapse:collapse; width:100%; font-size:13.5px; min-width:620px}
+th,td{text-align:left; padding:12px 15px; border-bottom:1px solid var(--line-2); vertical-align:top}
+thead th{background:var(--panel); font:700 11px/1.3 var(--mono); letter-spacing:.05em; text-transform:uppercase;
+  color:var(--muted); border-bottom:1px solid var(--line)}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--panel)}
+td.fix{font-weight:700; color:var(--ink); white-space:nowrap}
+td.risk{color:var(--crit)}
+td.risk b{color:var(--ink)}
+td.src{font-family:var(--mono); font-size:11.5px; color:var(--muted); white-space:nowrap}
+
+/* 결론 */
+.steps{display:flex; flex-direction:column; gap:11px; counter-reset:S; margin:4px 0 20px}
+.step{counter-increment:S; display:grid; grid-template-columns:38px 1fr; gap:14px; align-items:start;
+  background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:15px 17px}
+.step::before{content:counter(S); font:800 18px/1 var(--mono); color:var(--heat); background:var(--surface);
+  border:1.5px solid var(--heat); border-radius:8px; width:38px; height:38px; display:flex; align-items:center; justify-content:center}
+.step h4{margin:0 0 3px; font-size:15px; letter-spacing:-.01em; align-self:center}
+.step p{margin:0; font-size:13.5px; color:var(--ink-2); grid-column:2}
+.chain{background:var(--heat-soft); border:1px solid color-mix(in srgb,var(--heat) 25%,var(--line));
+  border-radius:10px; padding:14px 16px; font-size:13.5px; color:var(--ink-2)}
+.chain .fl{font-family:var(--mono); font-size:12.5px; color:var(--heat-strong); font-weight:600;
+  margin-top:6px; overflow-x:auto; white-space:nowrap; padding-bottom:2px}
+
+/* 수지 제거 리스크 카드 */
+.risks{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin:6px 0}
+@media (max-width:760px){.risks{grid-template-columns:1fr}}
+.riskcard{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:17px 18px; box-shadow:var(--shadow)}
+.rhead{display:flex; align-items:center; gap:8px; margin-bottom:9px}
+.sev{font:700 10px/1 var(--mono); letter-spacing:.06em; text-transform:uppercase; padding:5px 8px; border-radius:5px; color:#fff}
+.sev.crit{background:var(--crit)} .sev.warn{background:var(--warn)}
+.rn{font:600 11px/1 var(--mono); color:var(--muted); letter-spacing:.04em}
+.riskcard h4{margin:0 0 6px; font-size:15px; letter-spacing:-.01em}
+.riskcard p{margin:0; font-size:13.5px; color:var(--ink-2)}
+.riskcard p b{color:var(--ink)}
+.verdict{margin-top:16px; background:var(--crit-soft); border:1px solid color-mix(in srgb,var(--crit) 30%,var(--line));
+  border-radius:10px; padding:15px 18px; font-size:15px; font-weight:600; color:var(--ink); line-height:1.55}
+
+.note{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:19px 21px; box-shadow:var(--shadow)}
+.note .guard{display:flex; align-items:center; gap:10px; margin:0 0 10px; font-weight:800; font-size:15px}
+.note .pill{font:700 10px/1 var(--mono); letter-spacing:.06em; color:#fff; background:var(--crit); padding:5px 8px; border-radius:5px}
+.note ol{margin:0; padding-left:20px; max-width:72ch}
+.note li{margin:6px 0; font-size:14px; color:var(--ink-2)}
+.note li b{color:var(--ink)}
+
+footer{padding:26px 0 60px; color:var(--muted); font-size:12.5px}
+footer .src{font-family:var(--mono); color:var(--ink-2); word-break:break-all}
+.hl{color:var(--crit); font-weight:700}
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <b>AI Data Hub</b><span class="tag">협진 답변서</span>
+  <span class="sp"></span>
+  <button class="toggle" id="tt" type="button" aria-label="라이트/다크 전환">THEME</button>
+</div>
+
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow">다중 전문가 협진 · 205 도메인 에이전트 중 자동 선별</div>
+    <h1>depop으로 넓어진 피치 볼은 왜 깨지나</h1>
+    <div class="eqn">
+      <span class="lab">한 볼의 전단 변형 진폭</span>
+      <span class="f">Δγ ∝ DNP · ΔCTE · ΔT ÷ 스탠드오프</span>
+    </div>
+    <p class="q">질문 — <b>AP 패키지 다이 중앙 발열부 하단이 depop 되어, 주변의 피치가 넓어진 볼이 열응력으로 크랙했다. 원인과, 대책을 적용할 때 생기는 리스크를 다각도로.</b>
+    허브의 서로 다른 도메인 전문가 에이전트가 각자의 지식베이스를 근거로 협진한다. 모든 소견은 실제 record 로 인용된다.</p>
+
+    <div class="strip">
+      <div class="c"><div class="n">5</div><div class="k">협진 전문가 (+FA)</div></div>
+      <div class="c"><div class="n">3</div><div class="k">한 볼에 겹친 요인</div></div>
+      <div class="c"><div class="n">6</div><div class="k">대책 · 각각의 리스크</div></div>
+      <div class="c"><div class="n">국소 ΔT</div><div class="k">DNP 아닌 지배 인자</div></div>
+    </div>
+  </header>
+
+  <!-- 왜 그 볼인가 -->
+  <section>
+    <p class="sh">진단의 출발점</p>
+    <h2>보통은 코너(DNP 최대)가 죽는데, 왜 중앙 depop 볼인가<span class="sub">세 요인이 하필 그 볼에 겹치기 때문이다. 위 식의 각 항이 이 볼에서 커진다.</span></h2>
+    <div class="why">
+      <div class="bga" role="img" aria-label="BGA 볼 그리드 — 중앙 발열부가 depop 되고 경계의 넓은 피치 볼이 크랙">
+        <div class="depop"><span>DEPOP</span></div>
+        <div class="cracked"></div>
+        <div class="cap">■ 다이 중앙 발열 · ● 크랙 볼(경계)</div>
+      </div>
+      <ul class="factors">
+        <li><span class="m">1</span><div><h4>볼당 하중 ↑ <span class="tag-eq">(하중 분담)</span></h4>
+          <p>볼을 빼면 남은 볼이 그 하중을 나눠 받는다. 넓은 피치 볼은 담당 면적이 커져 볼당 전단 하중이 커진다.</p></div></li>
+        <li><span class="m">2</span><div><h4>국소 ΔT ↑ <span class="tag-eq">(ΔT 항)</span></h4>
+          <p>DNP는 작아도 다이 중앙 발열부라 국소 ΔT가 최대. Δγ 식의 ΔT가 치솟아 낮은 DNP를 상쇄한다.</p></div></li>
+        <li><span class="m">3</span><div><h4>강성 불연속 <span class="tag-eq">(depop 경계)</span></h4>
+          <p>촘촘한 볼 배열(강함)에서 depop(무름)으로 넘어가는 경계에 변형이 집중된다. warpage 허용치·볼 붕괴여유 자체가 피치에 연동된다.</p></div></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 원인 다각도 -->
+  <section>
+    <p class="sh">원인 · 다각도</p>
+    <h2>네 전문가가 본 서로 다른 층<span class="sub">각 카드는 해당 에이전트의 실제 지식카드에서 인용됨.</span></h2>
+    <div class="experts">
+      <article class="expert solder">
+        <div class="ehead"><span class="at">pcb-solder-joint-reliability</span><span class="dom">솔더 신뢰성</span></div>
+        <div class="nm">솔더조인트 신뢰성 전문가</div>
+        <p>Δγ ∝ DNP·ΔCTE·ΔT ÷ 스탠드오프. depop 로 하중 분담이 깨져 <b>넓은 피치 볼이 과부하</b> → 크리프-피로. 벌크·IMC 근방 연성 크랙.</p>
+        <p><b>어느 볼이 어떤 모드로 얼마나 깨졌나는 다이앤프라이로 정량</b>한다.</p>
+        <div class="cites"><span class="cite">DOC-CCT-PCB-361</span><span class="cite">-367</span><span class="cite">-380</span><span class="cite">-384</span></div>
+      </article>
+      <article class="expert cpi">
+        <div class="ehead"><span class="at">soc-cpi</span><span class="dom">칩-패키지</span></div>
+        <div class="nm">칩-패키지 상호작용 전문가</div>
+        <p>언더필은 다이-기판을 <b>복합 굽힘체</b>로 만들어 범프 전단을 분포하중으로 바꾼다(양면성). 다이 중앙 국소 발열 + 공정 잔류응력(칩어태치·리플로우·몰드경화)이 가세.</p>
+        <div class="cites"><span class="cite">DOC-CCT-SOC-003</span><span class="cite">-005</span><span class="cite">-006</span></div>
+      </article>
+      <article class="expert warp">
+        <div class="ehead"><span class="at">mem-warpage</span><span class="dom">보드레벨 · 휨</span></div>
+        <div class="nm">패키지 휨·보드레벨 신뢰성 전문가</div>
+        <p><b>위치 편중이 진단 신호</b> — 중앙·depop 편중이면 순수 코너 DNP 피로가 아니다. 볼 직경·<b>피치</b> 재설계가 표준 완화책.</p>
+        <div class="cites"><span class="cite">DOC-CCT-MEM-454</span><span class="cite">-459</span><span class="cite">-464</span></div>
+      </article>
+      <article class="expert warp">
+        <div class="ehead"><span class="at">soc-warpage</span><span class="dom">패키지 휨</span></div>
+        <div class="nm">패키지 휨·코플래너리티 전문가</div>
+        <p>리플로우에서 <b>볼 붕괴 여유 vs 국부 갭 경쟁</b>. 피치 넓은 구역은 갭·붕괴여유 조건이 달라 접합 품질·응력이 편중된다(허용 warpage 가 피치 연동).</p>
+        <div class="cites"><span class="cite">DOC-CCT-SOC-543</span><span class="cite">-549</span><span class="cite">-568</span></div>
+      </article>
+    </div>
+  </section>
+
+  <!-- 해결책 · 리스크 -->
+  <section>
+    <p class="sh">해결책 · 리스크</p>
+    <h2>모든 대책은 한 고장모드를 잡으면 다른 모드를 악화시킨다<span class="sub">전문가들이 공통으로 경고하는 지점. 지배 모드를 확정하기 전에 바꾸면 위험하다.</span></h2>
+    <div class="tblwrap"><table>
+      <thead><tr><th>해결책</th><th>잡는 것</th><th>적용 시 리스크</th><th>근거</th></tr></thead>
+      <tbody>
+        <tr><td class="fix">depop 축소 · 볼 되채움</td><td>볼당 하중↓, 경계 불연속↓</td>
+          <td class="risk">depop은 열·라우팅·warpage 목적이 있었음 → <b>열경로·배선 방해, warpage 변화·NWO</b>. 피치 촘촘해지면 warpage 허용치가 오히려 작아짐</td>
+          <td class="src">SOC-568·549</td></tr>
+        <tr><td class="fix">스탠드오프↑ · 볼 재설계</td><td>전단 변형 분산</td>
+          <td class="risk"><b>스탠드오프↑ → 낙하 모멘트 암↑ → 낙하 악화</b>, 붕괴여유·coplanarity 변화</td>
+          <td class="src">PCB-384 · SOC-543</td></tr>
+        <tr><td class="fix">언더필 강화 · 물성 교체</td><td>계면·범프 보호</td>
+          <td class="risk">강성↑ → <b>다이 크랙·ELK 크랙 구동력↑</b>. 물성 부정합 시 <b>접합부·다이로 응력 이전(역효과)</b>·보이드·수율</td>
+          <td class="src">SOC-005 · PCB-378·384</td></tr>
+        <tr><td class="fix">국소 ΔT 저감 (TIM·방열)</td><td>발열부 ΔT↓</td>
+          <td class="risk">스택 높이↑, <b>warpage 거동 변화</b>, 다른 열경로 영향</td>
+          <td class="src">SOC-542</td></tr>
+        <tr><td class="fix">솔더 합금 변경 (SAC305↔105)</td><td>한쪽 강건화</td>
+          <td class="risk"><b>상반 트레이드오프</b> — 열피로 강건(고Ag)↔낙하 강건(저Ag). 지배 모드 틀리면 반대 시험 탈락</td>
+          <td class="src">MEM-477 · PCB-377</td></tr>
+        <tr><td class="fix">EMC CTE·Tg 조정 · 층 대칭화</td><td>중앙 warpage↓</td>
+          <td class="risk"><b>smile↔cry 전환·부호가 바뀌어 코너 볼 NWO/실장 불량</b></td>
+          <td class="src">SOC-553</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <!-- 수지(언더필) 제거 시 리스크 -->
+  <section>
+    <p class="sh">심화 · 후속 질의</p>
+    <h2>만약 — 수지(언더필)를 제거하면<span class="sub">같은 전문가들에게 되물었다. 결론은 대개 나쁜 트레이드다. 언더필은 세 가지 보호를 동시에 하고 있었다.</span></h2>
+    <div class="risks">
+      <article class="riskcard">
+        <div class="rhead"><span class="sev crit">치명적</span><span class="rn">리스크 1</span></div>
+        <h4>낙하·충격 신뢰성 붕괴</h4>
+        <p>언더필/코너본드가 볼 주위를 구속해 낙하 굽힘 응력을 분산·완충한다. 제거하면 CTE 전단·낙하 굽힘이 <b>솔더 조인트에만 집중</b> → IMC 취성파괴·패드 크레이터링. 핸드셋 AP는 사실상 낙하 탈락.</p>
+        <div class="cites"><span class="cite">PCB-378</span><span class="cite">MEM-457</span><span class="cite">PCB-374·365</span></div>
+      </article>
+      <article class="riskcard">
+        <div class="rhead"><span class="sev crit">치명적</span><span class="rn">리스크 2</span></div>
+        <h4>CPI — 범프·ELK·다이 보호 상실</h4>
+        <p>Cu pillar 는 소성 완충이 거의 없어 CTE 하중을 <b>범프 하부 ELK 로 직결</b>한다. 언더필 재분배가 없으면 코너 범프 ERR 이 임계 초과 → white bump·ELK 크랙. <b>ELK 노드 AP 엔 언더필이 사실상 필수.</b></p>
+        <div class="cites"><span class="cite">SOC-018</span><span class="cite">SOC-005</span></div>
+      </article>
+      <article class="riskcard">
+        <div class="rhead"><span class="sev warn">역효과</span><span class="rn">리스크 3</span></div>
+        <h4>지금 그 크랙을 오히려 악화</h4>
+        <p>언더필은 전단을 수지층으로 분산해 개별 볼 응력을 낮춘다. 제거하면 그 전단이 <b>이미 과부하인 넓은 피치 depop 볼</b>에 더 실린다. 크랙이 솔더 열피로 기인이면 제거는 문제를 키운다.</p>
+        <div class="cites"><span class="cite">MEM-457·473</span><span class="cite">SOC-005</span></div>
+      </article>
+    </div>
+    <div class="chain" style="margin-top:16px">언제 제거가 정당화되나 (드묾) — 크랙이 <b>언더필 딜라미네이션·필렛 기인</b>으로 FA 에서 확정된 경우에 한한다 (<code>SOC-014</code>). 그때도 표준 대책은 <b>언더필 재선정</b>(Tg·CTE·강성 균형, <code>SOC-013</code>)이지 제거가 아니다.</div>
+    <div class="verdict">언더필 제거는 <span class="hl">한 모드(언더필 딜라미)를 없애려다 낙하 + CPI 두 치명 모드를 잃는</span> 트레이드다. FA 로 언더필이 진짜 주범임을 확정하기 전엔 제거하지 말고, 확정돼도 제거가 아니라 <b>재선정</b>으로 간다.</div>
+  </section>
+
+  <!-- 결론 -->
+  <section>
+    <p class="sh">협진 결론</p>
+    <h2>지배 모드를 확정하기 전엔 아무것도 바꾸지 않는다</h2>
+    <div class="steps">
+      <div class="step"><h4>FA 먼저 — 어느 볼이 어떤 모드로</h4>
+        <p>다이앤프라이로 depop 주변 넓은 피치 볼의 크랙 면적·모드(연성 피로 / IMC 취성 / 크레이터링)를 정량하고, 단면으로 기점을 확정 (<code>pcb-solder-joint-reliability</code> + <code>rel-fa-physical</code>).</p></div>
+      <div class="step"><h4>지배 인자 분리</h4>
+        <p>위치가 depop 경계·발열부에 편중되면 국소 ΔT + 하중 분담 붕괴가 유력, 코너 편중이면 고전 DNP. Weibull 로 마모형 확인 (<code>mem-warpage</code>).</p></div>
+      <div class="step"><h4>대책은 지배 모드 확정 후</h4>
+        <p>모든 대책이 다른 모드를 악화시키므로, depop·언더필·합금·볼을 성급히 바꾸면 낙하·warpage·NWO 를 깨뜨릴 위험.</p></div>
+      <div class="step"><h4>근본 재검토</h4>
+        <p>depop 을 왜 했는지(열·라우팅·warpage)와 그로 인한 국부 하중 재분배를 CPI·warpage·솔더 신뢰성이 함께 재설계. 필요 시 경계에 더미/열 볼로 하중을 분산하되 warpage 허용치를 동반 검토.</p></div>
+    </div>
+    <div class="chain"><b>협진 체인</b> — 각 전문가가 다음 전문가를 명시적으로 호출한다.
+      <div class="fl">rel-fa-physical → pcb-solder-joint-reliability → soc-cpi → mem-warpage · soc-warpage</div>
+    </div>
+  </section>
+
+  <!-- 오케스트레이션 노트 -->
+  <section>
+    <p class="sh">이 협진이 인상적인 이유</p>
+    <h2>추측하지 않는 오케스트레이션</h2>
+    <div class="note">
+      <p class="guard"><span class="pill">GUARDRAIL</span>근거가 없으면 전문가는 답을 거부한다</p>
+      <ol>
+        <li><code>recommend_agents</code> 한 번에 CPI·솔더·워피지·기판·FA 전문가가 <b>도메인별로 자동 선별</b>됐다.</li>
+        <li>"depop 로 넓어진 피치 볼" 이라는 정정을 반영해 <b>재검색</b>하니, 각 전문가가 실제 record 로 근거를 갱신했다.</li>
+        <li>세 전문가가 <b>같은 전단식 Δγ ∝ DNP·ΔCTE·ΔT</b> 를 독립적으로 인용하며 국소 ΔT·하중 분담으로 수렴했다.</li>
+        <li>각 카드가 <b>다른 전문가를 명시적으로 호출</b>한다(기판 → soc-cpi, 솔더 → FA). 협진은 설계된 구조다.</li>
+      </ol>
+    </div>
+  </section>
+
+  <footer>
+    <p>인용 record — <span class="src">SOC-003·005·006·015·017·542·543·549·553·568 &nbsp;|&nbsp; PCB-361·367·377·378·380·384 &nbsp;|&nbsp; MEM-454·459·464·477</span></p>
+    <p>AI Data Hub · 205 도메인 전문가 에이전트 · <code>recommend_agents</code> → <code>agent_search</code> → 종합 (MCP 오케스트레이션). 상단 THEME 로 라이트/다크 전환.</p>
+  </footer>
+</div>
+
+<script>
+(function(){
+  var r=document.documentElement, b=document.getElementById('tt');
+  b.addEventListener('click',function(){
+    var c=r.getAttribute('data-theme');
+    if(!c){ c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'; }
+    r.setAttribute('data-theme', c==='dark'?'light':'dark');
+  });
+})();
+</script>
+</body>
+</html>

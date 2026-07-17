@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<!-- AI Data Hub 교환형 협진 — AP 패키지 depop 볼 크랙 (전문가 토론, 자체 완결 HTML) -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>교환형 협진 — AP 패키지 depop 볼 크랙</title>
+<style>
+:root{
+  --bg:#EEF1F5; --surface:#FFFFFF; --panel:#F4F6F8;
+  --ink:#171B20; --ink-2:#384049; --muted:#626C77;
+  --line:#DBE0E6; --line-2:#E8ECF0;
+  --accent:#C0611C; --accent-strong:#9A4A12; --accent-soft:#F6E7D6;
+  --open:#C0611C; --rebut:#C6403A; --mediate:#3E6B86; --interject:#6A5AA6; --verdict:#5E7A55;
+  --crit:#C6403A;
+  --shadow:0 1px 2px rgba(23,27,32,.05), 0 10px 30px -18px rgba(23,27,32,.30);
+  --sans:"Helvetica Neue","Segoe UI",Roboto,system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+  --maxw:940px;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0E1216; --surface:#161B21; --panel:#1B2229; --ink:#E7ECF1; --ink-2:#B7C1CB; --muted:#7F8B96;
+  --line:#28313A; --line-2:#202830; --accent:#E08A3E; --accent-strong:#EFA560; --accent-soft:#33220F;
+  --open:#E08A3E; --rebut:#EA6B64; --mediate:#6D9AB7; --interject:#9C8DD6; --verdict:#8CAE80; --crit:#EA6B64;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 14px 34px -20px rgba(0,0,0,.8);
+}}
+:root[data-theme="light"]{
+  --bg:#EEF1F5; --surface:#FFFFFF; --panel:#F4F6F8; --ink:#171B20; --ink-2:#384049; --muted:#626C77;
+  --line:#DBE0E6; --line-2:#E8ECF0; --accent:#C0611C; --accent-strong:#9A4A12; --accent-soft:#F6E7D6;
+  --open:#C0611C; --rebut:#C6403A; --mediate:#3E6B86; --interject:#6A5AA6; --verdict:#5E7A55; --crit:#C6403A;
+}
+:root[data-theme="dark"]{
+  --bg:#0E1216; --surface:#161B21; --panel:#1B2229; --ink:#E7ECF1; --ink-2:#B7C1CB; --muted:#7F8B96;
+  --line:#28313A; --line-2:#202830; --accent:#E08A3E; --accent-strong:#EFA560; --accent-soft:#33220F;
+  --open:#E08A3E; --rebut:#EA6B64; --mediate:#6D9AB7; --interject:#9C8DD6; --verdict:#8CAE80; --crit:#EA6B64;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans); font-size:16px; line-height:1.62; -webkit-font-smoothing:antialiased}
+code,.mono{font-family:var(--mono)}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:3px}
+.bar{position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:12px; padding:10px clamp(16px,4vw,34px); background:color-mix(in srgb,var(--surface) 86%,transparent); backdrop-filter:saturate(1.4) blur(9px); border-bottom:1px solid var(--line)}
+.bar b{font-weight:800; letter-spacing:-.01em}
+.bar .tag{font:600 10.5px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+.bar .sp{flex:1}
+.toggle{font:600 11.5px/1 var(--mono); color:var(--ink-2); background:var(--panel); border:1px solid var(--line); padding:7px 10px; border-radius:6px; cursor:pointer; letter-spacing:.04em}
+.toggle:hover{border-color:var(--accent)}
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 clamp(16px,4vw,34px)}
+.hero{padding:48px 0 26px; border-bottom:1px solid var(--line)}
+.eyebrow{font:600 12px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--accent-strong)}
+.hero h1{font-size:clamp(24px,3.8vw,38px); line-height:1.08; letter-spacing:-.025em; font-weight:800; margin:14px 0 12px; max-width:22ch; text-wrap:balance}
+.hero .q{font-size:clamp(15px,1.9vw,18px); color:var(--ink-2); max-width:62ch; margin:0}
+.hero .q b{color:var(--ink)}
+.legend{display:flex; flex-wrap:wrap; gap:8px; margin-top:20px}
+.lg{font:600 11px/1 var(--mono); letter-spacing:.04em; padding:5px 9px; border-radius:999px; color:#fff}
+.lg.o{background:var(--open)} .lg.r{background:var(--rebut)} .lg.m{background:var(--mediate)} .lg.i{background:var(--interject)} .lg.v{background:var(--verdict)}
+section{padding:34px 0}
+.sh{font:600 11.5px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--accent-strong); margin:0 0 16px}
+.thread{display:flex; flex-direction:column; gap:0; position:relative}
+.thread::before{content:""; position:absolute; left:19px; top:8px; bottom:34px; width:2px; background:var(--line)}
+@media (max-width:620px){.thread::before{display:none}}
+.turn{position:relative; padding:0 0 20px 52px}
+@media (max-width:620px){.turn{padding-left:0}}
+.turn .dot{position:absolute; left:11px; top:3px; width:18px; height:18px; border-radius:50%; background:var(--surface); border:3px solid var(--stance); z-index:2}
+@media (max-width:620px){.turn .dot{display:none}}
+.turn.o{--stance:var(--open)} .turn.r{--stance:var(--rebut)} .turn.m{--stance:var(--mediate)} .turn.i{--stance:var(--interject)} .turn.v{--stance:var(--verdict)}
+.card{background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--stance); border-radius:10px; padding:16px 18px; box-shadow:var(--shadow)}
+.thead{display:flex; align-items:baseline; flex-wrap:wrap; gap:8px 10px; margin-bottom:8px}
+.rnd{font:700 10px/1 var(--mono); letter-spacing:.06em; color:#fff; background:var(--stance); padding:4px 7px; border-radius:5px}
+.who{font:700 12.5px/1 var(--mono); color:var(--stance)}
+.role{font-size:13px; color:var(--muted)}
+.quote{font-size:15px; color:var(--ink); margin:0}
+.quote b{color:var(--ink); background:color-mix(in srgb,var(--stance) 14%,transparent); padding:0 3px; border-radius:3px}
+.reto{margin-top:9px; font-size:12.5px; color:var(--muted); font-style:italic}
+.reto b{color:var(--stance); font-style:normal}
+.cites{display:flex; flex-wrap:wrap; gap:5px; margin-top:11px; padding-top:11px; border-top:1px solid var(--line-2)}
+.cite{font:600 10.5px/1 var(--mono); color:var(--ink-2); background:var(--panel); border:1px solid var(--line); padding:4px 7px; border-radius:5px; white-space:nowrap}
+.consensus{background:var(--accent-soft); border:1px solid color-mix(in srgb,var(--accent) 25%,var(--line)); border-radius:12px; padding:6px 8px; margin-top:6px}
+.tblwrap{overflow-x:auto}
+table{border-collapse:collapse; width:100%; font-size:13.5px; min-width:460px}
+th,td{text-align:left; padding:11px 14px; border-bottom:1px solid color-mix(in srgb,var(--accent) 15%,var(--line)); vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+thead th{font:700 11px/1.3 var(--mono); letter-spacing:.05em; text-transform:uppercase; color:var(--accent-strong)}
+td.who2{font-family:var(--mono); font-size:12px; color:var(--accent-strong); white-space:nowrap}
+.takeaway{margin-top:18px; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:15px 18px; font-size:14.5px; box-shadow:var(--shadow)}
+.takeaway b{color:var(--accent-strong)}
+footer{padding:24px 0 60px; color:var(--muted); font-size:12.5px; border-top:1px solid var(--line); margin-top:20px}
+footer .src{font-family:var(--mono); color:var(--ink-2); word-break:break-all}
+</style>
+</head>
+<body>
+<div class="bar"><b>AI Data Hub</b><span class="tag">교환형 협진 · 전문가 토론</span><span class="sp"></span>
+  <button class="toggle" id="tt" type="button" aria-label="라이트/다크 전환">THEME</button></div>
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow">다중 전문가 의견 교환 · 반박·중재·판정</div>
+    <h1>AP 패키지에서 depop으로 넓어진 피치 볼은 왜 깨지나</h1>
+    <p class="q">다이 중앙 발열부 하단이 depop 되어 주변 피치가 넓어진 볼이 크랙했다. 언더필 충진. <b>전문가들이 서로의 가정을 반박하고, "언더필을 빼자"는 제안까지 검증한다.</b> 모든 발언은 실제 record 로 인용된다.</p>
+    <div class="legend"><span class="lg o">개시</span><span class="lg r">반박</span><span class="lg m">중재</span><span class="lg i">끼어듦</span><span class="lg v">판정</span></div>
+  </header>
+
+  <section>
+    <p class="sh">토론</p>
+    <div class="thread">
+      <div class="turn o"><span class="dot"></span><div class="card">
+        <div class="thead"><span class="rnd">라운드 1 · 개시</span><span class="who">pcb-solder-joint-reliability</span><span class="role">솔더 신뢰성</span></div>
+        <p class="quote">전단 변형 진폭 <b>Δγ ∝ DNP · ΔCTE · ΔT ÷ 스탠드오프</b>. 보통 <b>코너 볼(DNP 최대)</b>이 먼저 죽는다. 대형 부품일수록 최외곽 코너가 열피로에 가장 불리하다.</p>
+        <div class="cites"><span class="cite">DOC-CCT-PCB-384</span></div>
+      </div></div>
+
+      <div class="turn r"><span class="dot"></span><div class="card">
+        <div class="thead"><span class="rnd">라운드 2 · 반박</span><span class="who">mem-warpage</span><span class="role">보드레벨·휨</span></div>
+        <p class="quote">그런데 이 건은 <b>중앙 depop 볼</b>이 깨졌다. <b>위치 편중이 진단 신호</b>다 — 코너면 DNP, 중앙이면 다른 기인이다. 이건 순수 코너 DNP 열피로가 아니다. Weibull 로 마모형인지부터 확인하라.</p>
+        <p class="reto"><b>↳ 응답:</b> 솔더의 "코너가 먼저 죽는다" 전제를 위치로 반박</p>
+        <div class="cites"><span class="cite">DOC-CCT-MEM-454</span><span class="cite">-464</span></div>
+      </div></div>
+
+      <div class="turn m"><span class="dot"></span><div class="card">
+        <div class="thead"><span class="rnd">라운드 3 · 중재</span><span class="who">soc-cpi</span><span class="role">칩-패키지</span></div>
+        <p class="quote">양쪽을 잇겠다. depop 로 넓어진 피치 볼은 세 요인이 겹친다 — (a) 담당 면적↑로 <b>볼당 하중↑</b>, (b) 다이 중앙 발열부라 <b>국소 ΔT 최대</b>(DNP 작아도 상쇄), (c) depop 경계 강성 불연속. 게다가 언더필은 다이-기판을 복합 굽힘체로 만들어 응력을 재분배하는 <b>양면성</b>이 있다.</p>
+        <p class="reto"><b>↳ 응답:</b> 솔더(DNP)와 mem(위치)을 "국소 ΔT + 하중 분담"으로 수렴</p>
+        <div class="cites"><span class="cite">DOC-CCT-SOC-003</span><span class="cite">-005</span></div>
+      </div></div>
+
+      <div class="turn i"><span class="dot"></span><div class="card">
+        <div class="thead"><span class="rnd">라운드 4 · 끼어듦</span><span class="who">soc-warpage</span><span class="role">패키지 휨</span></div>
+        <p class="quote">덧붙이면, 피치 넓은 구역은 리플로우에서 <b>볼 붕괴 여유 vs 국부 갭 경쟁</b>이 달라진다. 허용 warpage 자체가 피치에 연동되므로, depop 구역은 접합 품질·응력이 국부적으로 편중된다.</p>
+        <p class="reto"><b>↳ 응답:</b> CPI 의 "넓은 피치 볼" 논지에 warpage·붕괴여유 축 추가</p>
+        <div class="cites"><span class="cite">DOC-CCT-SOC-543</span><span class="cite">-549</span><span class="cite">-568</span></div>
+      </div></div>
+
+      <div class="turn r"><span class="dot"></span><div class="card">
+        <div class="thead"><span class="rnd">라운드 5 · 제안과 반박</span><span class="who">soc-cpi · pcb-solder</span><span class="role">언더필 제거론 기각</span></div>
+        <p class="quote">"그럼 언더필을 빼면?" — <b>안 된다.</b> 제거하면 낙하 굽힘이 솔더에 직결돼 IMC 취성·크레이터링(치명), 그리고 Cu pillar 가 CTE 하중을 ELK 로 직결해 white bump·ELK 크랙(치명). <b>ELK 노드 AP 엔 언더필이 사실상 필수</b>다. 딜라미가 주범이어도 답은 <b>재선정이지 제거가 아니다.</b></p>
+        <p class="reto"><b>↳ 응답:</b> "언더필 제거" 제안을 두 치명 모드 근거로 기각</p>
+        <div class="cites"><span class="cite">DOC-CCT-PCB-378</span><span class="cite">SOC-018</span><span class="cite">SOC-005</span></div>
+      </div></div>
+
+      <div class="turn v"><span class="dot"></span><div class="card">
+        <div class="thead"><span class="rnd">라운드 6 · 판정</span><span class="who">rel-fa-physical</span><span class="role">물리 고장분석</span></div>
+        <p class="quote">추정 그만. <b>다이앤프라이로 어느 볼이 어떤 모드로 얼마나</b> 깨졌는지 정량하고 단면으로 기점을 확정하라. depop 은 볼이 없으니 <b>기판 크랙 가능성도 반드시 포함</b>한다. 지배 모드를 정하기 전엔 언더필·합금·볼을 바꾸지 마라.</p>
+        <p class="reto"><b>↳ 응답:</b> DNP/국소ΔT/warpage 논쟁을 FA 증거로 판정</p>
+        <div class="cites"><span class="cite">DOC-CCT-REL-250</span><span class="cite">-265</span><span class="cite">-258</span></div>
+      </div></div>
+    </div>
+  </section>
+
+  <section>
+    <p class="sh">교환 후 합의</p>
+    <div class="consensus"><div class="tblwrap"><table>
+      <thead><tr><th>쟁점</th><th>합의</th><th>주도</th></tr></thead>
+      <tbody>
+        <tr><td>코너 DNP 피로인가</td><td>아니다 — 중앙 편중 = 국소 ΔT + 하중 분담</td><td class="who2">mem-warpage · soc-cpi</td></tr>
+        <tr><td>넓은 피치 볼이 약한 이유</td><td>볼당 하중↑ + 국소 ΔT↑ + 강성 불연속</td><td class="who2">soc-cpi · soc-warpage</td></tr>
+        <tr><td>언더필 제거?</td><td>기각 — 낙하 + CPI 두 치명 모드. 재선정만</td><td class="who2">pcb-solder · soc-cpi</td></tr>
+        <tr><td>무엇을 먼저</td><td>FA 다이앤프라이 (기판 크랙 포함)</td><td class="who2">rel-fa-physical</td></tr>
+      </tbody>
+    </table></div></div>
+    <div class="takeaway"><b>교환이 만든 차이 —</b> 솔더의 "코너가 먼저"라는 교과서 전제를 mem 이 위치로 반박 → CPI 가 "넓은 피치 볼 3요인"으로 수렴 → "언더필 빼자"는 제안이 나오자 두 전문가가 치명 모드 근거로 즉시 기각 → FA 가 판정. 성급한 대책을 토론이 걸러냈다.</div>
+  </section>
+
+  <footer>
+    <p>인용 record — <span class="src">PCB-378·384 &nbsp;|&nbsp; MEM-454·464 &nbsp;|&nbsp; SOC-003·005·018·543·549·568 &nbsp;|&nbsp; REL-250·265·258</span></p>
+    <p>AI Data Hub · 교환형 협진 (recommend_agents → agent_search 연쇄, 각 응답이 앞 발언을 참조) · 상단 THEME 로 전환.</p>
+  </footer>
+</div>
+<script>
+(function(){var r=document.documentElement,b=document.getElementById('tt');
+b.addEventListener('click',function(){var c=r.getAttribute('data-theme');
+if(!c){c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+r.setAttribute('data-theme',c==='dark'?'light':'dark');});})();
+</script>
+</body>
+</html>

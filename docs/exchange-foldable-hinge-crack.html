@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<!-- AI Data Hub 교환형 협진 — 폴더블 힌지 디스플레이 크랙 (전문가 토론, 자체 완결 HTML) -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>교환형 협진 — 폴더블 힌지 디스플레이 크랙</title>
+<style>
+:root{
+  --bg:#EDF0F4; --surface:#FFFFFF; --panel:#F4F7FA;
+  --ink:#131C25; --ink-2:#35485A; --muted:#5A6675;
+  --line:#D8DEE7; --line-2:#E7ECF2;
+  --accent:#0C6E8F; --accent-strong:#084F68; --accent-soft:#E1F0F5;
+  --open:#0C6E8F; --rebut:#C6403A; --mediate:#5E7A55; --interject:#B5701A; --verdict:#6A4FA0;
+  --crit:#C6403A; --crit-soft:#FBE4E2;
+  --shadow:0 1px 2px rgba(19,28,37,.05), 0 10px 30px -18px rgba(19,28,37,.30);
+  --sans:"Helvetica Neue","Segoe UI",Roboto,system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+  --maxw:940px;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0B1118; --surface:#151B24; --panel:#18232F; --ink:#E6EDF3; --ink-2:#B4C2CF; --muted:#93A1B2;
+  --line:#263340; --line-2:#1E2A36; --accent:#45B8D8; --accent-strong:#6ECAE4; --accent-soft:#10303A;
+  --open:#45B8D8; --rebut:#EA6B64; --mediate:#8CAE80; --interject:#DCA24A; --verdict:#A48BD8;
+  --crit:#EA6B64; --crit-soft:#301616;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 14px 34px -20px rgba(0,0,0,.8);
+}}
+:root[data-theme="light"]{
+  --bg:#EDF0F4; --surface:#FFFFFF; --panel:#F4F7FA; --ink:#131C25; --ink-2:#35485A; --muted:#5A6675;
+  --line:#D8DEE7; --line-2:#E7ECF2; --accent:#0C6E8F; --accent-strong:#084F68; --accent-soft:#E1F0F5;
+  --open:#0C6E8F; --rebut:#C6403A; --mediate:#5E7A55; --interject:#B5701A; --verdict:#6A4FA0;
+  --crit:#C6403A; --crit-soft:#FBE4E2;
+}
+:root[data-theme="dark"]{
+  --bg:#0B1118; --surface:#151B24; --panel:#18232F; --ink:#E6EDF3; --ink-2:#B4C2CF; --muted:#93A1B2;
+  --line:#263340; --line-2:#1E2A36; --accent:#45B8D8; --accent-strong:#6ECAE4; --accent-soft:#10303A;
+  --open:#45B8D8; --rebut:#EA6B64; --mediate:#8CAE80; --interject:#DCA24A; --verdict:#A48BD8;
+  --crit:#EA6B64; --crit-soft:#301616;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans); font-size:16px;
+  line-height:1.62; -webkit-font-smoothing:antialiased}
+code,.mono{font-family:var(--mono)}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:3px}
+
+.bar{position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:12px;
+  padding:10px clamp(16px,4vw,34px); background:color-mix(in srgb,var(--surface) 86%,transparent);
+  backdrop-filter:saturate(1.4) blur(9px); border-bottom:1px solid var(--line)}
+.bar b{font-weight:800; letter-spacing:-.01em}
+.bar .tag{font:600 10.5px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+.bar .sp{flex:1}
+.toggle{font:600 11.5px/1 var(--mono); color:var(--ink-2); background:var(--panel); border:1px solid var(--line);
+  padding:7px 10px; border-radius:6px; cursor:pointer; letter-spacing:.04em}
+.toggle:hover{border-color:var(--accent)}
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 clamp(16px,4vw,34px)}
+
+.hero{padding:48px 0 26px; border-bottom:1px solid var(--line)}
+.eyebrow{font:600 12px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--accent-strong)}
+.hero h1{font-size:clamp(25px,4vw,40px); line-height:1.08; letter-spacing:-.025em; font-weight:800;
+  margin:14px 0 12px; max-width:20ch; text-wrap:balance}
+.hero .q{font-size:clamp(15px,1.9vw,18px); color:var(--ink-2); max-width:62ch; margin:0}
+.hero .q b{color:var(--ink)}
+.legend{display:flex; flex-wrap:wrap; gap:8px; margin-top:20px}
+.lg{font:600 11px/1 var(--mono); letter-spacing:.04em; padding:5px 9px; border-radius:999px; color:#fff}
+.lg.o{background:var(--open)} .lg.r{background:var(--rebut)} .lg.m{background:var(--mediate)}
+.lg.i{background:var(--interject)} .lg.v{background:var(--verdict)}
+
+section{padding:34px 0}
+.sh{font:600 11.5px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--accent-strong); margin:0 0 16px}
+
+/* 토론 스레드 */
+.thread{display:flex; flex-direction:column; gap:0; position:relative}
+.thread::before{content:""; position:absolute; left:19px; top:8px; bottom:34px; width:2px; background:var(--line)}
+@media (max-width:620px){.thread::before{display:none}}
+.turn{position:relative; padding:0 0 20px 52px}
+@media (max-width:620px){.turn{padding-left:0}}
+.turn .dot{position:absolute; left:11px; top:3px; width:18px; height:18px; border-radius:50%;
+  background:var(--surface); border:3px solid var(--stance); z-index:2}
+@media (max-width:620px){.turn .dot{display:none}}
+.turn.o{--stance:var(--open)} .turn.r{--stance:var(--rebut)} .turn.m{--stance:var(--mediate)}
+.turn.i{--stance:var(--interject)} .turn.v{--stance:var(--verdict)}
+.card{background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--stance);
+  border-radius:10px; padding:16px 18px; box-shadow:var(--shadow)}
+.thead{display:flex; align-items:baseline; flex-wrap:wrap; gap:8px 10px; margin-bottom:8px}
+.rnd{font:700 10px/1 var(--mono); letter-spacing:.06em; color:#fff; background:var(--stance); padding:4px 7px; border-radius:5px}
+.who{font:700 12.5px/1 var(--mono); color:var(--stance)}
+.role{font-size:13px; color:var(--muted)}
+.quote{font-size:15px; color:var(--ink); margin:0}
+.quote b{color:var(--ink); background:color-mix(in srgb,var(--stance) 14%,transparent); padding:0 3px; border-radius:3px}
+.reto{margin-top:9px; font-size:12.5px; color:var(--muted); font-style:italic}
+.reto b{color:var(--stance); font-style:normal}
+.cites{display:flex; flex-wrap:wrap; gap:5px; margin-top:11px; padding-top:11px; border-top:1px solid var(--line-2)}
+.cite{font:600 10.5px/1 var(--mono); color:var(--ink-2); background:var(--panel); border:1px solid var(--line);
+  padding:4px 7px; border-radius:5px; white-space:nowrap}
+
+/* 합의 표 */
+.consensus{background:var(--accent-soft); border:1px solid color-mix(in srgb,var(--accent) 25%,var(--line));
+  border-radius:12px; padding:6px 8px; margin-top:6px}
+.tblwrap{overflow-x:auto}
+table{border-collapse:collapse; width:100%; font-size:13.5px; min-width:460px}
+th,td{text-align:left; padding:11px 14px; border-bottom:1px solid color-mix(in srgb,var(--accent) 15%,var(--line)); vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+thead th{font:700 11px/1.3 var(--mono); letter-spacing:.05em; text-transform:uppercase; color:var(--accent-strong)}
+td.who2{font-family:var(--mono); font-size:12px; color:var(--accent-strong); white-space:nowrap}
+.takeaway{margin-top:18px; background:var(--surface); border:1px solid var(--line); border-radius:10px;
+  padding:15px 18px; font-size:14.5px; box-shadow:var(--shadow)}
+.takeaway b{color:var(--accent-strong)}
+footer{padding:24px 0 60px; color:var(--muted); font-size:12.5px; border-top:1px solid var(--line); margin-top:20px}
+footer .src{font-family:var(--mono); color:var(--ink-2); word-break:break-all}
+</style>
+</head>
+<body>
+<div class="bar"><b>AI Data Hub</b><span class="tag">교환형 협진 · 전문가 토론</span><span class="sp"></span>
+  <button class="toggle" id="tt" type="button" aria-label="라이트/다크 전환">THEME</button></div>
+
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow">다중 전문가 의견 교환 · 반박·중재·판정</div>
+    <h1>폴더블 힌지 근처 디스플레이는 왜 크랙이 나는가</h1>
+    <p class="q">전문가들이 각자 의견만 말하지 않는다. <b>서로의 주장에 반박하고, 중재하고, 파면으로 판정한다.</b> 한 전문가의 단정을 다른 전문가가 교정하는 과정을 그대로 담았다. 모든 발언은 실제 record 로 인용된다.</p>
+    <div class="legend">
+      <span class="lg o">개시</span><span class="lg r">반박</span><span class="lg m">중재</span><span class="lg i">끼어듦</span><span class="lg v">판정</span>
+    </div>
+  </header>
+
+  <section>
+    <p class="sh">토론</p>
+    <div class="thread">
+      <div class="turn o"><span class="dot"></span>
+        <div class="card">
+          <div class="thead"><span class="rnd">라운드 1 · 개시</span><span class="who">rel-repetitive-durability</span><span class="role">반복 작동 내구</span></div>
+          <p class="quote">상온 폴딩 20만회를 통과해도 <b>-20℃ 병행에서는 5만회에 UTG 크랙</b>이 났다. 저온에서 점탄성 강성↑·그리스 점도↑로 곡률이 조여진다. 이건 <b>저온 폴딩 조기 파단</b>이다 — 온도를 시험 파라미터가 아니라 고장모드 스위치로 봐야 한다.</p>
+          <div class="cites"><span class="cite">DOC-CCT-REL-373</span><span class="cite">DOC-CCT-REL-384</span></div>
+        </div>
+      </div>
+
+      <div class="turn r"><span class="dot"></span>
+        <div class="card">
+          <div class="thead"><span class="rnd">라운드 2 · 반박</span><span class="who">disp-tfe-encap</span><span class="role">박막봉지</span></div>
+          <p class="quote">잠깐. 그걸 '크랙'이라 단정하는 게 <b>가장 흔한 오진</b>이다. 접힘부 결함은 무기막 크랙일 수도, 계면 딜라미네이션일 수도 있고 — <b>대책이 정반대</b>다. 저온 파단으로 못 박기 전에 비파괴(OCT·공초점)로 크랙/딜라미부터 갈라라.</p>
+          <p class="reto"><b>↳ 응답:</b> 내구의 "저온 UTG 크랙" 단정에 이의</p>
+          <div class="cites"><span class="cite">DOC-CCT-DISP-343</span></div>
+        </div>
+      </div>
+
+      <div class="turn m"><span class="dot"></span>
+        <div class="card">
+          <div class="thead"><span class="rnd">라운드 3 · 중재</span><span class="who">disp-foldable-stackup</span><span class="role">적층 설계</span></div>
+          <p class="quote">둘 다 부분적으로 맞는데, 결정적 단서는 <b>분포</b>다. 결함이 <b>폴딩부에만 국한</b>된다는 것 자체가 원인이 굽힘 인장 변형률임을 강하게 시사한다 — 겉모습이 봉지(다크스팟) 문제로 보여도. 그러니 크랙이든 딜라미든 원인은 <b>적층·중립면</b>으로 되돌아온다. 취약층(TFE 무기막)을 중립면 근처로 재배치하고, <b>허용 변형률 한계치는 추정 말고 봉지·UTG 전문가에게서 숫자로 받아라.</b></p>
+          <p class="reto"><b>↳ 응답:</b> 내구(분포·온도)와 봉지(크랙/딜라미)를 "변형률 예산" 하나로 수렴 + 숫자는 봉지에 되던짐</p>
+          <div class="cites"><span class="cite">DOC-CCT-DISP-136</span><span class="cite">-142</span><span class="cite">-129</span><span class="cite">-121</span></div>
+        </div>
+      </div>
+
+      <div class="turn i"><span class="dot"></span>
+        <div class="card">
+          <div class="thead"><span class="rnd">라운드 4 · 끼어듦</span><span class="who">mech-drop-impact</span><span class="role">낙하·충격</span></div>
+          <p class="quote">강성으로 풀 때 함정이 있다. <b>국부 강성을 무작정 올리면 하중이 오히려 디스플레이로 전가</b>된다 — 낙하에서 코너를 두껍게 했더니 에지 크랙이 늘어난 것과 같은 역설이다. 강성은 올리는 게 아니라 <b>배분</b>하는 것.</p>
+          <p class="reto"><b>↳ 응답:</b> 적층의 "강성층 조정"에 경고</p>
+          <div class="cites"><span class="cite">DOC-CCT-MECH-051</span><span class="cite">-056</span></div>
+        </div>
+      </div>
+
+      <div class="turn v"><span class="dot"></span>
+        <div class="card">
+          <div class="thead"><span class="rnd">라운드 5 · 판정</span><span class="who">rel-fa-physical</span><span class="role">물리 고장분석</span></div>
+          <p class="quote">논쟁을 끝내려면 <b>파면을 열어라</b>. SEM 파면으로 취성(저온 파단) vs 피로(반복 굽힘) vs 딜라미네이션을 구분하고, 기점이 엣지(가공 결함)인지 면(스크래치·이물)인지 특정한다. 단 함정 — <b>취급·pry로 새로 생긴 신선한 파면을 원래 크랙으로 오독하지 마라.</b> 딤플 하나 보였다고 연성 파괴로 결론짓는 게 가장 흔한 실수다.</p>
+          <p class="reto"><b>↳ 응답:</b> 크랙/딜라미·취성/피로 논쟁을 파면 증거로 판정</p>
+          <div class="cites"><span class="cite">DOC-CCT-REL-245</span><span class="cite">-258</span><span class="cite">-250</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="sh">교환 후 합의</p>
+    <div class="consensus"><div class="tblwrap"><table>
+      <thead><tr><th>쟁점</th><th>합의</th><th>주도</th></tr></thead>
+      <tbody>
+        <tr><td>크랙인가 딜라미인가</td><td>FA 파면으로 확정 (추정 금지)</td><td class="who2">rel-fa-physical</td></tr>
+        <tr><td>진짜 원인 축</td><td>폴딩부 국한 = 변형률 예산 → 중립면 재배치</td><td class="who2">disp-foldable-stackup</td></tr>
+        <tr><td>허용 한계 숫자</td><td>TFE·UTG 전문가 실측값 (계산표 아님)</td><td class="who2">disp-tfe-encap</td></tr>
+        <tr><td>온도</td><td>저온을 고장모드 스위치로 별도 시료군</td><td class="who2">rel-repetitive-durability</td></tr>
+        <tr><td>강성</td><td>올리지 말고 배분</td><td class="who2">mech-drop-impact</td></tr>
+      </tbody>
+    </table></div></div>
+    <div class="takeaway"><b>교환이 만든 차이 —</b> 독립 의견이었으면 "저온 크랙"(내구) 하나로 끝났을 것을, 봉지가 "크랙 아닐 수도"로 반박 → 적층이 "분포가 답, 변형률로 수렴"으로 중재 → 기구가 "강성 역설" 경고 → FA가 파면으로 판정. 한 전문가의 단정을 다른 전문가가 교정하는 것이 핵심이다.</div>
+  </section>
+
+  <footer>
+    <p>인용 record — <span class="src">REL-373·384·245·258·250 &nbsp;|&nbsp; DISP-343·136·142·129·121 &nbsp;|&nbsp; MECH-051·056</span></p>
+    <p>AI Data Hub · 교환형 협진 (recommend_agents → agent_search 연쇄, 각 응답이 앞 발언을 참조) · 상단 THEME 로 전환.</p>
+  </footer>
+</div>
+<script>
+(function(){var r=document.documentElement,b=document.getElementById('tt');
+b.addEventListener('click',function(){var c=r.getAttribute('data-theme');
+if(!c){c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+r.setAttribute('data-theme',c==='dark'?'light':'dark');});})();
+</script>
+</body>
+</html>

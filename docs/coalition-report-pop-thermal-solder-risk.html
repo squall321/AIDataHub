@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<!-- AI Data Hub 다중 전문가 협진 답변서 — PoP 발열 재분배 시 솔더 크랙 잠재 위험 위치 (자체 완결 HTML) -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>협진 답변서 — PoP 발열 재분배와 솔더 크랙 위험</title>
+<style>
+/* ── 토큰 (라이트 기본) — 테마: 열 재분배 써멀맵(그래파이트 + 히트 레드) ──── */
+:root{
+  --bg:#EDEEF0; --surface:#FFFFFF; --panel:#F4F5F7;
+  --ink:#16191D; --ink-2:#363C43; --muted:#606871;
+  --line:#DADEE3; --line-2:#E7EAEE;
+  --heat:#B8402A; --heat-strong:#8F3019; --heat-soft:#F7E3DD;
+  --cool:#2E6E8E; --cool-soft:#DFEDF3;
+  --crit:#C6403A; --crit-soft:#FBE4E2; --warn:#9C6A14; --warn-soft:#F6ECD6; --ok:#2C7A4B;
+  --dom-pop:#B8402A; --dom-therm:#C77A1E; --dom-fo:#8F5AA6; --dom-rel:#2E6E8E; --dom-pmic:#5E7A55;
+  --shadow:0 1px 2px rgba(22,25,29,.05), 0 10px 30px -18px rgba(22,25,29,.30);
+  --sans:"Helvetica Neue","Segoe UI",Roboto,system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+  --maxw:1080px;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0D1114; --surface:#161A1F; --panel:#1B2127;
+    --ink:#E7EBEF; --ink-2:#B6BFC8; --muted:#7D8891;
+    --line:#282F36; --line-2:#20262C;
+    --heat:#E9714E; --heat-strong:#F2916F; --heat-soft:#331A12;
+    --cool:#5FA0BF; --cool-soft:#0F2A36;
+    --crit:#EA6B64; --crit-soft:#301616; --warn:#D8A34A; --warn-soft:#2A2110; --ok:#54B77E;
+    --dom-pop:#E9714E; --dom-therm:#DD9455; --dom-fo:#B692D0; --dom-rel:#5FA0BF; --dom-pmic:#8CAE80;
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 14px 34px -20px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="light"]{
+  --bg:#EDEEF0; --surface:#FFFFFF; --panel:#F4F5F7;
+  --ink:#16191D; --ink-2:#363C43; --muted:#606871; --line:#DADEE3; --line-2:#E7EAEE;
+  --heat:#B8402A; --heat-strong:#8F3019; --heat-soft:#F7E3DD; --cool:#2E6E8E; --cool-soft:#DFEDF3;
+  --crit:#C6403A; --crit-soft:#FBE4E2; --warn:#9C6A14; --warn-soft:#F6ECD6; --ok:#2C7A4B;
+  --dom-pop:#B8402A; --dom-therm:#C77A1E; --dom-fo:#8F5AA6; --dom-rel:#2E6E8E; --dom-pmic:#5E7A55;
+  --shadow:0 1px 2px rgba(22,25,29,.05), 0 10px 30px -18px rgba(22,25,29,.30);
+}
+:root[data-theme="dark"]{
+  --bg:#0D1114; --surface:#161A1F; --panel:#1B2127;
+  --ink:#E7EBEF; --ink-2:#B6BFC8; --muted:#7D8891; --line:#282F36; --line-2:#20262C;
+  --heat:#E9714E; --heat-strong:#F2916F; --heat-soft:#331A12; --cool:#5FA0BF; --cool-soft:#0F2A36;
+  --crit:#EA6B64; --crit-soft:#301616; --warn:#D8A34A; --warn-soft:#2A2110; --ok:#54B77E;
+  --dom-pop:#E9714E; --dom-therm:#DD9455; --dom-fo:#B692D0; --dom-rel:#5FA0BF; --dom-pmic:#8CAE80;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 14px 34px -20px rgba(0,0,0,.8);
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{animation:none!important}}
+body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
+  font-size:16px; line-height:1.62; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility}
+code,.mono{font-family:var(--mono)}
+:focus-visible{outline:2px solid var(--heat); outline-offset:2px; border-radius:3px}
+
+.bar{position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:12px;
+  padding:10px clamp(16px,4vw,34px); background:color-mix(in srgb,var(--surface) 86%,transparent);
+  backdrop-filter:saturate(1.4) blur(9px); border-bottom:1px solid var(--line)}
+.bar b{font-weight:800; letter-spacing:-.01em}
+.bar .tag{font:600 10.5px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+.bar .sp{flex:1}
+.toggle{font:600 11.5px/1 var(--mono); color:var(--ink-2); background:var(--panel);
+  border:1px solid var(--line); padding:7px 10px; border-radius:6px; cursor:pointer; letter-spacing:.04em}
+.toggle:hover{border-color:var(--heat)}
+
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 clamp(16px,4vw,34px)}
+
+.hero{padding:50px 0 30px; border-bottom:1px solid var(--line)}
+.eyebrow{font:600 12px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--heat-strong)}
+.hero h1{font-size:clamp(25px,4vw,42px); line-height:1.08; letter-spacing:-.025em; font-weight:800;
+  margin:15px 0 14px; max-width:21ch; text-wrap:balance}
+.hero .q{font-size:clamp(15px,1.9vw,18px); color:var(--ink-2); max-width:64ch; margin:0}
+.hero .q b{color:var(--ink)}
+.strip{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:1px;
+  background:var(--line); border:1px solid var(--line); border-radius:10px; overflow:hidden; margin:24px 0 4px; max-width:680px}
+.strip .c{background:var(--surface); padding:14px 16px}
+.strip .n{font:800 20px/1.1 var(--mono); letter-spacing:-.02em; color:var(--ink); font-variant-numeric:tabular-nums}
+.strip .n small{font-size:12px; color:var(--muted); font-weight:600}
+.strip .k{margin-top:5px; font-size:11.5px; color:var(--muted)}
+
+section{padding:36px 0; border-bottom:1px solid var(--line-2)}
+section:last-of-type{border-bottom:none}
+.sh{font:600 11.5px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--heat-strong); margin:0 0 4px}
+h2{font-size:clamp(20px,2.5vw,26px); letter-spacing:-.02em; font-weight:800; margin:0 0 14px; text-wrap:balance}
+h2 .sub{display:block; font:400 14px/1.5 var(--sans); color:var(--muted); letter-spacing:0; margin-top:5px}
+p{margin:0 0 12px; max-width:72ch}
+
+/* 크로스섹션 다이어그램 */
+.xsec-wrap{display:grid; grid-template-columns:340px 1fr; gap:28px; align-items:center}
+@media (max-width:800px){.xsec-wrap{grid-template-columns:1fr}}
+.xsec{position:relative; background:var(--panel); border:1px solid var(--line); border-radius:12px;
+  padding:20px 18px; box-shadow:var(--shadow); min-height:280px}
+.stk{display:flex; flex-direction:column; align-items:center; gap:0; position:relative; z-index:2}
+.pkg{width:60%; text-align:center; font:700 11px/1 var(--mono); letter-spacing:.03em; color:#fff;
+  padding:11px 0; border-radius:5px}
+.pkg.dram{background:var(--cool)}
+.pkg.ap{background:var(--heat); position:relative}
+.pkg.ap::after{content:"HOT"; position:absolute; right:8px; top:50%; transform:translateY(-50%); font:700 8px/1 var(--mono); opacity:.85}
+.balls{display:flex; gap:9px; padding:5px 0}
+.balls .b{width:7px; height:7px; border-radius:50%; background:var(--ink-2)}
+.balls.risk .b{background:var(--crit); box-shadow:0 0 0 3px color-mix(in srgb,var(--crit) 20%,transparent)}
+.board{width:96%; height:14px; background:linear-gradient(var(--line-2),var(--line)); border:1px solid var(--line);
+  border-radius:3px; margin-top:5px; position:relative}
+.side{display:flex; justify-content:space-between; width:96%; margin-top:0}
+.chip{font:600 9px/1 var(--mono); color:var(--ink-2); background:var(--surface); border:1px solid var(--line);
+  padding:5px 7px; border-radius:4px}
+.chip.pmic{transform:translateY(6px)}
+.xhint{position:absolute; font:600 9px/1.3 var(--mono); color:var(--heat-strong)}
+.flowlbl{margin-top:14px; font:600 10px/1.4 var(--mono); color:var(--muted); text-align:center}
+.xnote{font-size:13.5px; color:var(--ink-2)}
+.xnote b{color:var(--ink)}
+.paradox{background:var(--heat-soft); border:1px solid color-mix(in srgb,var(--heat) 28%,var(--line));
+  border-radius:10px; padding:14px 16px; margin-top:14px; font-size:14.5px; color:var(--ink)}
+.paradox b{color:var(--heat-strong)}
+
+/* 위험 랭킹 */
+.ranks{display:flex; flex-direction:column; gap:14px}
+.rank{display:grid; grid-template-columns:52px 1fr; gap:16px; background:var(--surface);
+  border:1px solid var(--line); border-radius:12px; padding:18px 20px; box-shadow:var(--shadow); border-left:4px solid var(--dom)}
+.rank.r1{--dom:var(--crit)} .rank.r2{--dom:var(--heat)} .rank.r3{--dom:var(--warn)} .rank.r4{--dom:var(--cool)}
+.rank .badge{display:flex; flex-direction:column; align-items:center; gap:6px}
+.rank .num{font:800 24px/1 var(--mono); color:var(--dom)}
+.rank .lv{font:700 8.5px/1 var(--mono); letter-spacing:.04em; color:#fff; background:var(--dom); padding:4px 5px; border-radius:4px; white-space:nowrap}
+.rank h4{margin:0 0 5px; font-size:16px; letter-spacing:-.01em; display:flex; align-items:baseline; flex-wrap:wrap; gap:8px}
+.rank h4 .at{font:600 11px/1 var(--mono); color:var(--muted)}
+.rank p{margin:0 0 8px; font-size:14px; color:var(--ink-2)}
+.rank p b{color:var(--ink)}
+.cites{display:flex; flex-wrap:wrap; gap:5px}
+.cite{font:600 10.5px/1 var(--mono); color:var(--ink-2); background:var(--panel);
+  border:1px solid var(--line); padding:4px 7px; border-radius:5px; white-space:nowrap}
+
+/* 결론 */
+.steps{display:flex; flex-direction:column; gap:10px; counter-reset:S; margin:4px 0 18px}
+.step{counter-increment:S; display:grid; grid-template-columns:36px 1fr; gap:13px; align-items:start;
+  background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px}
+.step::before{content:counter(S); font:800 17px/1 var(--mono); color:var(--heat); background:var(--surface);
+  border:1.5px solid var(--heat); border-radius:8px; width:36px; height:36px; display:flex; align-items:center; justify-content:center}
+.step h4{margin:0 0 3px; font-size:14.5px; letter-spacing:-.01em; align-self:center}
+.step p{margin:0; font-size:13.5px; color:var(--ink-2); grid-column:2}
+.chain{background:var(--heat-soft); border:1px solid color-mix(in srgb,var(--heat) 25%,var(--line));
+  border-radius:10px; padding:14px 16px; font-size:13.5px; color:var(--ink-2)}
+.chain .fl{font-family:var(--mono); font-size:12px; color:var(--heat-strong); font-weight:600;
+  margin-top:6px; overflow-x:auto; white-space:nowrap; padding-bottom:2px}
+
+.note{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:19px 21px; box-shadow:var(--shadow)}
+.note .guard{display:flex; align-items:center; gap:10px; margin:0 0 10px; font-weight:800; font-size:15px}
+.note .pill{font:700 10px/1 var(--mono); letter-spacing:.06em; color:#fff; background:var(--crit); padding:5px 8px; border-radius:5px}
+.note ol{margin:0; padding-left:20px; max-width:72ch}
+.note li{margin:6px 0; font-size:14px; color:var(--ink-2)}
+.note li b{color:var(--ink)}
+
+footer{padding:26px 0 60px; color:var(--muted); font-size:12.5px}
+footer .src{font-family:var(--mono); color:var(--ink-2); word-break:break-all}
+.hl{color:var(--crit); font-weight:700}
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <b>AI Data Hub</b><span class="tag">협진 답변서</span>
+  <span class="sp"></span>
+  <button class="toggle" id="tt" type="button" aria-label="라이트/다크 전환">THEME</button>
+</div>
+
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow">다중 전문가 협진 · 205 도메인 에이전트 중 자동 선별</div>
+    <h1>방열이 좋아지고 온도가 오르면, 솔더 크랙 위험은 어디로 옮겨가나</h1>
+    <p class="q">질문 — <b>AP 바닥 BGA 크랙은 이미 해결했다. 그런데 방열 구조가 좋아지고 제어온도가 높아진다. AP는 PoP(위에 DRAM), 같은 면에 UFS, 반대 면에 PMIC. 이 발열에서 솔더볼 크랙의 잠재 위험은 어느 쪽인가.</b>
+    허브의 서로 다른 도메인 전문가가 각자의 지식베이스를 근거로 협진한다. 모든 소견은 실제 record 로 인용된다.</p>
+    <div class="strip">
+      <div class="c"><div class="n">5</div><div class="k">협진 전문가</div></div>
+      <div class="c"><div class="n">4</div><div class="k">후보 위치 랭킹</div></div>
+      <div class="c"><div class="n">PoP 상부</div><div class="k">1순위 잠재 위험</div></div>
+      <div class="c"><div class="n">재분배</div><div class="k">방열의 진짜 효과</div></div>
+    </div>
+  </header>
+
+  <!-- 크로스섹션 + 역설 -->
+  <section>
+    <p class="sh">핵심 통찰</p>
+    <h2>방열은 열을 없애지 않는다 — 재분배한다<span class="sub">그래서 위험도 사라지지 않고 옮겨간다. 온도가 오른 쪽이 새 병목이 된다.</span></h2>
+    <div class="xsec-wrap">
+      <div class="xsec" role="img" aria-label="PoP 스택 단면 — 상부 DRAM, 하부 AP(발열), 인터페이스 볼과 AP 바닥 BGA, 보드 같은 면 UFS·반대 면 PMIC">
+        <div class="stk">
+          <div class="pkg dram">DRAM (상부)</div>
+          <div class="balls risk"><span class="b"></span><span class="b"></span><span class="b"></span><span class="b"></span><span class="b"></span></div>
+          <div class="pkg ap">AP (하부 · 발열)</div>
+          <div class="balls risk"><span class="b"></span><span class="b"></span><span class="b"></span><span class="b"></span><span class="b"></span><span class="b"></span></div>
+          <div class="board"></div>
+          <div class="side"><span class="chip">UFS · 같은 면</span><span class="chip pmic">PMIC · 반대 면</span></div>
+        </div>
+        <div class="flowlbl">↑ 열이 DRAM으로 · ↓ 열류가 보드 하방으로 재분배</div>
+      </div>
+      <div>
+        <p class="xnote">방열 개선은 AP die 핫스팟을 낮추지만, 그 열을 <b>주변으로 퍼뜨린다.</b> PoP 구조에서는 AP 상방 열이 DRAM 패키지와 계면을 거쳐야 해 <b>상방 열저항이 커지고, 열류는 보드 하방 경로로 더 배분</b>된다. 동시에 DRAM은 AP 위 가장 뜨거운 이웃이 된다 (<code>SOC-515</code>).</p>
+        <p class="xnote">제어온도 상승은 평균 정션온도와 고온 dwell 을 늘린다. 솔더 크리프 손상은 dwell·최고온도에 민감해(<code>REL-543·558</code>), Norris-Landzberg 의 exp 항으로 <b>고온에서 수명이 급감</b>한다 (<code>REL-551</code>).</p>
+        <div class="paradox"><b>결론 —</b> 위험은 AP die 핫스팟에서 <span class="hl">① PoP 상부 인터페이스(새로 뜨거워짐)</span> 와 <span class="hl">② 보드 하방 경로(열 재분배 + 평균온도↑)</span> 로 이동한다.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 위험 위치 랭킹 -->
+  <section>
+    <p class="sh">잠재 위험 위치 · 랭킹</p>
+    <h2>어느 쪽에 문제가 잠재하나<span class="sub">전문가 소견을 위험 순으로. 각 항목은 실제 record 로 인용됨.</span></h2>
+    <div class="ranks">
+      <article class="rank r1">
+        <div class="badge"><span class="num">1</span><span class="lv">높음</span></div>
+        <div>
+          <h4>PoP 상부 인터페이스 (TIV · 인터페이스 조인트) <span class="at">soc-fowlp · soc-pop-stackup · soc-thermal-throttling</span></h4>
+          <p><b>가장 유력.</b> InFO-PoP 는 TIV(몰드 관통 Cu 기둥) 상하단 계면 크랙이 <b>이미 전형 고장모드</b>다 — Cu–EMC CTE 차로 TCT 수백~1000사이클에 외곽·코너 TIV 계면부터 저항↑·오픈 (<code>SOC-135·126</code>). 방열 개선 + 제어온도 상승으로 DRAM 이 85°C 를 넘고(<code>SOC-524</code>) 상부 인터페이스가 새로 더 뜨거워져, 이 부위가 <b>온도 상승의 직접 피해자</b>가 된다.</p>
+          <div class="cites"><span class="cite">SOC-135</span><span class="cite">SOC-126</span><span class="cite">SOC-524</span><span class="cite">SOC-515</span><span class="cite">SOC-428</span></div>
+        </div>
+      </article>
+      <article class="rank r2">
+        <div class="badge"><span class="num">2</span><span class="lv">중~높음</span></div>
+        <div>
+          <h4>AP 바닥 BGA + 보드 하방 (반전 주의) <span class="at">soc-thermal-throttling · rel-thermal-shock</span></h4>
+          <p>PoP 는 상방 열저항↑ → <b>열류를 보드 하방으로 재분배</b>한다 (<code>SOC-515</code>). 방열 스프레더가 상면에 있으면 하방 열이 늘 수 있다. 제어온도↑ 로 평균 Tj·고온 dwell 이 늘면 크립 손상이 커져(<code>REL-543·558</code>), <b>과거 옛 온도 조건에서 해결한 AP 바닥 크랙이 새 프로파일에서 재발</b>할 수 있다.</p>
+          <div class="cites"><span class="cite">SOC-515</span><span class="cite">REL-543</span><span class="cite">REL-551</span><span class="cite">REL-558</span></div>
+        </div>
+      </article>
+      <article class="rank r3">
+        <div class="badge"><span class="num">3</span><span class="lv">중</span></div>
+        <div>
+          <h4>같은 면 UFS (열 이웃) <span class="at">rel-thermal-shock</span></h4>
+          <p>UFS 는 AP 와 같은 뜨거운 존에 있어 보드 mean temp 상승을 그대로 받는다. 자체 컨트롤러 발열까지 겹치면 UFS BGA 열피로 마진이 잠식된다. 위치가 AP 옆이라 <b>새 온도 프로파일에서 함께 모니터링</b> 대상.</p>
+          <div class="cites"><span class="cite">REL-551</span><span class="cite">REL-543</span></div>
+        </div>
+      </article>
+      <article class="rank r4">
+        <div class="badge"><span class="num">4</span><span class="lv">중 · 조건부</span></div>
+        <div>
+          <h4>반대 면 PMIC (자기발열 · 별도 경로) <span class="at">pwr-pmic-power-tree</span></h4>
+          <p>PMIC 는 단일 다이 WLCSP 에 <b>모든 레일 손실이 같은 정션에 집중</b>돼 자기발열이 크다 (<code>PWR-417</code>). 반대 면이라 AP 방열 스프레더 혜택은 적고 방열 경로가 별개다. 다만 부하 프로파일이 AP 와 달라 ΔT 스윙은 작을 수 있어 <b>조건부</b>. θJA 로 세트 온도를 계산하지 말고 실 세트에서 평가 (<code>PWR-420</code>).</p>
+          <div class="cites"><span class="cite">PWR-417</span><span class="cite">PWR-420</span><span class="cite">PWR-400</span></div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- 결론 -->
+  <section>
+    <p class="sh">협진 결론</p>
+    <h2>위험은 옮겨간 것이지 사라진 게 아니다</h2>
+    <div class="steps">
+      <div class="step"><h4>PoP 상부 인터페이스를 새 1순위로</h4>
+        <p>InFO-PoP TIV 계면(외곽·코너)을 TCT 로 재검증하고, DRAM 온도(MR4 상태)를 신뢰성 데이터와 같은 테이블에서 관리 (<code>soc-fowlp</code> · <code>soc-pop-stackup</code>).</p></div>
+      <div class="step"><h4>온도 프로파일을 다시 정의</h4>
+        <p>과거 해결은 옛 제어온도 기준이다. 새 제어온도의 평균 Tj·dwell 로 AP 바닥 BGA 와 보드 하방을 재환산 (Norris-Landzberg, <code>rel-thermal-shock</code>).</p></div>
+      <div class="step"><h4>DRAM 온도를 스로틀링 입력에 포함</h4>
+        <p>Tj 여유만 보고 "열 문제 아님" 종결 금지. DRAM 85°C·refresh 배가를 정책 변수로 (<code>SOC-524</code>).</p></div>
+      <div class="step"><h4>UFS·PMIC 는 실 세트로 병행 모니터링</h4>
+        <p>같은 면 UFS 와 반대 면 PMIC 를 평가보드가 아닌 실 세트(케이스·방열시트) 조건에서 함께 계측 (<code>pwr-pmic-power-tree</code>).</p></div>
+    </div>
+    <div class="chain"><b>협진 체인</b> — 열 경로 → 인터페이스 신뢰성 → 가속 환산.
+      <div class="fl">soc-thermal-throttling → soc-pop-stackup · soc-fowlp → rel-thermal-shock → pwr-pmic-power-tree</div>
+    </div>
+  </section>
+
+  <!-- 오케스트레이션 노트 -->
+  <section>
+    <p class="sh">이 협진이 인상적인 이유</p>
+    <h2>추측하지 않는 오케스트레이션</h2>
+    <div class="note">
+      <p class="guard"><span class="pill">GUARDRAIL</span>근거가 없으면 전문가는 답을 거부한다</p>
+      <ol>
+        <li><code>recommend_agents</code> 한 번에 PoP·열·팬아웃·신뢰성·PMIC 전문가가 <b>도메인별로 자동 선별</b>됐다.</li>
+        <li>열 전문가의 <b>"열류 하방 재분배"</b>(SOC-515) 한 문장이 나머지 위험 랭킹을 뒤집었다 — 방열 개선의 역설.</li>
+        <li>팬아웃 전문가가 <b>이미 알려진 TIV 계면 크랙</b>(SOC-135)을 근거로 제시해 1순위를 확정했다.</li>
+        <li>각 카드가 <b>다른 전문가를 명시적으로 호출</b>한다(PoP → thermal 정량, 열 → 가속 환산). 협진은 설계된 구조다.</li>
+      </ol>
+    </div>
+  </section>
+
+  <footer>
+    <p>인용 record — <span class="src">SOC-126·135·428·441·515·524 &nbsp;|&nbsp; REL-543·551·554·556·558 &nbsp;|&nbsp; PWR-400·417·420</span></p>
+    <p>AI Data Hub · 205 도메인 전문가 에이전트 · <code>recommend_agents</code> → <code>agent_search</code> → 종합 (MCP 오케스트레이션). 상단 THEME 로 라이트/다크 전환.</p>
+  </footer>
+</div>
+
+<script>
+(function(){
+  var r=document.documentElement, b=document.getElementById('tt');
+  b.addEventListener('click',function(){
+    var c=r.getAttribute('data-theme');
+    if(!c){ c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'; }
+    r.setAttribute('data-theme', c==='dark'?'light':'dark');
+  });
+})();
+</script>
+</body>
+</html>
