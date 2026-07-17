@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<!-- 교차도메인 협진(워크플로 자동 실행)이 도출한 원인 도식 — 햅틱(LRA) 이음 (실제 7-에이전트 실행 근거, 자체 완결 HTML) -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>교차도메인 인사이트 — 햅틱 이음</title>
+<style>
+:root{
+  --bg:#F1EEF0; --surface:#FFFFFF; --panel:#F6F2F4;
+  --ink:#1B141A; --ink-2:#453842; --muted:#6C5E68;
+  --line:#E3DAE0; --line-2:#EDE6EA;
+  --accent:#A8385C; --accent-strong:#832844; --accent-soft:#F5E1E9;
+  --elec:#5340A0; --elec-soft:#E8E4F4; --mech:#3E7A64; --mech-soft:#DDEEE6;
+  --degr:#3E6B86; --degr-soft:#DEEAF0; --reveal:#B8791C; --reveal-soft:#F6ECD6;
+  --warn:#C6403A;
+  --shadow:0 1px 2px rgba(27,20,26,.05), 0 10px 26px -20px rgba(27,20,26,.34);
+  --sans:"Helvetica Neue","Segoe UI",Roboto,system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+  --maxw:1120px;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#120D11; --surface:#1A141A; --panel:#211A20; --ink:#EDE4EA; --ink-2:#C6B7C2; --muted:#8B7C86;
+  --line:#2E2530; --line-2:#241D26; --accent:#E06A93; --accent-strong:#EC85A7; --accent-soft:#341824;
+  --elec:#9C8DE0; --elec-soft:#221C38; --mech:#6FB496; --mech-soft:#12281E;
+  --degr:#6D9AB7; --degr-soft:#12242E; --reveal:#DCA24A; --reveal-soft:#2E230F; --warn:#EA6B64;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 14px 32px -22px rgba(0,0,0,.85);
+}}
+:root[data-theme="light"]{
+  --bg:#F1EEF0; --surface:#FFFFFF; --panel:#F6F2F4; --ink:#1B141A; --ink-2:#453842; --muted:#6C5E68;
+  --line:#E3DAE0; --line-2:#EDE6EA; --accent:#A8385C; --accent-strong:#832844; --accent-soft:#F5E1E9;
+  --elec:#5340A0; --elec-soft:#E8E4F4; --mech:#3E7A64; --mech-soft:#DDEEE6;
+  --degr:#3E6B86; --degr-soft:#DEEAF0; --reveal:#B8791C; --reveal-soft:#F6ECD6; --warn:#C6403A;
+}
+:root[data-theme="dark"]{
+  --bg:#120D11; --surface:#1A141A; --panel:#211A20; --ink:#EDE4EA; --ink-2:#C6B7C2; --muted:#8B7C86;
+  --line:#2E2530; --line-2:#241D26; --accent:#E06A93; --accent-strong:#EC85A7; --accent-soft:#341824;
+  --elec:#9C8DE0; --elec-soft:#221C38; --mech:#6FB496; --mech-soft:#12281E;
+  --degr:#6D9AB7; --degr-soft:#12242E; --reveal:#DCA24A; --reveal-soft:#2E230F; --warn:#EA6B64;
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans); font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased}
+code,.mono{font-family:var(--mono)}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:3px}
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 clamp(14px,3.5vw,30px)}
+.bar{position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:10px; padding:9px clamp(14px,3.5vw,30px);
+  background:color-mix(in srgb,var(--surface) 88%,transparent); backdrop-filter:saturate(1.4) blur(8px); border-bottom:1px solid var(--line)}
+.bar b{font-weight:800; letter-spacing:-.01em}
+.bar .tag{font:600 10px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+.bar .sp{flex:1}
+.toggle{font:600 11px/1 var(--mono); color:var(--ink-2); background:var(--panel); border:1px solid var(--line); padding:6px 9px; border-radius:6px; cursor:pointer}
+.toggle:hover{border-color:var(--accent)}
+.hero{padding:28px 0 8px}
+.eyebrow{font:600 11px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--accent-strong)}
+.hero h1{font-size:clamp(22px,3.4vw,34px); line-height:1.06; letter-spacing:-.028em; font-weight:800; margin:9px 0 10px; text-wrap:balance}
+.q{font-size:14px; color:var(--ink-2); max-width:82ch; margin:0}
+.q b{color:var(--ink)}
+
+.rootline{margin:22px 0 4px; text-align:center}
+.rootline .rk{font:600 10px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--accent-strong)}
+.rootline .rv{font-size:19px; font-weight:800; letter-spacing:-.015em; margin:6px 0 3px}
+.rootline .rs{font-size:12.5px; color:var(--muted); max-width:66ch; margin:0 auto}
+.rootline .rs b{color:var(--ink)}
+.forks{display:flex; justify-content:center; gap:9px; margin:10px 0 2px; flex-wrap:wrap}
+.fork{font:700 11px/1 var(--mono); padding:6px 11px; border-radius:999px}
+.fork.e{color:var(--elec); background:var(--elec-soft)} .fork.m{color:var(--mech); background:var(--mech-soft)}
+
+.legend{display:flex; justify-content:center; flex-wrap:wrap; gap:8px; margin:14px 0 2px}
+.lg{font:600 10px/1 var(--mono); padding:5px 9px; border-radius:999px; display:inline-flex; gap:6px; align-items:center}
+.lg.d{color:var(--degr); background:var(--degr-soft)} .lg.r{color:var(--reveal); background:var(--reveal-soft)}
+.lg .sw{width:9px; height:9px; border-radius:2px} .lg.d .sw{background:var(--degr)} .lg.r .sw{background:var(--reveal)}
+.lg em{font-style:normal; color:var(--muted); font-weight:400}
+
+.chains{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:14px}
+@media (max-width:840px){.chains{grid-template-columns:1fr 1fr}}
+@media (max-width:560px){.chains{grid-template-columns:1fr}}
+.dc{background:var(--surface); border:1px solid var(--line); border-top:4px solid var(--bc); border-radius:11px; padding:13px 14px; box-shadow:var(--shadow)}
+.dc.e{--bc:var(--elec)} .dc.m{--bc:var(--mech)} .dc.lever{--bc:var(--accent); grid-column:1/-1}
+.dc .top{display:flex; align-items:baseline; flex-wrap:wrap; gap:5px 8px; margin-bottom:6px}
+.dc .cn{font:800 13px/1.2 var(--sans); color:var(--ink)}
+.dc .path{font:600 9.5px/1 var(--mono); color:var(--muted)}
+.pill{font:700 8.5px/1 var(--mono); letter-spacing:.04em; text-transform:uppercase; padding:3px 5px; border-radius:4px; margin-left:auto; white-space:nowrap}
+.pill.d{color:#fff; background:var(--degr)} .pill.r{color:#fff; background:var(--reveal)}
+.dc .sym{font-size:11.5px; color:var(--ink); font-weight:600; margin:0 0 4px}
+.dc p{margin:0; font-size:11.5px; color:var(--ink-2); line-height:1.46}
+.dc .cites{display:flex; flex-wrap:wrap; gap:3px; margin-top:7px}
+.dc .cite{font:600 9px/1 var(--mono); color:var(--ink-2); background:var(--panel); border:1px solid var(--line); padding:3px 5px; border-radius:4px}
+
+.decoder{margin-top:22px; background:var(--accent-soft); border:1px solid color-mix(in srgb,var(--accent) 26%,var(--line)); border-radius:13px; padding:18px 20px; box-shadow:var(--shadow)}
+.decoder .kk{font:600 10.5px/1 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--accent-strong); margin:0 0 8px}
+.decoder .kv{font-size:clamp(15px,2vw,18px); font-weight:800; letter-spacing:-.015em; margin:0 0 12px; text-wrap:balance}
+.decoder .kv em{font-style:normal; color:var(--accent-strong)}
+.decoder .dd{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px}
+@media (max-width:720px){.decoder .dd{grid-template-columns:1fr}}
+.dcard{background:var(--surface); border:1px solid var(--line); border-radius:9px; padding:11px 13px}
+.dcard .dt{font:700 11.5px/1.2 var(--sans); margin-bottom:5px}
+.dcard.r .dt{color:var(--reveal)} .dcard.d .dt{color:var(--degr)} .dcard.x .dt{color:var(--accent-strong)}
+.dcard .dm{font-size:11.5px; color:var(--ink-2); line-height:1.45}
+.dcard .dm b{color:var(--ink)}
+
+.row{display:grid; grid-template-columns:1.1fr 0.9fr; gap:14px; margin-top:16px}
+@media (max-width:760px){.row{grid-template-columns:1fr}}
+.box{background:var(--surface); border:1px solid var(--line); border-radius:11px; padding:15px 17px; box-shadow:var(--shadow)}
+.box.diag{border-left:4px solid var(--accent)}
+.box.tens{border-left:4px solid var(--warn)}
+.box h3{font-size:13.5px; font-weight:800; margin:0 0 8px; letter-spacing:-.01em}
+.box.diag h3{color:var(--accent-strong)} .box.tens h3{color:var(--warn)}
+.box p{margin:0; font-size:12.5px; color:var(--ink-2); line-height:1.5}
+.box .exp{font-family:var(--mono); font-size:11.5px; color:var(--ink); background:var(--accent-soft); border:1px solid color-mix(in srgb,var(--accent) 22%,var(--line)); border-radius:7px; padding:8px 10px; margin:9px 0}
+.box ul{margin:6px 0 0; padding-left:15px}
+.box li{font-size:11.5px; color:var(--ink-2); margin-bottom:6px; line-height:1.45}
+.box li b{color:var(--ink)}
+
+.gap{margin-top:16px; background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--reveal); border-radius:11px; padding:14px 16px; box-shadow:var(--shadow)}
+.gap .gk{font:700 10px/1 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--reveal); margin-bottom:8px}
+.gap p{margin:0 0 7px; font-size:12.5px; color:var(--ink-2); line-height:1.5}
+.gap p b{color:var(--ink)}
+.gap ul{margin:6px 0 0; padding-left:15px}
+.gap li{font-size:11.5px; color:var(--muted); margin-bottom:4px; line-height:1.4}
+
+footer{padding:20px 0 40px; border-top:1px solid var(--line); color:var(--muted); font-size:11.5px; margin-top:22px}
+footer .src{font-family:var(--mono); color:var(--ink-2)}
+footer a{color:var(--accent-strong)}
+</style>
+</head>
+<body>
+<div class="bar"><b>AI Data Hub</b><span class="tag">교차도메인 협진 · 원인 도식</span><span class="sp"></span>
+  <button class="toggle" id="tt" type="button" aria-label="라이트/다크 전환">THEME</button></div>
+
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow">cross-domain-consult 워크플로 · 7 에이전트 자동 실행</div>
+    <h1>햅틱 이음(異音) — 진동은 정상인데 왜 소리가 나나</h1>
+    <p class="q">증상 — LRA 햅틱 구동 시 본체에서 <b>드르륵·지지직·삐</b> 이음. 진동 세기는 정상. <b>같은 모델 중 일부 세트·특정 진동 패턴(연속 알림·타이핑)</b>에서만 두드러짐. 원인이 어디서 나는가.</p>
+  </header>
+
+  <div class="rootline">
+    <div class="rk">공통 뿌리 · 단일 가진원</div>
+    <div class="rv">LRA 구동 파형</div>
+    <p class="rs">"진동 세기는 정상인데 소리만 거슬린다" = 파형의 의도된 기계 출력은 정상이나, 그 <b>스펙트럼·과도 부산물</b>이 공진·유격에 커플링된다는 뜻. 하나의 파형이 두 갈래로 분기한다.</p>
+    <div class="forks"><span class="fork e">전기 경로 — 레일 리플 · DC-DC 버스트</span><span class="fork m">기계 경로 — 반력 진동</span></div>
+  </div>
+
+  <div class="legend">
+    <span class="lg d"><span class="sw"></span>DEGRADES <em>파형이 새 소음을 만든다 → 대책: 구동·회로·설계</em></span>
+    <span class="lg r"><span class="sw"></span>REVEALS <em>조립 산포를 드러낸다 → 대책: 체결·간극</em></span>
+  </div>
+
+  <div class="chains">
+    <div class="dc e">
+      <div class="top"><span class="cn">MLCC 음향노이즈</span><span class="path">전기</span><span class="pill d">degrades</span></div>
+      <p class="sym">지지직·삐</p>
+      <p>Class II 유전체가 레일 리플+DC 바이어스에 동기해 역압전 진동 → <b>기판을 가진해 2f·고조파 방사</b>. 부품 소음이 아니라 기판 방사가 이음으로 들림.</p>
+      <div class="cites"><span class="cite">PASV-001</span><span class="cite">-002</span><span class="cite">-017</span></div>
+    </div>
+    <div class="dc e">
+      <div class="top"><span class="cn">파워 인덕터 코일 울림</span><span class="path">전기</span><span class="pill d">degrades</span></div>
+      <p class="sym">지지직·삐</p>
+      <p>햅틱 부하 급변 → DC-DC가 <b>PWM→PFM/버스트</b> 전환, 버스트 반복 주파수가 가청대 진입 → 코어 자왜·로렌츠력이 솔더 필렛 통해 기판 전달.</p>
+      <div class="cites"><span class="cite">PASV-336</span><span class="cite">-344</span></div>
+    </div>
+    <div class="dc m">
+      <div class="top"><span class="cn">구조전달 공진 방사</span><span class="path">기계</span><span class="pill d">degrades</span></div>
+      <p class="sym">부밍·삐</p>
+      <p>LRA 반력(150~230Hz)이 <b>미드프레임·브래킷 1차 고유진동수와 겹쳐</b> 패널로 재방사. 기계 결함 없이 공진 커플링만으로 가청.</p>
+      <div class="cites"><span class="cite">SIM-046</span><span class="cite">-038</span><span class="cite">-488</span></div>
+    </div>
+    <div class="dc m">
+      <div class="top"><span class="cn">브래킷·구조 래틀</span><span class="path">기계</span><span class="pill r">reveals</span></div>
+      <p class="sym">드르륵·지지직</p>
+      <p>응답 진폭이 <b>간극·체결 축력 여유를 넘으면</b> 미접합부 반복 충돌. 토크 규격 내에도 <b>축력 ±30% 산포</b>가 임계 개체를 만듦 — "일부 세트만"의 직접 원인. 임계라 레벨 조금만 올려도 급발현.</p>
+      <div class="cites"><span class="cite">REL-151</span><span class="cite">-167</span><span class="cite">SIM-494</span></div>
+    </div>
+    <div class="dc lever">
+      <div class="top"><span class="cn">구동 파형 과도 가진 — 공통 상류 레버</span><span class="path">시간영역</span><span class="pill d">degrades</span></div>
+      <p>오버드라이브·브레이킹의 짧고 반복적인 급시작·급정지 트랜지언트가 <b>광대역 과도 가진</b>을 만들어 위 4경로를 동시에 순간 가진. "특정 패턴(연속알림·타이핑)에서만"의 정체. 라이즈타임 완만화·브레이킹 최적화가 여러 경로를 한 번에 낮추는 <b>유일한 교차 레버</b>.
+      <span class="cites" style="display:inline-flex; margin-left:6px"><span class="cite">SIM-046</span><span class="cite">PASV-344</span></span></p>
+    </div>
+  </div>
+
+  <div class="decoder">
+    <div class="kk">교차심문이 만든 인사이트 — 두 증상 조건이 곧 원인 디코더</div>
+    <p class="kv">분류 축은 '전기 vs 기계'가 아니라 <em>degrades vs reveals</em>다. 그래서 두 증상 조건이 원인을 직접 지목한다.</p>
+    <div class="dd">
+      <div class="dcard r"><div class="dt">"일부 세트에서만"</div><div class="dm">→ 조립 산포를 드러내는 <b>래틀(reveals)</b>. 대책은 체결 축력·간극.</div></div>
+      <div class="dcard d"><div class="dt">"특정 패턴에서만"</div><div class="dm">→ 파형이 소음을 만드는 <b>전기·공진(degrades)</b>. 대책은 구동·회로.</div></div>
+      <div class="dcard x"><div class="dt">둘 다 겹친 이 증상</div><div class="dm">단일 원인 아님 — <b>산포 큰 개체 × 그 공진을 때리는 파형의 곱</b>. 곱을 동시에 줄이는 건 파형 정형뿐.</div></div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="box diag">
+      <h3>진단 한 수 · 전기와 기계를 한 조작으로 가른다</h3>
+      <div class="exp">LRA를 "같은 전류 파형은 뽑되 기계 진동은 안 하는" 조건으로 (가동질량 구속 / 동일 임피던스 더미 부하)</div>
+      <ul>
+        <li>막았는데 <b>지지직 남으면 전기</b> → 캡/인덕터 퍼티 댐핑으로 MLCC vs 인덕터 세분</li>
+        <li>막았을 때 <b>사라지면 기계</b> → 진폭 스윕+스피커 톤; 임계 급개시·합차주파수면 래틀(reveals), 진폭 비례 고정톤이면 공진(degrades)</li>
+        <li>정상 세트 vs 이음 세트 반복 — 차이가 체결 축력·간극과 함께 움직이면 조립 산포 귀속</li>
+        <li>주의 — 캡 탈착 시 리플 자체가 커져 "소음 남음=무죄" 오판 금지, 리플 파형 변화 병행</li>
+      </ul>
+    </div>
+    <div class="box tens">
+      <h3>충돌 · 한 대책이 다른 경로를 악화</h3>
+      <ul>
+        <li><b>MLCC 주파수 이동 ↔ 인덕터 울림</b> — 2f를 빼려 스위칭을 옮기면 버스트를 가청대로 끌어내림</li>
+        <li><b>래틀 강성화 ↔ 공진 부밍</b> — 국부 강성↑로 1차 모드가 LRA 대역(150~230Hz)으로 밀려들 위험</li>
+        <li><b>과도 저감 ↔ 햅틱 감각</b> — 브레이킹 약화로 소음↓지만 타이핑 crisp함·세기감↓</li>
+        <li><b>캡 탈착 진단 ↔ 다른 캡 가진</b> — 탈착이 남은 경로를 악화시켜 오판 유발</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="gap">
+    <div class="gk">정직한 커버리지 갭 · 데이터 공백을 드러냄</div>
+    <p>워크플로가 <b>"LRA 모터 내부 결함(스프링·마그넷 유격·접착 열화)은 sim-acoustics·rel-fastening 모두 담당 밖으로 뒀고, 이를 다룬 전문가 레코드가 없어 미검증 — 별도 액추에이터 전문가 협진 필요"</b>라고 명시. 허브에 <b>햅틱/LRA 액추에이터 전용 전문가가 없다는 실제 공백</b>을 지어내지 않고 표시했다. 이 밖에 근거 없어 가설로 분리한 커플링 —</p>
+    <ul>
+      <li>MLCC↔인덕터 맥놀이(beat) 결합 소음 — 개별 가진은 grounded, 상호작용은 근거 없음</li>
+      <li>스피커가 실제 발생원 — sim-acoustics는 상호변조 판별 도구로만 인용, 발생원 아님</li>
+      <li>백커버 크리프의 시간 진행성 래틀 악화 — 정적 크리프 언급은 있으나 시간 진행성 미검증</li>
+    </ul>
+  </div>
+
+  <footer>
+    <p>생성 — <span class="src">cross-domain-consult 워크플로 · 7 에이전트 · 267K 토큰</span>. 라우팅이 passive-mlcc-acoustic·sim-acoustics·passive-power-inductor·sim-structural을 자동 선별하고, <b>rel-fastening-bonding(체결·접착)은 랭킹이 놓쳐 카탈로그 폴백으로 보정</b>(source: catalog). 무관 후보 14개 자동 제거.</p>
+    <p>다른 인사이트: <a href="insight-large-sensor-crossdomain.html">센서 대형화</a> · <a href="insight-charging-current-crossdomain.html">충전 전류</a>. 시야 비교: <a href="fov-display-thin-120hz.html">얇은 디스플레이+120Hz</a>. · 상단 THEME 전환.</p>
+  </footer>
+</div>
+<script>
+(function(){var r=document.documentElement,b=document.getElementById('tt');
+b.addEventListener('click',function(){var c=r.getAttribute('data-theme');
+if(!c){c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+r.setAttribute('data-theme',c==='dark'?'light':'dark');});})();
+</script>
+</body>
+</html>

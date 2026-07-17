@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<!-- 교차도메인 협진이 도출한 인사이트 — "충전 전류 하나가 세 증상으로 갈라진다" (실제 MCP 근거, 자체 완결 HTML) -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>교차도메인 인사이트 — 충전 전류</title>
+<style>
+:root{
+  --bg:#F0EEE9; --surface:#FFFFFF; --panel:#F5F2EC;
+  --ink:#1A1712; --ink-2:#403A30; --muted:#6A6255;
+  --line:#E0DACE; --line-2:#EBE6DC;
+  --root:#B8791C; --root-strong:#8F5C11; --root-soft:#F5E7CE;
+  --em:#0E8A8A; --em-soft:#DBF0F0; --th:#C6533A; --th-soft:#F8E3DD; --ec:#4E8A5C; --ec-soft:#DEF0E3;
+  --warn:#C6403A;
+  --shadow:0 1px 2px rgba(26,23,18,.05), 0 10px 26px -20px rgba(26,23,18,.32);
+  --sans:"Helvetica Neue","Segoe UI",Roboto,system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+  --maxw:1080px;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#100E0A; --surface:#181510; --panel:#1E1A13; --ink:#EDE7DC; --ink-2:#C2B9A8; --muted:#8A8070;
+  --line:#302A20; --line-2:#241F18; --root:#E0A64E; --root-strong:#EEBB6C; --root-soft:#2E2410;
+  --em:#48B7B7; --em-soft:#0E2C2C; --th:#E5735B; --th-soft:#2E1712; --ec:#6FB47E; --ec-soft:#12291A; --warn:#EA6B64;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 14px 32px -22px rgba(0,0,0,.85);
+}}
+:root[data-theme="light"]{
+  --bg:#F0EEE9; --surface:#FFFFFF; --panel:#F5F2EC; --ink:#1A1712; --ink-2:#403A30; --muted:#6A6255;
+  --line:#E0DACE; --line-2:#EBE6DC; --root:#B8791C; --root-strong:#8F5C11; --root-soft:#F5E7CE;
+  --em:#0E8A8A; --em-soft:#DBF0F0; --th:#C6533A; --th-soft:#F8E3DD; --ec:#4E8A5C; --ec-soft:#DEF0E3; --warn:#C6403A;
+}
+:root[data-theme="dark"]{
+  --bg:#100E0A; --surface:#181510; --panel:#1E1A13; --ink:#EDE7DC; --ink-2:#C2B9A8; --muted:#8A8070;
+  --line:#302A20; --line-2:#241F18; --root:#E0A64E; --root-strong:#EEBB6C; --root-soft:#2E2410;
+  --em:#48B7B7; --em-soft:#0E2C2C; --th:#E5735B; --th-soft:#2E1712; --ec:#6FB47E; --ec-soft:#12291A; --warn:#EA6B64;
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans); font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased}
+code,.mono{font-family:var(--mono)}
+:focus-visible{outline:2px solid var(--root); outline-offset:2px; border-radius:3px}
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 clamp(14px,3.5vw,30px)}
+.bar{position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:10px; padding:9px clamp(14px,3.5vw,30px);
+  background:color-mix(in srgb,var(--surface) 88%,transparent); backdrop-filter:saturate(1.4) blur(8px); border-bottom:1px solid var(--line)}
+.bar b{font-weight:800; letter-spacing:-.01em}
+.bar .tag{font:600 10px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+.bar .sp{flex:1}
+.toggle{font:600 11px/1 var(--mono); color:var(--ink-2); background:var(--panel); border:1px solid var(--line); padding:6px 9px; border-radius:6px; cursor:pointer}
+.toggle:hover{border-color:var(--root)}
+
+.hero{padding:28px 0 8px}
+.eyebrow{font:600 11px/1 var(--mono); letter-spacing:.15em; text-transform:uppercase; color:var(--root-strong)}
+.hero h1{font-size:clamp(22px,3.4vw,34px); line-height:1.06; letter-spacing:-.028em; font-weight:800; margin:9px 0 10px; text-wrap:balance}
+.q{font-size:14px; color:var(--ink-2); max-width:78ch; margin:0}
+.q b{color:var(--ink)}
+
+/* 분기 도식 */
+.tree{margin:26px 0 8px}
+.root{max-width:520px; margin:0 auto; background:var(--root-soft); border:1px solid color-mix(in srgb,var(--root) 34%,var(--line));
+  border-radius:12px; padding:14px 18px; text-align:center; box-shadow:var(--shadow)}
+.root .k{font:700 10px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--root-strong)}
+.root .v{font-size:18px; font-weight:800; letter-spacing:-.01em; margin-top:5px}
+.root .s{font-size:12px; color:var(--muted); margin-top:3px}
+.stem{width:2px; height:22px; background:color-mix(in srgb,var(--root) 45%,var(--line)); margin:0 auto}
+.branchbar{height:2px; background:color-mix(in srgb,var(--root) 45%,var(--line)); margin:0 auto; width:min(100%,860px)}
+.chains{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:0; position:relative}
+@media (max-width:760px){.chains{grid-template-columns:1fr}}
+.chains .drop{position:absolute; top:-22px; width:2px; height:22px; background:color-mix(in srgb,var(--root) 45%,var(--line))}
+.chain{background:var(--surface); border:1px solid var(--line); border-top:4px solid var(--c); border-radius:11px; padding:15px 16px; box-shadow:var(--shadow); margin-top:22px}
+.chain.em{--c:var(--em); --cs:var(--em-soft)} .chain.th{--c:var(--th); --cs:var(--th-soft)} .chain.ec{--c:var(--ec); --cs:var(--ec-soft)}
+.chain .dh{display:flex; align-items:baseline; gap:8px; margin-bottom:8px}
+.chain .dn{font:800 13.5px/1 var(--sans); color:var(--c)}
+.chain .sym{font-size:11.5px; color:var(--muted)}
+.chain .react{background:var(--cs); border:1px solid color-mix(in srgb,var(--c) 22%,var(--line)); border-radius:7px; padding:8px 10px; margin-bottom:9px}
+.chain .react .rk{font:700 9px/1 var(--mono); letter-spacing:.05em; text-transform:uppercase; color:var(--c)}
+.chain .react .rv{font-size:12.5px; font-weight:700; color:var(--ink); margin-top:4px}
+.chain p{margin:0; font-size:12px; color:var(--ink-2); line-height:1.5}
+.chain .cites{display:flex; flex-wrap:wrap; gap:4px; margin-top:9px}
+.chain .cite{font:600 9.5px/1 var(--mono); color:var(--ink-2); background:var(--panel); border:1px solid var(--line); padding:3px 6px; border-radius:4px}
+
+/* 핵심 인사이트 */
+.key{margin-top:24px; background:var(--root-soft); border:1px solid color-mix(in srgb,var(--root) 30%,var(--line)); border-radius:13px; padding:18px 20px; box-shadow:var(--shadow)}
+.key .kk{font:600 10.5px/1 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--root-strong); margin:0 0 8px}
+.key .kv{font-size:clamp(15px,2vw,18px); font-weight:800; letter-spacing:-.015em; margin:0 0 12px; color:var(--ink); text-wrap:balance}
+.key .kv em{font-style:normal; color:var(--root-strong)}
+.key .lanes{display:grid; grid-template-columns:repeat(3,1fr); gap:10px}
+@media (max-width:680px){.key .lanes{grid-template-columns:1fr}}
+.lane{background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--lc); border-radius:9px; padding:10px 12px}
+.lane.em{--lc:var(--em)} .lane.th{--lc:var(--th)} .lane.ec{--lc:var(--ec)}
+.lane .lt{font:700 11px/1.2 var(--sans); color:var(--lc)}
+.lane .ld{font-size:12px; color:var(--ink-2); margin-top:5px; line-height:1.45}
+.lane .ld b{color:var(--ink)}
+
+.row{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:16px}
+@media (max-width:680px){.row{grid-template-columns:1fr}}
+.box{background:var(--surface); border:1px solid var(--line); border-radius:11px; padding:15px 17px; box-shadow:var(--shadow)}
+.box.diag{border-left:4px solid var(--root)}
+.box.tens{border-left:4px solid var(--warn)}
+.box h3{font-size:13.5px; font-weight:800; margin:0 0 8px; letter-spacing:-.01em}
+.box.diag h3{color:var(--root-strong)} .box.tens h3{color:var(--warn)}
+.box p{margin:0; font-size:12.5px; color:var(--ink-2); line-height:1.5}
+.box p b{color:var(--ink)}
+.box .exp{font-family:var(--mono); font-size:12px; color:var(--ink); background:var(--root-soft); border:1px solid color-mix(in srgb,var(--root) 25%,var(--line)); border-radius:7px; padding:8px 10px; margin:9px 0 0}
+.box ul{margin:8px 0 0; padding-left:16px}
+.box li{font-size:12px; color:var(--ink-2); margin-bottom:5px; line-height:1.45}
+.box li b{color:var(--ink)}
+
+footer{padding:20px 0 40px; border-top:1px solid var(--line); color:var(--muted); font-size:11.5px; margin-top:22px}
+footer .src{font-family:var(--mono); color:var(--ink-2)}
+footer a{color:var(--root-strong)}
+</style>
+</head>
+<body>
+<div class="bar"><b>AI Data Hub</b><span class="tag">교차도메인 협진 · 인사이트</span><span class="sp"></span>
+  <button class="toggle" id="tt" type="button" aria-label="라이트/다크 전환">THEME</button></div>
+
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow">라우팅 → 정렬 grounding → 교차심문 · 실제 MCP 호출</div>
+    <h1>충전 전류 하나를 올렸을 뿐인데, 왜 세 곳이 동시에 무너지나</h1>
+    <p class="q">증상 — 급속충전 중 <b>NFC·통화·GNSS 잡음</b> + <b>발열</b> + <b>배터리 수명</b> 우려가 함께. 5개 도메인이 각자 근거를 대고, 교차심문이 이들을 하나로 엮어 <b>per-agent로는 안 나오는 인사이트</b>를 냈다.</p>
+  </header>
+
+  <!-- 분기 도식 -->
+  <div class="tree">
+    <div class="root">
+      <div class="k">공통 뿌리 · SHARED ROOT</div>
+      <div class="v">높은 충전 전류</div>
+      <div class="s">pwr-usb-pd가 협상한 전력 계약이 정한 값</div>
+    </div>
+    <div class="stem"></div>
+    <div class="branchbar"></div>
+    <div class="chains">
+      <div class="chain em">
+        <div class="dh"><span class="dn">전자기 체인</span><span class="sym">→ 결제·통신 잡음</span></div>
+        <div class="react"><div class="rk">반응하는 측면</div><div class="rv">di/dt · 스위칭 노드 링잉</div></div>
+        <p>큰 스위칭 전류 → 스위칭 노드 <b>링잉</b>(하모닉 차수 아님) → 광대역 잡음이 FPC 커먼모드로 방사 → NFC·GNSS·셀룰러 저대역 <b>부하 의존 desense 2~5dB</b>.</p>
+        <div class="cites"><span class="cite">SIM-165</span><span class="cite">SIM-158</span><span class="cite">REL-092</span></div>
+      </div>
+      <div class="chain th">
+        <div class="dh"><span class="dn">열 체인</span><span class="sym">→ 발열</span></div>
+        <div class="react"><div class="rk">반응하는 측면</div><div class="rv">RMS 제곱 · P = I²R</div></div>
+        <p>전류의 <b>제곱</b>으로 발열. 셀 DCIR은 고정, 비셀 경로(용접·FPCB·커넥터)가 팩이 바꿀 수 있는 변수. 4단자 DCIR 분해로 지배 구간 특정.</p>
+        <div class="cites"><span class="cite">PWR-364</span><span class="cite">PWR-361</span><span class="cite">PWR-383</span></div>
+      </div>
+      <div class="chain ec">
+        <div class="dh"><span class="dn">전기화학 체인</span><span class="sym">→ 수명</span></div>
+        <div class="react"><div class="rk">반응하는 측면</div><div class="rv">순간값 + SOC·온도 맥락</div></div>
+        <p>고전류·저온·고SOC → 음극 분극 확대 → 음극 전위가 플레이팅 임계(0V) 이하 → <b>리튬 플레이팅 → knee(비선형 수명 급락)</b>. 상한은 W가 아니라 음극 전위 마진.</p>
+        <div class="cites"><span class="cite">PWR-032</span><span class="cite">PWR-043</span><span class="cite">PWR-048</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 핵심 인사이트 -->
+  <div class="key">
+    <div class="kk">교차심문이 만든 인사이트</div>
+    <p class="kv">"다 연결됐다"는 절반. 핵심은 <em>세 체인이 전류의 서로 다른 측면에 반응</em>한다는 것 — 그래서 하나의 손잡이인데 <em>세 가지 방식으로 돌려야</em> 한다.</p>
+    <div class="lanes">
+      <div class="lane em"><div class="lt">잡음 → 파형 정형</div><div class="ld">전류 총량이 아니라 <b>스위칭 엣지 링잉</b>이 범인 — 스너버·스프레드 스펙트럼.</div></div>
+      <div class="lane th"><div class="lt">발열 → RMS·경로 저항</div><div class="ld">I²R이라 <b>비셀 경로 저항 배분</b>이 손잡이.</div></div>
+      <div class="lane ec"><div class="lt">수명 → SOC/온도 디레이팅</div><div class="ld">평균 C-rate가 아니라 <b>구간별 음극 전위 마진</b>.</div></div>
+    </div>
+  </div>
+
+  <!-- 진단 + 충돌 -->
+  <div class="row">
+    <div class="box diag">
+      <h3>결정적 한 수 · 세 도메인을 한 실험으로 가른다</h3>
+      <p>세 증상이 정말 한 뿌리인지 확인하는 단일 실험.</p>
+      <div class="exp">충전 케이블을 뽑아본다 → desense 사라지면 전원부(충전 스위칭) 기인 확정</div>
+      <p style="margin-top:9px">부하 의존 desense면 전원부부터 의심. 이 한 번이 전자기·열·전기화학 인과를 동시에 가른다. <span class="mono" style="font-size:11px;color:var(--muted)">[REL-092 · SIM-165]</span></p>
+    </div>
+    <div class="box tens">
+      <h3>교차심문이 드러낸 충돌 · 서로 당긴다</h3>
+      <ul>
+        <li><b>EMC 대책 → 발열·수명 악화</b> — 스너버·게이트저항으로 링잉 감쇠하면 효율 손실 → 같은 속도 유지에 전류/시간↑ <span class="mono" style="font-size:10.5px;color:var(--muted)">[SIM-165]</span></li>
+        <li><b>발열 대책 → 잡음·수명 악화</b> — 경로 저항↓로 더 높은 전류 허용 → desense·플레이팅 압박↑ <span class="mono" style="font-size:10.5px;color:var(--muted)">[PWR-383]</span></li>
+        <li><b>최적점</b> — 개별 최적이 아니라 전류 프로파일 공동설계(멀티스텝 CC + 스프레드 스펙트럼 + SOC/온도 디레이팅)에서 나온다.</li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>
+    <p>생성 — 실제 <span class="src">recommend_agents + agent_search(5도메인 grounded)</span> · 교차심문으로 종합. per-agent 검색은 각자 한 체인만 봄 — 공통뿌리·측면차이·충돌은 <b>교차심문 단계의 산물</b>.</p>
+    <p>이 절차는 재사용 워크플로 <span class="src">cross-domain-consult</span>로 박제됨. 협진 작동 방식은 <a href="coalition-process-concept.html">협진 개념 한 장</a>. · 상단 THEME 전환.</p>
+  </footer>
+</div>
+<script>
+(function(){var r=document.documentElement,b=document.getElementById('tt');
+b.addEventListener('click',function(){var c=r.getAttribute('data-theme');
+if(!c){c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+r.setAttribute('data-theme',c==='dark'?'light':'dark');});})();
+</script>
+</body>
+</html>

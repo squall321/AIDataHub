@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<!-- 교차도메인 협진(워크플로 자동 실행)이 도출한 인사이트 — "센서 대형화가 세 물리축으로 갈라진다" (실제 8-에이전트 실행 근거, 자체 완결 HTML) -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>교차도메인 인사이트 — 센서 대형화</title>
+<style>
+:root{
+  --bg:#EEEDF3; --surface:#FFFFFF; --panel:#F3F2F8;
+  --ink:#17161E; --ink-2:#3A3848; --muted:#605E70;
+  --line:#DCDAE6; --line-2:#E8E6F0;
+  --accent:#4B3F8F; --accent-strong:#372C6E; --accent-soft:#E7E3F5;
+  --ax-m:#6A4FA0; --ax-m-soft:#EBE4F3; --ax-r:#C0611C; --ax-r-soft:#F6E7D6; --ax-d:#3E7A64; --ax-d-soft:#DDEEE6;
+  --degr:#3E6B86; --degr-soft:#DEEAF0; --reveal:#B8791C; --reveal-soft:#F6ECD6;
+  --warn:#C6403A;
+  --shadow:0 1px 2px rgba(23,22,30,.05), 0 10px 26px -20px rgba(23,22,30,.34);
+  --sans:"Helvetica Neue","Segoe UI",Roboto,system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+  --maxw:1120px;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0E0D14; --surface:#16151E; --panel:#1B1A25; --ink:#E9E7F1; --ink-2:#BEBACD; --muted:#847F97;
+  --line:#292736; --line-2:#201F2B; --accent:#9C8DE0; --accent-strong:#B3A6EC; --accent-soft:#1E1A38;
+  --ax-m:#A48BD8; --ax-m-soft:#231C36; --ax-r:#E08A3E; --ax-r-soft:#33230F; --ax-d:#6FB496; --ax-d-soft:#12281E;
+  --degr:#6D9AB7; --degr-soft:#12242E; --reveal:#DCA24A; --reveal-soft:#2E230F; --warn:#EA6B64;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 14px 32px -22px rgba(0,0,0,.85);
+}}
+:root[data-theme="light"]{
+  --bg:#EEEDF3; --surface:#FFFFFF; --panel:#F3F2F8; --ink:#17161E; --ink-2:#3A3848; --muted:#605E70;
+  --line:#DCDAE6; --line-2:#E8E6F0; --accent:#4B3F8F; --accent-strong:#372C6E; --accent-soft:#E7E3F5;
+  --ax-m:#6A4FA0; --ax-m-soft:#EBE4F3; --ax-r:#C0611C; --ax-r-soft:#F6E7D6; --ax-d:#3E7A64; --ax-d-soft:#DDEEE6;
+  --degr:#3E6B86; --degr-soft:#DEEAF0; --reveal:#B8791C; --reveal-soft:#F6ECD6; --warn:#C6403A;
+}
+:root[data-theme="dark"]{
+  --bg:#0E0D14; --surface:#16151E; --panel:#1B1A25; --ink:#E9E7F1; --ink-2:#BEBACD; --muted:#847F97;
+  --line:#292736; --line-2:#201F2B; --accent:#9C8DE0; --accent-strong:#B3A6EC; --accent-soft:#1E1A38;
+  --ax-m:#A48BD8; --ax-m-soft:#231C36; --ax-r:#E08A3E; --ax-r-soft:#33230F; --ax-d:#6FB496; --ax-d-soft:#12281E;
+  --degr:#6D9AB7; --degr-soft:#12242E; --reveal:#DCA24A; --reveal-soft:#2E230F; --warn:#EA6B64;
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans); font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased}
+code,.mono{font-family:var(--mono)}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:3px}
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 clamp(14px,3.5vw,30px)}
+.bar{position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:10px; padding:9px clamp(14px,3.5vw,30px);
+  background:color-mix(in srgb,var(--surface) 88%,transparent); backdrop-filter:saturate(1.4) blur(8px); border-bottom:1px solid var(--line)}
+.bar b{font-weight:800; letter-spacing:-.01em}
+.bar .tag{font:600 10px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+.bar .sp{flex:1}
+.toggle{font:600 11px/1 var(--mono); color:var(--ink-2); background:var(--panel); border:1px solid var(--line); padding:6px 9px; border-radius:6px; cursor:pointer}
+.toggle:hover{border-color:var(--accent)}
+.hero{padding:28px 0 8px}
+.eyebrow{font:600 11px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--accent-strong)}
+.hero h1{font-size:clamp(22px,3.4vw,34px); line-height:1.06; letter-spacing:-.028em; font-weight:800; margin:9px 0 10px; text-wrap:balance}
+.q{font-size:14px; color:var(--ink-2); max-width:80ch; margin:0}
+.q b{color:var(--ink)}
+
+.rootline{margin:24px 0 6px; text-align:center}
+.rootline .rk{font:600 10px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--accent-strong)}
+.rootline .rv{font-size:19px; font-weight:800; letter-spacing:-.015em; margin:6px 0 3px}
+.rootline .rs{font-size:12.5px; color:var(--muted); max-width:70ch; margin:0 auto}
+.rootline .rs b{color:var(--ink)}
+
+.legend{display:flex; justify-content:center; flex-wrap:wrap; gap:8px; margin:12px 0 2px}
+.lg{font:600 10.5px/1 var(--mono); padding:5px 9px; border-radius:999px; display:inline-flex; gap:6px; align-items:center}
+.lg.d{color:var(--degr); background:var(--degr-soft)} .lg.r{color:var(--reveal); background:var(--reveal-soft)}
+.lg .sw{width:9px; height:9px; border-radius:2px} .lg.d .sw{background:var(--degr)} .lg.r .sw{background:var(--reveal)}
+.lg em{font-style:normal; color:var(--muted); font-weight:400}
+
+.axes{display:grid; grid-template-columns:repeat(3,1fr); gap:13px; margin-top:14px}
+@media (max-width:840px){.axes{grid-template-columns:1fr}}
+.axis{background:var(--surface); border:1px solid var(--line); border-top:4px solid var(--ac); border-radius:12px; padding:14px 15px; box-shadow:var(--shadow)}
+.axis.m{--ac:var(--ax-m); --acs:var(--ax-m-soft)} .axis.r{--ac:var(--ax-r); --acs:var(--ax-r-soft)} .axis.d{--ac:var(--ax-d); --acs:var(--ax-d-soft)}
+.axis .ah{margin-bottom:10px}
+.axis .an{font:800 14px/1.2 var(--sans); color:var(--ac)}
+.axis .ad{font-size:11.5px; color:var(--muted); margin-top:3px}
+.chain{background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:10px 11px; margin-top:9px}
+.chain .ct{display:flex; align-items:baseline; gap:7px; flex-wrap:wrap; margin-bottom:5px}
+.chain .cs{font-size:12.5px; font-weight:700; color:var(--ink)}
+.pill{font:700 8.5px/1 var(--mono); letter-spacing:.04em; text-transform:uppercase; padding:3px 5px; border-radius:4px; white-space:nowrap}
+.pill.d{color:#fff; background:var(--degr)} .pill.r{color:#fff; background:var(--reveal)}
+.chain p{margin:0; font-size:11.5px; color:var(--ink-2); line-height:1.45}
+.chain .cites{display:flex; flex-wrap:wrap; gap:3px; margin-top:7px}
+.chain .cite{font:600 9px/1 var(--mono); color:var(--ink-2); background:var(--surface); border:1px solid var(--line); padding:3px 5px; border-radius:4px}
+
+.key{margin-top:22px; background:var(--accent-soft); border:1px solid color-mix(in srgb,var(--accent) 26%,var(--line)); border-radius:13px; padding:18px 20px; box-shadow:var(--shadow)}
+.key .kk{font:600 10.5px/1 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--accent-strong); margin:0 0 8px}
+.key .kv{font-size:clamp(15px,2vw,18px); font-weight:800; letter-spacing:-.015em; margin:0 0 12px; text-wrap:balance}
+.key .kv em{font-style:normal; color:var(--accent-strong)}
+.key .mm{display:grid; grid-template-columns:repeat(3,1fr); gap:10px}
+@media (max-width:680px){.key .mm{grid-template-columns:1fr}}
+.mcard{background:var(--surface); border:1px solid var(--line); border-radius:9px; padding:11px 13px}
+.mcard .mt{font:700 11.5px/1.2 var(--sans); color:var(--ink); margin-bottom:5px}
+.mcard .md{font-size:11.5px; color:var(--ink-2); line-height:1.45}
+.mcard .md b{color:var(--ink)}
+
+.row{display:grid; grid-template-columns:1.15fr 0.85fr; gap:14px; margin-top:16px}
+@media (max-width:760px){.row{grid-template-columns:1fr}}
+.box{background:var(--surface); border:1px solid var(--line); border-radius:11px; padding:15px 17px; box-shadow:var(--shadow)}
+.box.diag{border-left:4px solid var(--accent)}
+.box.tens{border-left:4px solid var(--warn)}
+.box h3{font-size:13.5px; font-weight:800; margin:0 0 8px; letter-spacing:-.01em}
+.box.diag h3{color:var(--accent-strong)} .box.tens h3{color:var(--warn)}
+.box p{margin:0; font-size:12.5px; color:var(--ink-2); line-height:1.5}
+.box .exp{font-family:var(--mono); font-size:11.5px; color:var(--ink); background:var(--accent-soft); border:1px solid color-mix(in srgb,var(--accent) 22%,var(--line)); border-radius:7px; padding:8px 10px; margin:9px 0}
+.box ul{margin:6px 0 0; padding-left:15px}
+.box li{font-size:11.5px; color:var(--ink-2); margin-bottom:6px; line-height:1.45}
+.box li b{color:var(--ink)}
+
+.honest{margin-top:16px; background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--reveal); border-radius:11px; padding:14px 16px; box-shadow:var(--shadow)}
+.honest .hk{font:700 10px/1 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--reveal); margin-bottom:8px}
+.honest p{margin:0 0 7px; font-size:12px; color:var(--ink-2)}
+.honest ul{margin:0; padding-left:15px}
+.honest li{font-size:11.5px; color:var(--muted); margin-bottom:4px; line-height:1.4}
+
+footer{padding:20px 0 40px; border-top:1px solid var(--line); color:var(--muted); font-size:11.5px; margin-top:22px}
+footer .src{font-family:var(--mono); color:var(--ink-2)}
+footer a{color:var(--accent-strong)}
+</style>
+</head>
+<body>
+<div class="bar"><b>AI Data Hub</b><span class="tag">교차도메인 협진 · 자동 실행 인사이트</span><span class="sp"></span>
+  <button class="toggle" id="tt" type="button" aria-label="라이트/다크 전환">THEME</button></div>
+
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow">cross-domain-consult 워크플로 · 8 에이전트 자동 실행</div>
+    <h1>센서를 키웠을 뿐인데 왜 네 곳이 무너지나 — 대형화의 세 얼굴</h1>
+    <p class="q">증상 — 대형 센서로 키운 뒤 <b>손각대 흔들림·워블</b> + <b>4K 장시간 노이즈↑·프리뷰 끊김</b> + <b>낙하 후 초점 틀어짐(일부 세트만)</b>. 라우팅이 핵심 카메라 전문가 6명을 자동으로 잡고, 교차심문이 아래를 도출했다.</p>
+  </header>
+
+  <div class="rootline">
+    <div class="rk">공통 뿌리 · SHARED ROOT</div>
+    <div class="rv">센서 대형화</div>
+    <p class="rs">하나의 물리량이 아니라 <b>서로 독립인 세 물리축을 동시에 키우는</b> 설계 변수다. 각 축이 다른 서브시스템 마진을 독립적으로 잠식하므로 증상들이 "같이" 온다.</p>
+  </div>
+
+  <div class="legend">
+    <span class="lg d"><span class="sw"></span>DEGRADES <em>결함을 새로 만든다</em></span>
+    <span class="lg r"><span class="sw"></span>REVEALS <em>기존 결함을 드러낸다</em></span>
+  </div>
+
+  <div class="axes">
+    <div class="axis m">
+      <div class="ah"><div class="an">축 1 · 가동부 질량 m↑</div><div class="ad">무거운 렌즈 → 관성·자세차·낙하 하중</div></div>
+      <div class="chain">
+        <div class="ct"><span class="cs">OIS 서보 포화 → 워블</span><span class="pill d">degrades</span></div>
+        <p>관성↑로 같은 루프게인에서 서보 대역·응답 부족, 저주파 대진폭서 스트로크 먼저 포화 → 스냅백 워블.</p>
+        <div class="cites"><span class="cite">CAM-398</span><span class="cite">-393</span><span class="cite">-410</span></div>
+      </div>
+      <div class="chain">
+        <div class="ct"><span class="cs">낙하 AF 오프셋 시프트</span><span class="pill d">degrades</span></div>
+        <p>무거운 가동부가 판스프링 항복·접착 박리 임계 초과. 질량이 고유주기 Tn을 옮겨 공진 조건까지 바꿈.</p>
+        <div class="cites"><span class="cite">CAM-013</span><span class="cite">-002</span><span class="cite">-044</span><span class="cite">-332</span></div>
+      </div>
+      <div class="chain">
+        <div class="ct"><span class="cs">"일부 세트만" 낙하 AF</span><span class="pill r">reveals</span></div>
+        <p>조립 단계 포스트큐어 시프트·갭 비대칭으로 이미 틸트 마진 잠식. 낙하는 새 결함이 아니라 <b>임계 초과 개체에서만 드러냄</b>.</p>
+        <div class="cites"><span class="cite">CAM-034</span><span class="cite">-047</span><span class="cite">-053</span><span class="cite">-354</span></div>
+      </div>
+      <div class="chain">
+        <div class="ct"><span class="cs">OIS-AF 크로스커플링</span><span class="pill r">reveals</span></div>
+        <p>낙하 후 홀 오프셋·광학 스케일 틀어져 보정맵 어긋남. 낙하축 결과가 워블로 되돌아오는 교차 링크.</p>
+        <div class="cites"><span class="cite">CAM-397</span></div>
+      </div>
+    </div>
+
+    <div class="axis r">
+      <div class="ah"><div class="an">축 2 · 리드아웃 라인타임·열↑</div><div class="ad">유효 라인 수↑ → 스큐·자기발열</div></div>
+      <div class="chain">
+        <div class="ct"><span class="cs">롤링셔터 스큐 → 워블(2번째)</span><span class="pill d">degrades</span></div>
+        <p>유효 라인 수↑로 스큐(=라인×t_line)↑. 노출과 무관, <b>손떨림 보정으로 못 잡음</b>. 워블의 독립된 두 번째 원인.</p>
+        <div class="cites"><span class="cite">CAM-462</span><span class="cite">-458</span><span class="cite">-471</span></div>
+      </div>
+      <div class="chain">
+        <div class="ct"><span class="cs">자기발열 → 노이즈↑</span><span class="pill d">degrades</span></div>
+        <p>다이 온도↑ → 암전류 온도 배가(Td 6~8°C) → 시간적 노이즈 계속 증가. 산탄노이즈는 다크프레임 감산 불가.</p>
+        <div class="cites"><span class="cite">CAM-459</span></div>
+      </div>
+    </div>
+
+    <div class="axis d">
+      <div class="ah"><div class="an">축 3 · 픽셀레이트·대역폭↑</div><div class="ad">고화소 상시 스트리밍 → 처리량</div></div>
+      <div class="chain">
+        <div class="ct"><span class="cs">프리뷰 끊김 (두 병목)</span><span class="pill d">degrades</span></div>
+        <p>겹친 두 원인 — (a) 프레임시간=(라인+블랭킹)×t_line 예산 초과 → 프레임 드롭(<b>시간축</b>), (b) 픽셀레이트↑로 ISP 아닌 <b>DRAM 대역폭</b> 포화(ISP 클럭 스윕 무반응).</p>
+        <div class="cites"><span class="cite">CAM-474</span><span class="cite">-458</span><span class="cite">-229</span><span class="cite">-223</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="key">
+    <div class="kk">교차심문이 만든 인사이트</div>
+    <p class="kv">증상 하나가 원인 하나에 대응하지 않는다 — <em>증상↔원인은 다:다</em>다. 그래서 한 대책으로는 절반만 잡힌다.</p>
+    <div class="mm">
+      <div class="mcard"><div class="mt">"워블" = 두 독립 원인</div><div class="md">OIS 서보 포화(질량) + 롤링셔터 스큐(라인타임). <b>OIS만 강화하면 워블이 절반만 준다.</b></div></div>
+      <div class="mcard"><div class="mt">"프리뷰 끊김" = 두 축</div><div class="md">시간축(라인타임 예산) + 메모리축(DRAM 대역폭). ISP 클럭만 올려선 안 잡힘.</div></div>
+      <div class="mcard"><div class="mt">"낙하 AF" = degrades + reveals</div><div class="md">질량×관성(새 결함) + 조립 산포(기존 결함 드러냄). <b>reveals가 "일부 세트만"의 정체.</b> 대책을 두 축으로 분리.</div></div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="box diag">
+      <h3>진단 한 수 · 단일 촬영 매트릭스로 4도메인 분리</h3>
+      <div class="exp">크롭·비닝(유효라인 절반) × OIS on/off × 노출 2단 + 온도·DRAM 큐 로깅</div>
+      <ul>
+        <li>크롭으로 <b>워블·끊김·노이즈 동반 감소</b> → 리드아웃 라인타임/처리량 축</li>
+        <li>크롭 후 남는 워블이 <b>OIS on/off로 갈림</b> → 질량 기반 OIS 축</li>
+        <li>노출 줄여도 <b>스큐 불변</b> → 롤링셔터 확정</li>
+        <li>DRAM 큐 포화 + <b>ISP 클럭 스윕 무반응</b> → 대역폭 병목 확정</li>
+        <li>낙하 AF는 질량항이라 이 매트릭스서 불변 → 자동 분리. 낙하 전후 스루포커스 Δ로 reveals/degrades 마저 나눔</li>
+      </ul>
+    </div>
+    <div class="box tens">
+      <h3>충돌 · 서로 당긴다</h3>
+      <ul>
+        <li><b>OIS 게인↑ ↔ 워터베드·공진</b> — 게인 밀면 수백 Hz 증폭, 고질량은 공진↓로 노치 여유 감소</li>
+        <li><b>크롭·비닝 ↔ 대형센서 목적</b> — 스큐·발열 줄이면 유효 화소를 스스로 깎음</li>
+        <li><b>AF 감도(k↓) ↔ 낙하 내성</b> — 자세차 Δx=m·g/k와 낙하 취약성 동반 증가</li>
+        <li><b>유연 서스펜션 ↔ 강성 스토퍼</b> — OIS 스트로크 vs 낙하 지지, 접착 설계로만 절충</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="honest">
+    <div class="hk">정직성 · 엣지도 근거 없으면 가설로</div>
+    <p>워크플로가 <b>그럴듯하지만 근거 없는 커플링 4개를 사실이 아니라 가설로 분리</b>했다 — 교차도메인은 환각 위험이 가장 크다.</p>
+    <ul>
+      <li>열-OIS 커플링(발열이 억제율을 낮춰 워블↑) — 근거 없음</li>
+      <li>대역폭-제어 지연(DRAM 포화가 자이로 처리 지연) — 근거 없음</li>
+      <li>발열-접착(4K 발열이 낙하 전 틸트 마진 잠식) — 직접 연결 근거 없음</li>
+      <li>열-초점 드리프트(센서 열팽창이 초점면 이동) — 근거 없음</li>
+    </ul>
+  </div>
+
+  <footer>
+    <p>생성 — <span class="src">cross-domain-consult 워크플로 · 8 에이전트 · 303K 토큰</span>. 라우팅이 cam-ois-control·vcm-actuator·aa-process·sensor-readout·isp-hw·module-rel을 자동 선별(이전 수동 우회 불필요), 무관 후보(플래시·ToF·전원) 자동 제거.</p>
+    <p>같은 절차의 충전 전류 예: <a href="insight-charging-current-crossdomain.html">교차도메인 인사이트 — 충전 전류</a>. 협진 작동 방식은 <a href="coalition-process-concept.html">협진 개념 한 장</a>. · 상단 THEME 전환.</p>
+  </footer>
+</div>
+<script>
+(function(){var r=document.documentElement,b=document.getElementById('tt');
+b.addEventListener('click',function(){var c=r.getAttribute('data-theme');
+if(!c){c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+r.setAttribute('data-theme',c==='dark'?'light':'dark');});})();
+</script>
+</body>
+</html>
