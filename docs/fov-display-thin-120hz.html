@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<!-- 순수 Claude vs 허브 협진 '시야·대책 비교' — 얇은 온셀 디스플레이+120Hz (실제 9-에이전트 워크플로 근거, 자체 완결 HTML) -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>시야 비교 — 얇은 디스플레이 + 120Hz</title>
+<style>
+:root{
+  --bg:#ECEFF1; --surface:#FFFFFF; --panel:#F2F5F6;
+  --ink:#141A1C; --ink-2:#33424A; --muted:#5B6A72;
+  --line:#D7DEE2; --line-2:#E5EBEE;
+  --accent:#0E7A6B; --accent-strong:#0A5A4F; --accent-soft:#D9EFEA;
+  --plain:#7E8894; --plain-soft:#ECEEF1; --plain-line:#D9DEE4;
+  --degr:#3E6B86; --degr-soft:#DEEAF0; --reveal:#B8791C; --reveal-soft:#F6ECD6;
+  --warn:#C6403A;
+  --shadow:0 1px 2px rgba(20,26,28,.05), 0 10px 26px -20px rgba(20,26,28,.33);
+  --sans:"Helvetica Neue","Segoe UI",Roboto,system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+  --maxw:1120px;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0C1113; --surface:#141A1C; --panel:#192123; --ink:#E5ECEE; --ink-2:#B0BFC5; --muted:#7B8A92;
+  --line:#26323700; --line:#263237; --line-2:#1E282C; --accent:#3FB6A2; --accent-strong:#5FCBB8; --accent-soft:#0C2B27;
+  --plain:#818C98; --plain-soft:#191E24; --plain-line:#2A313A;
+  --degr:#6D9AB7; --degr-soft:#12242E; --reveal:#DCA24A; --reveal-soft:#2E230F; --warn:#EA6B64;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 14px 32px -22px rgba(0,0,0,.85);
+}}
+:root[data-theme="light"]{
+  --bg:#ECEFF1; --surface:#FFFFFF; --panel:#F2F5F6; --ink:#141A1C; --ink-2:#33424A; --muted:#5B6A72;
+  --line:#D7DEE2; --line-2:#E5EBEE; --accent:#0E7A6B; --accent-strong:#0A5A4F; --accent-soft:#D9EFEA;
+  --plain:#7E8894; --plain-soft:#ECEEF1; --plain-line:#D9DEE4;
+  --degr:#3E6B86; --degr-soft:#DEEAF0; --reveal:#B8791C; --reveal-soft:#F6ECD6; --warn:#C6403A;
+}
+:root[data-theme="dark"]{
+  --bg:#0C1113; --surface:#141A1C; --panel:#192123; --ink:#E5ECEE; --ink-2:#B0BFC5; --muted:#7B8A92;
+  --line:#263237; --line-2:#1E282C; --accent:#3FB6A2; --accent-strong:#5FCBB8; --accent-soft:#0C2B27;
+  --plain:#818C98; --plain-soft:#191E24; --plain-line:#2A313A;
+  --degr:#6D9AB7; --degr-soft:#12242E; --reveal:#DCA24A; --reveal-soft:#2E230F; --warn:#EA6B64;
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans); font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased}
+code,.mono{font-family:var(--mono)}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:3px}
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 clamp(14px,3.5vw,30px)}
+.bar{position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:10px; padding:9px clamp(14px,3.5vw,30px);
+  background:color-mix(in srgb,var(--surface) 88%,transparent); backdrop-filter:saturate(1.4) blur(8px); border-bottom:1px solid var(--line)}
+.bar b{font-weight:800; letter-spacing:-.01em}
+.bar .tag{font:600 10px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+.bar .sp{flex:1}
+.toggle{font:600 11px/1 var(--mono); color:var(--ink-2); background:var(--panel); border:1px solid var(--line); padding:6px 9px; border-radius:6px; cursor:pointer}
+.toggle:hover{border-color:var(--accent)}
+.hero{padding:28px 0 16px}
+.eyebrow{font:600 11px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--accent-strong)}
+.hero h1{font-size:clamp(22px,3.4vw,34px); line-height:1.06; letter-spacing:-.028em; font-weight:800; margin:9px 0 12px; text-wrap:balance}
+.ask{background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:10px; padding:12px 16px; box-shadow:var(--shadow); max-width:82ch}
+.ask .who{font:600 10.5px/1 var(--mono); letter-spacing:.05em; text-transform:uppercase; color:var(--muted); margin-bottom:6px}
+.ask p{margin:0; font-size:14px; color:var(--ink)}
+.ask p b{color:var(--accent-strong)}
+
+.split{display:grid; grid-template-columns:0.82fr 1.18fr; gap:16px; margin-top:24px; align-items:start}
+@media (max-width:860px){.split{grid-template-columns:1fr}}
+.col{border-radius:13px; padding:16px 17px}
+.col.plain{background:var(--plain-soft); border:1px solid var(--plain-line)}
+.col.hub{background:var(--surface); border:1px solid color-mix(in srgb,var(--accent) 26%,var(--line)); box-shadow:var(--shadow)}
+.chd{display:flex; align-items:baseline; gap:9px; margin-bottom:3px}
+.chd .lbl{font:800 15px/1 var(--sans); letter-spacing:-.01em}
+.col.plain .chd .lbl{color:var(--plain)} .col.hub .chd .lbl{color:var(--accent-strong)}
+.chd .fov{font:600 10px/1 var(--mono); margin-left:auto; padding:4px 8px; border-radius:999px}
+.col.plain .fov{color:var(--plain); background:color-mix(in srgb,var(--plain) 12%,transparent)}
+.col.hub .fov{color:var(--accent-strong); background:var(--accent-soft)}
+.csub{font-size:12px; color:var(--muted); margin:0 0 13px}
+.plainans{font-size:12.5px; color:var(--ink-2); margin:0 0 6px; line-height:1.5}
+.plainans b{color:var(--ink)}
+.plainans + .plainans{margin-top:8px}
+.limit{margin-top:12px; border-top:1px dashed var(--plain-line); padding-top:11px}
+.limit .lh{font:700 10px/1 var(--mono); letter-spacing:.05em; text-transform:uppercase; color:var(--warn); margin-bottom:7px}
+.limit ul{margin:0; padding-left:16px}
+.limit li{font-size:11.5px; color:var(--muted); margin-bottom:5px; line-height:1.4}
+.limit li b{color:var(--ink-2)}
+
+.leg{display:flex; flex-wrap:wrap; gap:7px; margin:0 0 11px}
+.lg{font:600 9.5px/1 var(--mono); padding:4px 7px; border-radius:999px; display:inline-flex; gap:5px; align-items:center}
+.lg.d{color:var(--degr); background:var(--degr-soft)} .lg.r{color:var(--reveal); background:var(--reveal-soft)}
+.lg .sw{width:8px; height:8px; border-radius:2px} .lg.d .sw{background:var(--degr)} .lg.r .sw{background:var(--reveal)}
+.dcards{display:flex; flex-direction:column; gap:9px}
+.dc{background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--dc,var(--degr)); border-radius:9px; padding:11px 13px}
+.dc.rev{--dc:var(--reveal)}
+.dc .top{display:flex; align-items:baseline; flex-wrap:wrap; gap:6px 8px; margin-bottom:5px}
+.dc .at{font:700 11px/1 var(--mono); color:var(--ink-2)}
+.dc .rl{font-size:11px; color:var(--muted)}
+.pill{font:700 8.5px/1 var(--mono); letter-spacing:.04em; text-transform:uppercase; padding:3px 5px; border-radius:4px; margin-left:auto; white-space:nowrap}
+.pill.d{color:#fff; background:var(--degr)} .pill.r{color:#fff; background:var(--reveal)}
+.dc p{margin:0; font-size:12px; color:var(--ink-2); line-height:1.48}
+.dc p b{color:var(--ink)}
+.dc .cites{display:flex; flex-wrap:wrap; gap:3px; margin-top:7px}
+.dc .cite{font:600 9px/1 var(--mono); color:var(--ink-2); background:var(--surface); border:1px solid var(--line); padding:3px 5px; border-radius:4px}
+
+.diverge{margin-top:22px; border-radius:13px; overflow:hidden; border:1px solid color-mix(in srgb,var(--reveal) 32%,var(--line)); box-shadow:var(--shadow)}
+.diverge .dh{background:var(--reveal-soft); padding:11px 18px; font:600 10.5px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--reveal)}
+.diverge .db{display:grid; grid-template-columns:1fr 1fr; gap:0}
+@media (max-width:640px){.diverge .db{grid-template-columns:1fr}}
+.dv{padding:15px 18px; background:var(--surface)}
+.dv.p{border-right:1px solid var(--line)}
+@media (max-width:640px){.dv.p{border-right:none; border-bottom:1px solid var(--line)}}
+.dv .dk{font:700 10px/1 var(--mono); letter-spacing:.05em; text-transform:uppercase; margin-bottom:7px}
+.dv.p .dk{color:var(--plain)} .dv.h .dk{color:var(--accent-strong)}
+.dv .quote{font-size:14px; font-weight:700; color:var(--ink); margin:0 0 6px; letter-spacing:-.01em; text-wrap:balance}
+.dv .sub{font-size:12px; color:var(--ink-2); margin:0; line-height:1.5}
+.dv .sub b{color:var(--reveal)}
+
+.added{margin-top:18px; background:var(--accent-soft); border:1px solid color-mix(in srgb,var(--accent) 24%,var(--line)); border-radius:12px; padding:15px 18px}
+.added .h{font:600 10.5px/1 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--accent-strong); margin:0 0 11px}
+.added .g{display:grid; grid-template-columns:1fr 1fr; gap:9px 20px}
+@media (max-width:660px){.added .g{grid-template-columns:1fr}}
+.added .it{display:grid; grid-template-columns:20px 1fr; gap:9px; align-items:start}
+.added .it .n{font:700 10px/1 var(--mono); color:#fff; background:var(--accent); width:20px; height:20px; display:grid; place-items:center; border-radius:5px}
+.added .it p{margin:0; font-size:12px; color:var(--ink-2); line-height:1.45}
+.added .it p b{color:var(--ink)}
+
+footer{padding:20px 0 40px; border-top:1px solid var(--line); color:var(--muted); font-size:11.5px; margin-top:22px}
+footer .src{font-family:var(--mono); color:var(--ink-2)}
+footer a{color:var(--accent-strong)}
+</style>
+</head>
+<body>
+<div class="bar"><b>AI Data Hub</b><span class="tag">시야·대책 비교 · 순수 LLM vs 협진</span><span class="sp"></span>
+  <button class="toggle" id="tt" type="button" aria-label="라이트/다크 전환">THEME</button></div>
+
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow">같은 질문, 두 답 · 갈라지는 곳은 '대책'이다</div>
+    <h1>화면 설계만 바꿨는데 왜 터치·통신·발열이 같이 오나</h1>
+    <div class="ask">
+      <div class="who">질문</div>
+      <p>디스플레이를 <b>온셀 터치 일체형으로 더 얇게</b> 만들고 <b>주사율을 120Hz</b>로 올렸더니 — (a) 충전 중·특정 무선환경에서 터치가 유령터치·끊김, (b) 화면을 켜면 통화·GNSS 감도 저하, (c) 화면 상단 미세 발열. 왜 같이 오나.</p>
+    </div>
+  </header>
+
+  <div class="split">
+    <!-- 순수 Claude -->
+    <div class="col plain">
+      <div class="chd"><span class="lbl">순수 Claude</span><span class="fov">그럴듯한 뭉침</span></div>
+      <p class="csub">공통 뿌리는 대체로 맞춘다 — 하지만 한 덩어리로 뭉쳐 대책을 오도한다.</p>
+      <p class="plainans">"얇아지고 120Hz면 <b>디스플레이 구동 노이즈가 커지고 이격이 줄어서</b> 세 가지가 같이 옵니다."</p>
+      <p class="plainans">1. 구동 노이즈가 터치센서에 커플링 → <b>유령터치</b></p>
+      <p class="plainans">2. 디스플레이 클록 하모닉이 RF 대역에 간섭 → <b>통화·GNSS 감도↓</b></p>
+      <p class="plainans">3. 120Hz로 소비전력↑ → <b>발열</b></p>
+      <p class="plainans">"대책은 차폐·접지 강화, 필요하면 <b>두께·주사율을 재검토</b>하세요."</p>
+      <div class="limit">
+        <div class="lh">이 답의 한계</div>
+        <ul>
+          <li><b>한 덩어리로 뭉침</b> — 충전 중 유령터치와 화면 유령터치를 못 나눔(동기/비동기 구분 없음)</li>
+          <li><b>"되돌리면 해결"로 오도</b> — 외부 어그레서 기인은 안 없어짐</li>
+          <li><b>desense를 하나로</b> — 하모닉 정렬 vs 경로 이득 두 원인을 뭉갬</li>
+          <li><b>근거·수치·표준·담당 없음</b> — 검증도 위임도 불가</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 허브 협진 -->
+    <div class="col hub">
+      <div class="chd"><span class="lbl">AI Data Hub 협진</span><span class="fov">7 도메인 · degrades/reveals 분리</span></div>
+      <p class="csub">하나의 레버(박형화+120Hz)가 두 물리축으로 갈라지고, 그중 하나는 결함을 만드는 게 아니라 드러낸다.</p>
+      <div class="leg">
+        <span class="lg d"><span class="sw"></span>DEGRADES 결함을 만든다</span>
+        <span class="lg r"><span class="sw"></span>REVEALS 기존 결함을 드러낸다</span>
+      </div>
+      <div class="dcards">
+        <div class="dc">
+          <div class="top"><span class="at">disp-oncell-touch · ddi</span><span class="rl">구동→터치</span><span class="pill d">degrades</span></div>
+          <p>박형화로 캐소드-센서 Cp↑ + 120Hz·고휘도로 dV/dt↑ → <b>i_noise ≈ Cp·dV/dt</b>. 디스플레이 타이밍에 동기된 유령터치.</p>
+          <div class="cites"><span class="cite">DISP-241</span><span class="cite">-086</span></div>
+        </div>
+        <div class="dc rev">
+          <div class="top"><span class="at">disp × 무선충전 × rf-desense</span><span class="rl">외부 어그레서</span><span class="pill r">reveals</span></div>
+          <p><b>충전 중에만·비동기.</b> 박형화가 터치·복조 마진을 얇게 만들어, 원래 임계 이하이던 충전기·무선충전 스위칭 노이즈를 <b>임계 위로 드러냄</b>. 새 결함이 아니다.</p>
+          <div class="cites"><span class="cite">DISP-243</span><span class="cite">PWR-504</span><span class="cite">-495</span></div>
+        </div>
+        <div class="dc">
+          <div class="top"><span class="at">rf-desense · sim-emi</span><span class="rl">하모닉 정렬</span><span class="pill d">degrades</span></div>
+          <p>60→120Hz로 이동한 DDI 클록 하모닉 콤이 <b>특정 채널에 정렬</b>. "채널 선택성"이 지문.</p>
+          <div class="cites"><span class="cite">RF-001</span><span class="cite">-013</span><span class="cite">SIM-155</span></div>
+        </div>
+        <div class="dc">
+          <div class="top"><span class="at">sim-emi · rf-gnss</span><span class="rl">경로 이득</span><span class="pill d">degrades</span></div>
+          <p>박형화로 노이즈원↔안테나 이격↓ → <b>커플링 S21↑</b>. 하모닉 위치와 <b>독립</b>인 두 번째 desense 원인.</p>
+          <div class="cites"><span class="cite">SIM-174</span><span class="cite">-151</span><span class="cite">RF-229</span></div>
+        </div>
+        <div class="dc">
+          <div class="top"><span class="at">mech-thermal · ddi</span><span class="rl">상단 발열</span><span class="pill d">degrades</span></div>
+          <p>박형화로 확산저항↑ + 120Hz로 DDI 전력↑ → 상단 <b>국부 핫스팟</b>(정상상태 평균 아니라 국부).</p>
+          <div class="cites"><span class="cite">SIM-529</span><span class="cite">-541</span><span class="cite">DISP-068</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 갈라지는 곳: 대책 -->
+  <div class="diverge">
+    <div class="dh">여기서 답이 갈린다 — 대책</div>
+    <div class="db">
+      <div class="dv p">
+        <div class="dk">순수 Claude</div>
+        <p class="quote">"얇게·60Hz로 되돌리면 다 해결된다."</p>
+        <p class="sub">세 증상을 한 뿌리로 봤으니, 뿌리를 되돌리면 끝이라 결론.</p>
+      </div>
+      <div class="dv h">
+        <div class="dk">협진</div>
+        <p class="quote">"되돌리면 degrades는 완화된다. 그런데 <b>reveals는 남는다</b>."</p>
+        <p class="sub">충전 유령터치·충전 디센스(reveals)는 화면을 되돌려도 <b>외부 어그레서 제거 + 수신단 강건화</b> 없이는 남는다. 대책을 가르는 건 '동기냐'가 아니라 <b>만든 결함이냐 드러낸 결함이냐</b>다.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="added">
+    <p class="h">허브가 더한 것 — 눈에 보이는 차이</p>
+    <div class="g">
+      <div class="it"><span class="n">1</span><p><b>대책이 갈리는 지점</b> — reveals/degrades로 "되돌려도 남는 것"을 식별. 순수 Claude엔 없는 축.</p></div>
+      <div class="it"><span class="n">2</span><p><b>같은 desense 두 메커니즘</b> — 하모닉 정렬 vs 경로 이득. MIPI 레이트 몇 % 시프트로 판별.</p></div>
+      <div class="it"><span class="n">3</span><p><b>단일 진단 매트릭스</b> — 충전 × 화면 on/off × 레이트 시프트 + 락인 서모로 4원인·발열원 한 번에 분리.</p></div>
+      <div class="it"><span class="n">4</span><p><b>근거 있는 충돌</b> — SSC는 셀룰러엔 이득이나 GNSS엔 부작용, 터치 주파수 호핑이 RF로 되받아침.</p></div>
+      <div class="it"><span class="n">5</span><p><b>인용 + 정직한 갭</b> — 모든 소견에 record id. disp가 발열 aspect를 담당 밖(refused)이라 명시, 지어내지 않음.</p></div>
+      <div class="it"><span class="n">6</span><p><b>담당 라우팅</b> — 어느 조각이 disp/rf/sim/pwr/mech 누구 소관인지 자동 배분.</p></div>
+    </div>
+  </div>
+
+  <footer>
+    <p>생성 — <span class="src">cross-domain-consult 워크플로 · 9 에이전트 · 334K 토큰</span>. 라우팅이 disp-oncell-touch·ddi-driving·rf-desense·rf-gnss·sim-emi·pwr-wireless를 자동 선별하고, <b>mech-thermal-architecture는 랭킹이 놓쳐 카탈로그 폴백으로 보정</b>(source: catalog). 무관 후보 14개 자동 제거.</p>
+    <p>다른 예제의 시야 비교: <a href="fov-nfc-payment-noise.html">NFC 결제 소음</a>. 인사이트 카드: <a href="insight-large-sensor-crossdomain.html">센서 대형화</a> · <a href="insight-charging-current-crossdomain.html">충전 전류</a>. · 상단 THEME 전환.</p>
+  </footer>
+</div>
+<script>
+(function(){var r=document.documentElement,b=document.getElementById('tt');
+b.addEventListener('click',function(){var c=r.getAttribute('data-theme');
+if(!c){c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+r.setAttribute('data-theme',c==='dark'?'light':'dark');});})();
+</script>
+</body>
+</html>
