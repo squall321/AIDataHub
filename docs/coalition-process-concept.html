@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<!-- AI Data Hub 협진(다중 전문가 오케스트레이션) 개념 — 1페이지 압축판, 자체 완결 HTML -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>협진 개념 한 장 — AI Data Hub</title>
+<style>
+:root{
+  --bg:#EEF0F4; --surface:#FFFFFF; --panel:#F3F5F9;
+  --ink:#161A22; --ink-2:#333B49; --muted:#5B6472;
+  --line:#D7DCE5; --line-2:#E6EAF1;
+  --accent:#3B4E8F; --accent-strong:#2C3A6E; --accent-soft:#E4E8F6;
+  --open:#2A7D8C; --rebut:#C6403A; --mediate:#3E6B86; --interject:#B5701A; --verdict:#6A4FA0;
+  --grid:rgba(59,78,143,.06);
+  --shadow:0 1px 2px rgba(22,26,34,.05), 0 10px 26px -20px rgba(22,26,34,.32);
+  --sans:"Helvetica Neue","Segoe UI",Roboto,system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+  --maxw:1080px;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0D1016; --surface:#151922; --panel:#1A1F2A; --ink:#E6EAF2; --ink-2:#B4BDCC; --muted:#7E889A;
+  --line:#28303D; --line-2:#1F2530; --accent:#8B9AE6; --accent-strong:#A6B2ED; --accent-soft:#1A2140;
+  --open:#57B0C0; --rebut:#EA6B64; --mediate:#6D9AB7; --interject:#DCA24A; --verdict:#A48BD8;
+  --grid:rgba(139,154,230,.07);
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 14px 32px -22px rgba(0,0,0,.85);
+}}
+:root[data-theme="light"]{
+  --bg:#EEF0F4; --surface:#FFFFFF; --panel:#F3F5F9; --ink:#161A22; --ink-2:#333B49; --muted:#5B6472;
+  --line:#D7DCE5; --line-2:#E6EAF1; --accent:#3B4E8F; --accent-strong:#2C3A6E; --accent-soft:#E4E8F6;
+  --open:#2A7D8C; --rebut:#C6403A; --mediate:#3E6B86; --interject:#B5701A; --verdict:#6A4FA0; --grid:rgba(59,78,143,.06);
+}
+:root[data-theme="dark"]{
+  --bg:#0D1016; --surface:#151922; --panel:#1A1F2A; --ink:#E6EAF2; --ink-2:#B4BDCC; --muted:#7E889A;
+  --line:#28303D; --line-2:#1F2530; --accent:#8B9AE6; --accent-strong:#A6B2ED; --accent-soft:#1A2140;
+  --open:#57B0C0; --rebut:#EA6B64; --mediate:#6D9AB7; --interject:#DCA24A; --verdict:#A48BD8; --grid:rgba(139,154,230,.07);
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans); font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px); background-size:30px 30px;}
+code,.mono{font-family:var(--mono)}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:3px}
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 clamp(14px,3.5vw,28px)}
+.bar{position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:10px; padding:9px clamp(14px,3.5vw,28px);
+  background:color-mix(in srgb,var(--surface) 88%,transparent); backdrop-filter:saturate(1.4) blur(8px); border-bottom:1px solid var(--line)}
+.bar b{font-weight:800; letter-spacing:-.01em}
+.bar .tag{font:600 10px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+.bar .sp{flex:1}
+.toggle{font:600 11px/1 var(--mono); color:var(--ink-2); background:var(--panel); border:1px solid var(--line); padding:6px 9px; border-radius:6px; cursor:pointer}
+.toggle:hover{border-color:var(--accent)}
+
+.hero{padding:26px 0 14px}
+.eyebrow{font:600 11px/1 var(--mono); letter-spacing:.15em; text-transform:uppercase; color:var(--accent-strong)}
+.hero h1{font-size:clamp(23px,3.4vw,34px); line-height:1.05; letter-spacing:-.028em; font-weight:800; margin:9px 0 8px; text-wrap:balance}
+.hero .lede{font-size:clamp(14px,1.7vw,16px); color:var(--ink-2); max-width:74ch; margin:0}
+.hero .lede b{color:var(--ink)}
+.meta{display:flex; flex-wrap:wrap; gap:7px; margin-top:13px}
+.meta span{font:600 11px/1 var(--mono); color:var(--ink-2); background:var(--panel); border:1px solid var(--line); padding:5px 9px; border-radius:999px}
+.meta span b{color:var(--accent-strong)}
+
+.blk{padding:14px 0; border-top:1px solid var(--line)}
+.h{font:600 10.5px/1 var(--mono); letter-spacing:.13em; text-transform:uppercase; color:var(--accent-strong); margin:0 0 11px; display:flex; align-items:baseline; gap:9px}
+.h .cap{font:400 12px/1 var(--sans); letter-spacing:0; text-transform:none; color:var(--muted)}
+
+/* 파이프라인 */
+.pipe{display:grid; grid-template-columns:repeat(4,1fr); gap:0}
+@media (max-width:760px){.pipe{grid-template-columns:1fr 1fr}}
+@media (max-width:440px){.pipe{grid-template-columns:1fr}}
+.stg{position:relative; background:var(--surface); border:1px solid var(--line); padding:12px 13px; box-shadow:var(--shadow)}
+.stg:not(:last-child)::after{content:"→"; position:absolute; right:-9px; top:50%; transform:translateY(-50%); z-index:2; font:700 13px/1 var(--mono); color:var(--accent); background:var(--bg); padding:1px}
+@media (max-width:760px){.stg:nth-child(2)::after,.stg:last-child::after{content:none}}
+@media (max-width:440px){.stg::after{content:none!important}}
+.stg .n{font:700 10px/1 var(--mono); color:#fff; background:var(--accent); padding:3px 6px; border-radius:5px}
+.stg h3{font-size:13.5px; font-weight:800; margin:8px 0 4px; letter-spacing:-.01em}
+.stg p{font-size:11.5px; color:var(--muted); margin:0 0 8px; line-height:1.4}
+.stg .tool{font:600 10px/1.3 var(--mono); color:var(--accent-strong); background:var(--accent-soft); border:1px solid color-mix(in srgb,var(--accent) 20%,var(--line)); padding:4px 6px; border-radius:5px; display:inline-block; word-break:break-all}
+
+/* 2열 */
+.cols{display:grid; grid-template-columns:1fr 1fr; gap:22px}
+@media (max-width:760px){.cols{grid-template-columns:1fr; gap:0}}
+@media (max-width:760px){.cols .blk:first-child{border-top:none}}
+
+/* 개념 리스트 */
+.defs{display:flex; flex-direction:column; gap:8px}
+.def{display:grid; grid-template-columns:132px 1fr; gap:12px; align-items:baseline}
+@media (max-width:440px){.def{grid-template-columns:1fr; gap:2px}}
+.def dt{font-weight:800; font-size:13px; color:var(--ink)}
+.def dt .en{display:block; font:600 9.5px/1 var(--mono); color:var(--muted); margin-top:4px; letter-spacing:.04em}
+.def dd{margin:0; font-size:12.5px; color:var(--ink-2); line-height:1.48}
+.def dd .c{font-family:var(--mono); font-size:11px; color:var(--accent-strong); background:var(--panel); padding:0 4px; border-radius:4px}
+
+/* 가드레일 */
+.guard{display:flex; flex-direction:column; gap:9px}
+.g{border:1px solid var(--line); border-left:4px solid var(--gc); border-radius:9px; padding:11px 13px; background:var(--surface); box-shadow:var(--shadow)}
+.g.bad{--gc:var(--rebut)} .g.ok{--gc:var(--open)}
+.g .lbl{font:700 10px/1 var(--mono); letter-spacing:.04em; text-transform:uppercase; color:var(--gc)}
+.g .q{font-family:var(--mono); font-size:11.5px; color:var(--ink); background:var(--panel); border:1px solid var(--line-2); border-radius:6px; padding:6px 8px; margin:8px 0 7px}
+.g p{font-size:12px; color:var(--ink-2); margin:0; line-height:1.45}
+.g p b{color:var(--ink)}
+
+/* 교환 입장 */
+.st-row{display:flex; flex-direction:column; gap:6px}
+.st{display:grid; grid-template-columns:92px 1fr; gap:12px; align-items:baseline; padding:8px 11px; background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--st); border-radius:8px}
+.st .nm{font:800 12.5px/1.15 var(--sans); color:var(--st)}
+.st .nm .en{display:block; font:600 9px/1 var(--mono); color:var(--muted); margin-top:3px; letter-spacing:.04em}
+.st .d{font-size:12px; color:var(--ink-2); margin:0; line-height:1.4}
+.chain{display:flex; flex-wrap:wrap; align-items:center; gap:5px; margin-top:9px}
+.chain .s{font:700 10px/1 var(--mono); color:#fff; padding:4px 7px; border-radius:5px}
+.chain .a{color:var(--muted); font-family:var(--mono); font-weight:700; font-size:11px}
+.chain .nt{flex-basis:100%; font-size:11px; color:var(--muted); margin-top:5px}
+
+/* 병렬 vs 교환 */
+.vs{display:grid; grid-template-columns:1fr 1fr; gap:11px}
+@media (max-width:560px){.vs{grid-template-columns:1fr}}
+.v{border:1px solid var(--line); border-radius:10px; padding:13px 15px; background:var(--surface); box-shadow:var(--shadow)}
+.v.on{background:var(--accent-soft); border-color:color-mix(in srgb,var(--accent) 26%,var(--line))}
+.v .t{font:600 10px/1 var(--mono); letter-spacing:.05em; text-transform:uppercase; color:var(--muted)}
+.v.on .t{color:var(--accent-strong)}
+.v h3{font-size:13.5px; font-weight:800; margin:6px 0 5px; letter-spacing:-.01em}
+.v p{font-size:12px; color:var(--ink-2); margin:0; line-height:1.45}
+.v p b{color:var(--ink)} .v.on p b{color:var(--accent-strong)}
+
+footer{padding:14px 0 30px; border-top:1px solid var(--line); color:var(--muted); font-size:11.5px; margin-top:14px}
+footer .src{font-family:var(--mono); color:var(--ink-2)}
+footer a{color:var(--accent-strong)}
+</style>
+</head>
+<body>
+<div class="bar"><b>AI Data Hub</b><span class="tag">협진 개념 · 한 장</span><span class="sp"></span>
+  <button class="toggle" id="tt" type="button" aria-label="라이트/다크 전환">THEME</button></div>
+
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow">다중 전문가 오케스트레이션 · 개념 한 장</div>
+    <h1>협진은 어떻게 작동하는가</h1>
+    <p class="lede">질문 하나를 <b>도메인 전문가 에이전트</b>에게 자동 배분하고, 각자 <b>자기 지식카드에서만</b> 근거를 찾아 답하며, 소견들이 서로 <b>반박·중재·판정</b>하도록 엮는다. 근거에 묶인 다관점 진단.</p>
+    <div class="meta"><span><b>205</b> 전문가 에이전트</span><span>각 <b>~30</b> 지식카드</span><span>서버 <b>stateless</b></span><span>지휘 = 클라이언트 LLM</span><span>모든 소견 <b>record 인용</b></span></div>
+  </header>
+
+  <!-- 파이프라인 -->
+  <div class="blk">
+    <p class="h">파이프라인 <span class="cap">질문 → 소견까지 4단계 · 앞 3단계는 MCP 도구, 마지막은 클라이언트 LLM</span></p>
+    <div class="pipe">
+      <div class="stg"><span class="n">1</span><h3>질문</h3><p>증상·구조·조건 그대로 자연어.</p><span class="tool">자연어 입력</span></div>
+      <div class="stg"><span class="n">2</span><h3>전문가 자동 선별</h3><p>적합 전문가를 score로 랭킹 + why(sample).</p><span class="tool">recommend_agents(q)</span></div>
+      <div class="stg"><span class="n">3</span><h3>근거 검색</h3><p>각 전문가 카드 검색, retrieval_config 자동.</p><span class="tool">agent_search(type, q, mode)</span></div>
+      <div class="stg"><span class="n">4</span><h3>교환 · 종합</h3><p>개시→반박→중재→판정으로 엮음.</p><span class="tool">클라이언트 LLM</span></div>
+    </div>
+  </div>
+
+  <div class="cols">
+    <!-- 핵심 개념 -->
+    <div class="blk">
+      <p class="h">핵심 개념</p>
+      <dl class="defs">
+        <div class="def"><dt>전문가 = RAG 페르소나<span class="en">PERSONA</span></dt><dd>지식카드(<span class="c">expert_knowledge_card</span>) + <span class="c">system_prompt</span>(역할·인용·거부 규칙). <span class="c">get_agent_session</span>이 채택.</dd></div>
+        <div class="def"><dt>자동 선별<span class="en">ROUTING</span></dt><dd>질문을 전문가 sample과 견줘 랭킹. <b>왜</b> 뽑혔는지 근거 동봉 — 블랙박스 아님.</dd></div>
+        <div class="def"><dt>근거 검색<span class="en">RETRIEVAL</span></dt><dd>전문가별 <span class="c">retrieval_config</span>(top_k·threshold·scope) 자동. <span class="c">mode</span> = semantic·fts·hybrid·tag.</dd></div>
+        <div class="def"><dt>인용<span class="en">CITATION</span></dt><dd>모든 주장에 record id (<span class="c">DOC-CCT-REL-…373 §증상</span>). 근거 없는 문장 불가.</dd></div>
+        <div class="def"><dt>stateless<span class="en">ORCHESTRATION</span></dt><dd>서버는 근거·규약만. 반박·중재·판정의 <b>지휘는 클라이언트 LLM</b>.</dd></div>
+      </dl>
+    </div>
+
+    <!-- 가드레일 + 교환 -->
+    <div class="blk">
+      <p class="h">가드레일 <span class="cap">환각 방지</span></p>
+      <div class="guard">
+        <div class="g bad"><span class="lbl">거부 · 모호 질의</span><div class="q">"힌지 크랙 원인 알려줘"</div><p><b>refused</b> — score &lt; 문턱(≈0.3), 추측 안 함. 실제 1차 모호 질의는 5전문가 전원 거부.</p></div>
+        <div class="g ok"><span class="lbl">근거 · 정렬 질의</span><div class="q">"폴딩 20만회 상온 통과, -20℃서 UTG 크랙"</div><p><b>grounded</b> — sample 어휘 정렬로 score 0.95, 증상·원인·대책 반환.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 교환 모델 -->
+  <div class="blk">
+    <p class="h">교환 모델 <span class="cap">각자 말하고 끝이 아니라 서로에게 반응 · 고정 대본 아님</span></p>
+    <div class="cols" style="gap:22px">
+      <div class="st-row">
+        <div class="st" style="--st:var(--open)"><span class="nm">개시<span class="en">OPENING</span></span><p class="d">첫 전문가가 자기 근거로 진단을 연다 (대개 교과서적 전제).</p></div>
+        <div class="st" style="--st:var(--rebut)"><span class="nm">반박<span class="en">REBUT</span></span><p class="d">다른 전문가가 그 전제를 자기 근거로 되친다.</p></div>
+        <div class="st" style="--st:var(--mediate)"><span class="nm">중재<span class="en">MEDIATE</span></span><p class="d">두 관점을 상위 원리로 수렴 — "같은 현상의 다른 축".</p></div>
+      </div>
+      <div class="st-row">
+        <div class="st" style="--st:var(--interject)"><span class="nm">끼어듦<span class="en">INTERJECT</span></span><p class="d">인접 도메인이 빠진 축(낙하·기구·안전)을 추가.</p></div>
+        <div class="st" style="--st:var(--verdict)"><span class="nm">판정<span class="en">VERDICT</span></span><p class="d">검증·FA가 증거로 매듭 — "추정 그만, 파면부터".</p></div>
+        <div class="chain">
+          <span class="s" style="background:var(--open)">개시</span><span class="a">→</span>
+          <span class="s" style="background:var(--rebut)">반박</span><span class="a">→</span>
+          <span class="s" style="background:var(--mediate)">중재</span><span class="a">→</span>
+          <span class="s" style="background:var(--interject)">끼어듦</span><span class="a">→</span>
+          <span class="s" style="background:var(--verdict)">판정</span>
+          <span class="nt">"제안→기각" 라운드가 끼거나 9전문가로 길어지기도.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 병렬 vs 교환 -->
+  <div class="blk">
+    <p class="h">왜 교환인가</p>
+    <div class="vs">
+      <div class="v"><span class="t">병렬 · 독립 의견</span><h3>첫 단정에서 멈춘다</h3><p>각자 한 번씩 말하고 끝. 반례가 나란히 놓일 뿐 부딪지 않아 <b>성급한 대책이 안 걸러진다</b>.</p></div>
+      <div class="v on"><span class="t">교환 · 서로 반응</span><h3>한 도메인 대책 = 다른 도메인 새 문제</h3><p>"언더필 빼자"→낙하·CPI 근거로 기각, "갭 키우자"→낙하 반박. <b>잘못된 결정을 실행 전에 거른다</b>.</p></div>
+    </div>
+  </div>
+
+  <footer>
+    <p>파이프라인 <span class="src">recommend_agents → agent_search → 교환·종합</span> · 서버 stateless, 지휘는 클라이언트 LLM. 실제 4건 전체 기록은 <a href="coalition-process-log.md">협진 과정 로그</a>. · 상단 THEME 전환.</p>
+  </footer>
+</div>
+<script>
+(function(){var r=document.documentElement,b=document.getElementById('tt');
+b.addEventListener('click',function(){var c=r.getAttribute('data-theme');
+if(!c){c=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+r.setAttribute('data-theme',c==='dark'?'light':'dark');});})();
+</script>
+</body>
+</html>
