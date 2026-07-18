@@ -65,6 +65,21 @@ else
   echo "[2/6] 스택 보장  (--skip-restart 또는 dry-run)"
 fi
 
+# 2b) 임베딩 모델 확보 — e5_* provider 는 HF 모델이 없으면 hash 폴백으로 떨어져
+#     의미검색/recommend_agents 가 무의미해진다(폐쇄망 cae00 의 실장애). DB 덤프는
+#     e5_base(768)로 시드돼 있으므로 모델이 반드시 정합해야 한다. fetch-model 이
+#     provider 를 보고 hash/openai 면 자동 skip, e5_* 면 런타임과 동일 경로로 받아
+#     차원까지 검증한다(이미 있으면 빠르게 통과). 비치명적 — 실패해도 restore 는 진행.
+if [[ $DRY -eq 0 ]]; then
+  echo "[2b/6] 임베딩 모델 확보 (fetch-model — provider 기준, 있으면 즉시 통과)"
+  if [[ "${AIDH_SKIP_MODEL:-0}" = "1" ]]; then
+    echo "    · AIDH_SKIP_MODEL=1 → skip"
+  else
+    bash "$APPT_DIR/fetch-model.sh" 2>&1 | sed 's/^/    /' \
+      || echo "    ⚠ 모델 확보 실패(비치명적) — 의미검색이 hash 폴백일 수 있음. 수동: bash deploy/apptainer/fetch-model.sh"
+  fi
+fi
+
 # 3) Drive 최신 dump 찾기 (파일명 UTC TS 정렬)
 echo "[3/6] Drive 최신 덤프 탐색"
 LATEST="$(rclone lsf --files-only "$REMOTE/" 2>/dev/null | grep -E '^aidh-db-.*\.sql\.gz$' | sort | tail -n1 || true)"
