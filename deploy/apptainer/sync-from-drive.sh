@@ -74,9 +74,15 @@ if [[ $DRY -eq 0 ]]; then
   echo "[2b/6] 임베딩 모델 확보 (fetch-model — provider 기준, 있으면 즉시 통과)"
   if [[ "${AIDH_SKIP_MODEL:-0}" = "1" ]]; then
     echo "    · AIDH_SKIP_MODEL=1 → skip"
-  else
+  elif bash "$APPT_DIR/model-from-drive.sh" 2>&1 | sed 's/^/    /'; then
+    # 폐쇄망 우선: Drive 에 올려둔 모델을 먼저 복원(HF 직접 다운로드가 사내 프록시
+    # SSL 인터셉트로 막히므로). 복원/스킵 성공 후 fetch-model 로 오프라인 로드·차원검증.
     bash "$APPT_DIR/fetch-model.sh" 2>&1 | sed 's/^/    /' \
-      || echo "    ⚠ 모델 확보 실패(비치명적) — 의미검색이 hash 폴백일 수 있음. 수동: bash deploy/apptainer/fetch-model.sh"
+      || echo "    ⚠ 모델 로드 검증 실패(비치명적) — 수동: bash deploy/apptainer/fetch-model.sh"
+  else
+    echo "    ⚠ Drive 모델 없음/실패 → HF 직접 시도"
+    bash "$APPT_DIR/fetch-model.sh" 2>&1 | sed 's/^/    /' \
+      || echo "    ⚠ 모델 확보 실패(비치명적) — 의미검색이 hash 폴백일 수 있음. 온라인 dev 에서 model-to-drive.sh 로 올린 뒤 재실행."
   fi
 fi
 
