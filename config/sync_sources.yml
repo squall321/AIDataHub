@@ -141,6 +141,51 @@ sources:
       attachment_mode: url_ref
       attachment_url_template: "{base_url}/api/v1/files/{image_id}"
 
+  # ---------------------------------------------------------------------------
+  # MaterialTwin — 재료 물성 카탈로그(heax 앱). heax Caddy 경유(포트 무관 안정 URL).
+  #   앱은 /api/materials 를 서빙하고 Caddy 가 /apps/<id>/ 프리픽스를 strip 하므로
+  #   list_endpoint 에 /api 를 포함한다. 응답은 {items,total,page,size} 페이지네이션.
+  #   무인증(company visibility) — api_key 불필요.
+  # ---------------------------------------------------------------------------
+  - name: materialtwin
+    description: "MaterialTwin 재료 물성 카탈로그 — heax 앱 미러"
+    base_url: "http://127.0.0.1:4180"
+    list_endpoint: "/apps/materialtwin_web/api/materials"
+    list_method: GET
+    cursor_param: page             # materialtwin 은 page/size 페이지네이션(offset 아님)
+    limit_param: size
+    page_size: 100
+    max_rps: 2.0
+    retry_max: 3
+    retry_backoff_sec: 2.0
+    trust_pii_masked: true         # 사내 재료 데이터(PII 아님)
+    schedule_cron: "0 */6 * * *"   # 재료 카탈로그는 자주 안 바뀜 — 6시간마다
+    enabled: true
+    mapping_rules:
+      id_field: id
+      title_field: name
+      summary_template: "{category} — {name} (code: {material_code})"
+      body_field: description
+      tags_fields:
+        - category
+        - material_code
+      tags_prefix:
+        category: "category:"
+        material_code: "code:"
+      subject_keywords_fields:
+        - name
+        - material_code
+      valid_from_field: created_at
+      year_field: created_at
+      data_type: DOC
+      team: MX
+      group: MAT
+      doc_type: material_card
+      agents:
+        - material-twin-analyst
+      classification: internal
+      language: ko
+
 # ---------------------------------------------------------------------------
 # 추가 옵션 (모두 선택):
 #
