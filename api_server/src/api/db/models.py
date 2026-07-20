@@ -398,6 +398,12 @@ class Agent(Base):
         nullable=False,
         server_default=func.now(),
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
 
     record_links: Mapped[list["AgentRecord"]] = relationship(
         back_populates="agent",
