@@ -122,9 +122,9 @@
 ```jsonc
 {
   "id": "A001",
-  "kind": "figure",       // 10 kinds (api/schemas/attachment.py:29-51):
+  "kind": "figure",       // 11 kinds (api/schemas/attachment.py):
                           //   figure | document | spreadsheet | media |
-                          //   archive | cad | chart | drawing | data | other
+                          //   archive | cad | cae | chart | drawing | data | other
                           // 확장자 자동 매핑: _KIND_BY_EXT 표 참조.
                           // PPT 차트 placeholder 는 kind="chart".
   "mime": "image/png",

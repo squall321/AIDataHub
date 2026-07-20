@@ -43,6 +43,10 @@
 
 > **공통 출력 키 (8개)**: `schema_version` · `meta` · `toc` · `sections` · `figures` (deprecated) · `tables` · `sources` · `attachments`. 자세한 매핑은 [`json_schema_rules.md`](./json_schema_rules.md) §13 표.
 
+> **CAD/CAE (변환기 없음, 메타 규칙만)**: MCAD(Parasolid)·ECAD(ODB++)·솔버 덱(LS-DYNA k 등)의
+> 레코드 구성·첨부 kind(`cad`/`cae`)·과제/개발단계(dv1…pra)/DOE/BOM 연계 컨벤션은
+> [`cad_cae_metadata_rules.md`](./cad_cae_metadata_rules.md) v1.0. 파생 포맷(ECAD-JSON, MCAD-STEP)은 예약만.
+
 ### 1-1. 어떤 변환기를 언제 쓰나
 
 | 작성자가 가지고 있는 것 | 권장 입력 포맷 | 사유 |
@@ -66,7 +70,7 @@
 **Default ON 휴리스틱 (모든 변환기 공통):**
 - Heading 누락 자동 복구 (텍스트 패턴 → level 추정)
 - 캡션 자동 생성 (`Figure N: ...`)
-- 첨부 자동 분류 (확장자 + 컨텐츠 → `kind` 9종)
+- 첨부 자동 분류 (확장자 + 컨텐츠 → `kind` 11종)
 
 **포맷별 추가 휴리스틱:**
 
@@ -237,7 +241,7 @@ d:/Personal/AI_data/
     }
   ],
   "tables": [...],
-  "attachments": [...],                  // kind: figure | document | spreadsheet | media | archive | cad | drawing | data | chart | other (10종, api/schemas/attachment.py:29-51)
+  "attachments": [...],                  // kind: figure | document | spreadsheet | media | archive | cad | cae | drawing | data | chart | other (11종, api/schemas/attachment.py)
   "sources": [...]
 }
 ```

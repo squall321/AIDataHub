@@ -309,6 +309,11 @@ def _extract_sim(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         "outputs": inner.get("outputs") or {},
         "runtime": inner.get("runtime"),
     }
+    # 엔지니어링 메타 보존 (eng_meta/bom) — 고정 키 재구성이 extra='allow' 를
+    # 무력화해 드롭시키는 문제(DATA 의 graph_type 선례 B4 와 동일). 있을 때만.
+    for opt in ("eng_meta", "bom"):
+        if inner.get(opt) is not None:
+            sim_content[opt] = inner[opt]
     SimContent.model_validate(sim_content)
 
     common = _common_fields(raw, default_title=f"SIM:{sim_content['solver']}")
@@ -324,6 +329,10 @@ def _extract_cad(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         "file_metadata": inner.get("file_metadata") or {},
         "components": inner.get("components") or [],
     }
+    # 파생 포맷·엔지니어링 메타 보존 — SIM 쪽과 동일한 드롭 방지 (B4 선례).
+    for opt in ("derived_formats", "eng_meta", "bom"):
+        if inner.get(opt) is not None:
+            cad_content[opt] = inner[opt]
     CADContent.model_validate(cad_content)
 
     common = _common_fields(

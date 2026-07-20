@@ -6,6 +6,7 @@
 - ``data``: DATA 변종 콘텐츠 스키마 (표 형태)
 - ``sim``: SIM 변종 콘텐츠 스키마 (시뮬레이션)
 - ``cad``: CAD 변종 콘텐츠 스키마 (CAD 메타데이터)
+- ``eng_meta``: CAD/SIM 공용 엔지니어링 메타 (과제·개발단계·DOE·BOM)
 
 상위 단계(ingest, routes 등)에서는 본 모듈에서 직접 import 하면 된다.
 """
@@ -36,6 +37,7 @@ from .common import (
 )
 from .data import DataContent
 from .document import DocumentContent
+from .eng_meta import BomLink, DevRevision, DoeRef, EngMeta
 from .id_format import (
     ID_PATTERN,
     LEGACY_ID_PATTERN,
@@ -52,7 +54,11 @@ __all__ = [
     "AttachmentIn",
     "AttachmentKind",
     "AttachmentOut",
+    "BomLink",
     "CADContent",
+    "DevRevision",
+    "DoeRef",
+    "EngMeta",
     "CAPABILITY_LABELS",
     "CAPTION_MISSING_PLACEHOLDER",
     "CLASSIFICATIONS",

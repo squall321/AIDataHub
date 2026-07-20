@@ -379,12 +379,18 @@ _EXT_TO_KIND: dict[str, str] = {
     "mp4": "media", "avi": "media", "mov": "media", "mkv": "media",
     "webm": "media", "m4a": "media",
     # archive
-    "zip": "archive", "tar": "archive", "gz": "archive", "7z": "archive",
-    "rar": "archive", "bz2": "archive", "xz": "archive",
+    "zip": "archive", "tar": "archive", "gz": "archive", "tgz": "archive",
+    "7z": "archive", "rar": "archive", "bz2": "archive", "xz": "archive",
     # cad (3D)
     "step": "cad", "stp": "cad", "iges": "cad", "igs": "cad",
     "catpart": "cad", "catproduct": "cad", "sldprt": "cad", "sldasm": "cad",
     "prt": "cad", "x_t": "cad", "x_b": "cad", "stl": "cad",
+    # cae (솔버 입출력 덱/결과) — schemas.attachment 와 동일 매핑 유지
+    "k": "cae", "key": "cae", "dyn": "cae", "dynain": "cae",
+    "d3plot": "cae",
+    "inp": "cae", "cdb": "cae", "odb": "cae",
+    "rad": "cae",
+    "bdf": "cae", "nas": "cae", "fem": "cae", "op2": "cae",
     # drawing (2D)
     "dwg": "drawing", "dxf": "drawing",
     # data
@@ -416,7 +422,7 @@ def infer_attachment_kind(
     filename: str | None = None,
     mime: str | None = None,
 ) -> str:
-    """파일명/MIME 으로 첨부 kind 결정. 10 종 중 하나를 반환 (실패 시 ``"other"``).
+    """파일명/MIME 으로 첨부 kind 결정. 11 종 중 하나를 반환 (실패 시 ``"other"``).
 
     ``api.schemas.attachment.infer_attachment_kind`` 의 변환기 측 거울로,
     같은 매핑을 사용한다. 두 모듈 어느 쪽에서나 호출 가능하다.

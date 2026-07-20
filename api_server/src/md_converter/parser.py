@@ -157,11 +157,15 @@ _ATTACHMENT_KIND_BY_EXT: dict[str, str] = {
     # cad
     "catpart": "cad", "catproduct": "cad", "step": "cad", "stp": "cad",
     "iges": "cad", "igs": "cad", "sldprt": "cad", "sldasm": "cad",
-    "prt": "cad", "stl": "cad",
+    "prt": "cad", "stl": "cad", "x_t": "cad", "x_b": "cad",
+    # cae (솔버 입출력 덱/결과) — schemas.attachment 와 동일 매핑 유지
+    # (k/inp/cdb/odb 는 과거 "data" 였으나 cae kind 신설로 이관)
+    "k": "cae", "key": "cae", "dyn": "cae", "dynain": "cae", "d3plot": "cae",
+    "inp": "cae", "cdb": "cae", "odb": "cae", "rad": "cae",
+    "bdf": "cae", "nas": "cae", "fem": "cae", "op2": "cae",
     # drawing
     "dxf": "drawing", "dwg": "drawing",
     # data
-    "k": "data", "inp": "data", "cdb": "data", "odb": "data",
     "json": "data", "yaml": "data", "yml": "data", "xml": "data",
 }
 
