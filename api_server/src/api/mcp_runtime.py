@@ -113,26 +113,44 @@ async def discover() -> dict[str, Any]:
     title="List all agents",
     description=(
         "Returns all registered agents with their metadata (agent_type, name, description, "
-        "common_tags, data_types). Use this to browse the catalog before recommend_agents."
+        "common_tags, data_types). Use this to browse the catalog before recommend_agents. "
+        "compact=True omits descriptions (agent_type+name+tags only) — use it when the full "
+        "list is too large to read in one context. Filter with domain (prefix, e.g. 'cam') "
+        "and/or tag to narrow the catalog."
     ),
 )
-async def list_agents() -> list[dict[str, Any]]:
+async def list_agents(
+    compact: bool = False,
+    domain: str | None = None,
+    tag: str | None = None,
+) -> list[dict[str, Any]]:
+    # compact/domain/tag 는 additive 옵션 — 인자 없이 부르면 기존 전체 메타 반환(하위호환).
     from sqlalchemy import select
     from .db.models import Agent
     async with SessionLocal() as session:
         rows = (
             await session.execute(select(Agent).order_by(Agent.agent_type))
         ).scalars().all()
-        return [
-            {
-                "agent_type": a.agent_type,
-                "name": a.name,
-                "description": a.description or "",
-                "common_tags": list(a.common_tags or []),
-                "data_types": list(a.data_types or []),
-            }
-            for a in rows
-        ]
+        out: list[dict[str, Any]] = []
+        for a in rows:
+            if domain and a.agent_type != domain and not a.agent_type.startswith(f"{domain}-"):
+                continue
+            tags = list(a.common_tags or [])
+            if tag and tag not in tags:
+                continue
+            if compact:
+                out.append({"agent_type": a.agent_type, "name": a.name, "common_tags": tags})
+            else:
+                out.append(
+                    {
+                        "agent_type": a.agent_type,
+                        "name": a.name,
+                        "description": a.description or "",
+                        "common_tags": tags,
+                        "data_types": list(a.data_types or []),
+                    }
+                )
+        return out
 
 
 @mcp.tool(
@@ -197,10 +215,42 @@ async def recommend_agents(
             )
 
         if agents:
+            # additive — 각 후보에 sample_queries(질의 정렬용 힌트)를 붙이고,
+            # coverage(단일 도메인 vs 교차도메인) 신호로 single 직행 vs 패널 소집을 돕는다.
+            ats = [a.get("agent_type") for a in agents if a.get("agent_type")]
+            if ats:
+                smp_rows = (
+                    await session.execute(
+                        select(Agent.agent_type, Agent.sample_queries).where(
+                            Agent.agent_type.in_(ats)
+                        )
+                    )
+                ).all()
+                smp_by_at = {at: list(sq or [])[:3] for at, sq in smp_rows}
+                for a in agents:
+                    if "sample_queries" not in a:
+                        a["sample_queries"] = smp_by_at.get(a.get("agent_type"), [])
+            prefixes = sorted(
+                {
+                    str(a.get("agent_type", "")).split("-", 1)[0]
+                    for a in agents
+                    if a.get("agent_type")
+                }
+            )
+            if len(prefixes) <= 1:
+                cov_hint = "단일 도메인 — 상위 1명 직행 고려."
+            else:
+                cov_hint = f"{len(prefixes)}개 도메인에 걸침 — 교차도메인 협진(패널) 고려."
+            coverage = {
+                "domains": prefixes,
+                "domain_count": len(prefixes),
+                "hint": cov_hint,
+            }
             return {
                 "query": q,
                 "agents": agents,
                 "relevant_tools": relevant_tools,
+                "coverage": coverage,
                 "fallback": False,
             }
 
@@ -450,6 +500,18 @@ async def agent_search(
             exc_set = set(excluded_tags)
             hits = [h for h in hits if not exc_set.intersection(set(h.get("tags") or []))]
 
+        # additive — 각 hit 에 causal_status 노출 (근거 3등급). tag 부재 시 validated.
+        for h in hits:
+            if "causal_status" not in h:
+                h["causal_status"] = next(
+                    (
+                        t.split(":", 1)[1]
+                        for t in (h.get("tags") or [])
+                        if isinstance(t, str) and t.startswith("causal_status:")
+                    ),
+                    "validated",
+                )
+
         # --- refuse_below_score 판단 ---
         refused = False
         if not hits:
@@ -459,6 +521,32 @@ async def agent_search(
             if top_score < refuse_below:
                 refused = True
 
+        # additive — 거부가 막다른 길이 되지 않게, 문턱 미달 후보를 참고용으로만 제공한다
+        # (판정 근거 아님). 거부 시에만 채워지고, 실패해도 응답을 막지 않는다.
+        near_miss: list[dict[str, Any]] = []
+        if refused and not hits and mode in ("semantic", "hybrid"):
+            try:
+                nm = await search_svc.semantic_search(
+                    session,
+                    q,
+                    top_k=3,
+                    data_types=data_type_filter or None,
+                    record_ids=scope_record_ids,
+                    tag_boost=None,
+                    min_score=None,
+                )
+                near_miss = [
+                    {
+                        "record_id": h.get("record_id"),
+                        "title": h.get("title"),
+                        "score": h.get("score"),
+                        "note": "score_threshold 미달 — 참고용 후보(판정 근거로 쓰지 마라)",
+                    }
+                    for h in (nm or [])[:3]
+                ]
+            except Exception:  # pragma: no cover — defensive
+                near_miss = []
+
         return {
             "agent_type": agent_type,
             "query": q,
@@ -467,6 +555,7 @@ async def agent_search(
             "hit_count": len(hits),
             "refused": refused,
             "refusal_message": refusal_message if refused else None,
+            "near_miss": near_miss,
             "applied_config": {
                 "top_k": top_k,
                 "score_threshold": score_threshold,
@@ -491,6 +580,7 @@ def _refused_result(
         "hit_count": 0,
         "refused": True,
         "refusal_message": refusal_message,
+        "near_miss": [],
         "applied_config": {"reason": reason},
     }
 
