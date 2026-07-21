@@ -63,3 +63,22 @@ echo "✓ 게시 완료 — v${VER} (${SZ})"
 echo "  버전 링크 : /downloads/$VFILE   (캐시 무관, 권장)"
 echo "  최신 링크 : /downloads/ai-data-hub-uploader-latest.vsix"
 echo "  확인: curl -s http://127.0.0.1:${API_PORT}/downloads/extension-meta.json"
+
+# [5] Drive 게시(옵션·비치명) — vsix 는 빌드 산출물이라 git 미추적(.gitignore 규칙 유지)이고
+#     cae00 은 npm 이 없어 빌드 불가 → Drive ext-downloads 가 유일한 전달 경로다.
+#     (수신측: HWAXPortal deploy-all-from-drive.sh 의 aidh 단계가 받아간다.)
+EXT_REMOTE="${AIDH_EXT_DRIVE_REMOTE:-}"
+if [[ -z "$EXT_REMOTE" && -n "${AIDH_DRIVE_REMOTE:-}" ]]; then
+  EXT_REMOTE="${AIDH_DRIVE_REMOTE%/db-dumps}/ext-downloads"
+fi
+if [[ -n "$EXT_REMOTE" ]] && command -v rclone >/dev/null 2>&1; then
+  if rclone copy "$DL_DIR/$VFILE" "$EXT_REMOTE/" 2>/dev/null \
+     && rclone copyto "$DL_DIR/$VFILE" "$EXT_REMOTE/ai-data-hub-uploader-latest.vsix" 2>/dev/null \
+     && rclone copy "$DL_DIR/extension-meta.json" "$EXT_REMOTE/" 2>/dev/null; then
+    echo "  Drive 게시 : $EXT_REMOTE  (cae00 deploy-all 이 수신)"
+  else
+    echo "  ! Drive 게시 실패(비치명) — 수동: rclone copy $DL_DIR/$VFILE $EXT_REMOTE/"
+  fi
+else
+  echo "  · Drive 게시 생략 (AIDH_DRIVE_REMOTE/rclone 없음)"
+fi
