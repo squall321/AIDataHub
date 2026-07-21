@@ -68,6 +68,7 @@ async def tag_search(
     stmt = (
         select(Record)
         .where(pred.where_clause)
+        .where(Record.deleted_at.is_(None))
         .order_by(Record.updated_at.desc(), Record.id.desc())
     )
     pyfilters = [pred] if pred.python_filter is not None else []
@@ -116,13 +117,14 @@ async def fts_search(
             )
             .join(RecordSection, RecordSection.record_id == Record.id)
             .where(fts_match(RecordSection.content_text, q, session, any_token=any_token))
+            .where(Record.deleted_at.is_(None))
         )
         record_stmt = select(Record).where(
             or_(
                 fts_match(Record.title, q, session, any_token=any_token),
                 fts_match(Record.summary, q, session, any_token=any_token),
             )
-        )
+        ).where(Record.deleted_at.is_(None))
         s_rows = (await session.execute(section_stmt.limit(limit * 3))).all()
         r_rows = (await session.execute(record_stmt.limit(limit * 3))).scalars().all()
         return s_rows, r_rows
@@ -288,6 +290,7 @@ async def semantic_search(
             )
             .join(Record, Record.id == RecordSection.record_id)
             .where(RecordSection.embedding.is_not(None))
+            .where(Record.deleted_at.is_(None))
         )
         if data_types:
             stmt = stmt.where(Record.data_type.in_(list(data_types)))
@@ -331,6 +334,7 @@ async def semantic_search(
         select(RecordSection, Record)
         .join(Record, Record.id == RecordSection.record_id)
         .where(RecordSection.embedding.is_not(None))
+        .where(Record.deleted_at.is_(None))
     )
     if data_types:
         stmt = stmt.where(Record.data_type.in_(list(data_types)))

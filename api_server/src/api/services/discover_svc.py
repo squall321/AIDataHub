@@ -208,13 +208,18 @@ async def build_discover_payload(
         if cached is not None:
             return cached
 
-    total_q = await session.execute(select(func.count()).select_from(Record))
+    # soft-delete 된 record 는 모든 집계에서 제외 — list_records 와 수치 정합.
+    total_q = await session.execute(
+        select(func.count()).select_from(Record).where(Record.deleted_at.is_(None))
+    )
     total_records = int(total_q.scalar_one() or 0)
 
     by_type: dict[str, int] = {}
     rows = (
         await session.execute(
-            select(Record.data_type, func.count()).group_by(Record.data_type)
+            select(Record.data_type, func.count())
+            .where(Record.deleted_at.is_(None))
+            .group_by(Record.data_type)
         )
     ).all()
     for k, v in rows:
@@ -224,7 +229,9 @@ async def build_discover_payload(
     by_division: dict[str, int] = {}
     rows = (
         await session.execute(
-            select(Record.team, func.count()).group_by(Record.team)
+            select(Record.team, func.count())
+            .where(Record.deleted_at.is_(None))
+            .group_by(Record.team)
         )
     ).all()
     for k, v in rows:
@@ -234,7 +241,9 @@ async def build_discover_payload(
     by_classification: dict[str, int] = {}
     rows = (
         await session.execute(
-            select(Record.classification, func.count()).group_by(Record.classification)
+            select(Record.classification, func.count())
+            .where(Record.deleted_at.is_(None))
+            .group_by(Record.classification)
         )
     ).all()
     for k, v in rows:
@@ -242,31 +251,36 @@ async def build_discover_payload(
             by_classification[str(k)] = int(v)
 
     # ---- agents (with record counts + sample tags) ----------------------
+    # record.agents 배열을 한 번만 스캔해 agent별 count 를 집계한다
+    # (구현 교체: agent 마다 전체 record 를 다시 읽던 N+1 — 571 agents ×
+    # 17K records 풀스캔 — 를 단일 스캔으로. dialect-agnostic 유지).
+    agent_record_counts: dict[str, int] = {}
+    all_agent_arrays = (
+        (
+            await session.execute(
+                select(Record.agents).where(Record.deleted_at.is_(None))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for arr in all_agent_arrays:
+        for at in arr or []:
+            if isinstance(at, str) and at:
+                agent_record_counts[at] = agent_record_counts.get(at, 0) + 1
+
     agents_payload: list[dict[str, Any]] = []
     agent_rows = (await session.execute(select(Agent))).scalars().all()
     for ag in agent_rows:
-        # record count for this agent (fast: scan records.agents array)
-        # Use python-side count to stay dialect-agnostic.
-        rec_count_stmt = select(func.count()).select_from(Record).where(
-            Record.agents.isnot(None)
-        )
-        # We want records whose agents array contains ag.agent_type.
-        # Dialect-agnostic: fetch IDs (might be expensive on huge DBs but
-        # discover is cached).
-        all_records = (
-            (await session.execute(select(Record.agents)))
-            .scalars()
-            .all()
-        )
-        cnt = sum(1 for arr in all_records if arr and ag.agent_type in list(arr))
         agents_payload.append(
             {
                 "agent_type": ag.agent_type,
                 "name": ag.name,
                 "description": ag.description or "",
-                "record_count": cnt,
+                "record_count": int(agent_record_counts.get(ag.agent_type, 0)),
                 "common_tags": list(ag.common_tags or []),
                 "data_types": list(ag.data_types or []),
+                "updated_at": ag.updated_at.isoformat() if ag.updated_at else None,
                 "sample_query": f"/api/data?agent={ag.agent_type}",
             }
         )
@@ -407,6 +421,25 @@ async def build_discover_payload(
 
     _cache_set("discover", payload)
     return payload
+
+
+def build_domain_rollup(agents_payload: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """agents 배열을 도메인(prefix)별로 롤업한다 — {domain, agent_count, record_count}.
+
+    discover(compact=True) 와 list_agent_domains MCP 도구가 공유하는 구현.
+    """
+    acc: dict[str, dict[str, int]] = {}
+    for a in agents_payload or []:
+        dom = str(a.get("agent_type", "")).split("-", 1)[0]
+        if not dom:
+            continue
+        entry = acc.setdefault(dom, {"agent_count": 0, "record_count": 0})
+        entry["agent_count"] += 1
+        entry["record_count"] += int(a.get("record_count") or 0)
+    return [
+        {"domain": d, **v}
+        for d, v in sorted(acc.items(), key=lambda kv: (-kv[1]["agent_count"], kv[0]))
+    ]
 
 
 # ---------------------------------------------------------------------------

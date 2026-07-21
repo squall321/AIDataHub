@@ -100,13 +100,23 @@ mcp = FastMCP(
     title="System catalog (one-shot)",
     description=(
         "Fetches the entire hub catalog summary: total records, by data_type, by team, "
-        "and the registered agents with their record counts. Call this first."
+        "and the registered agents with their record counts. Call this first. "
+        "compact=True replaces the (large) agents array with a per-domain rollup — "
+        "use it when the full payload is too big to read; then drill down with "
+        "list_agents(compact=true, domain=...)."
     ),
 )
-async def discover() -> dict[str, Any]:
+async def discover(compact: bool = False) -> dict[str, Any]:
+    # compact 는 additive 옵션 — 기본 호출은 기존 전체 응답 그대로(하위호환).
     from .services import discover_svc
     async with SessionLocal() as session:
-        return await discover_svc.build_discover_payload(session)
+        payload = await discover_svc.build_discover_payload(session)
+    if not compact:
+        return payload
+    slim = {k: v for k, v in payload.items() if k != "agents"}
+    slim["agents_by_domain"] = discover_svc.build_domain_rollup(payload.get("agents") or [])
+    slim["compact_note"] = "agent 상세는 list_agents(compact=true, domain=...) 로 조회하라."
+    return slim
 
 
 @mcp.tool(
@@ -148,9 +158,68 @@ async def list_agents(
                         "description": a.description or "",
                         "common_tags": tags,
                         "data_types": list(a.data_types or []),
+                        "updated_at": a.updated_at.isoformat() if a.updated_at else None,
                     }
                 )
         return out
+
+
+@mcp.tool(
+    title="Agent domain rollup",
+    description=(
+        "Aggregates agents by domain prefix (cam/pwr/rf/...) with agent_count and "
+        "record_count per domain. Cheap first look at the catalog shape — then "
+        "drill down with list_agents(compact=true, domain=...) or recommend_agents."
+    ),
+)
+async def list_agent_domains() -> list[dict[str, Any]]:
+    from .services import discover_svc
+
+    async with SessionLocal() as session:
+        payload = await discover_svc.build_discover_payload(session)
+    return discover_svc.build_domain_rollup(payload.get("agents") or [])
+
+
+@mcp.tool(
+    title="Tag vocabulary catalog",
+    description=(
+        "Lists existing tags with usage count, data_type distribution and related "
+        "agents. Use BEFORE tag_search / list_records(tags=...) — tag_search is "
+        "exact-match AND, so discovering the exact vocabulary first avoids empty "
+        "results. q filters by tag prefix."
+    ),
+)
+async def list_tags(
+    q: str = "",
+    min_count: int = 1,
+    limit: int = 100,
+) -> dict[str, Any]:
+    from .routes.taxonomy import _aggregate_tags
+
+    async with SessionLocal() as session:
+        bucket = await _aggregate_tags(session)
+    q_norm = q.strip().lower()
+    items: list[dict[str, Any]] = []
+    for tag_name, entry in bucket.items():
+        if entry["count"] < min_count:
+            continue
+        if q_norm and not tag_name.lower().startswith(q_norm):
+            continue
+        items.append(
+            {
+                "tag": tag_name,
+                "count": entry["count"],
+                "data_types": dict(entry["data_types"]),
+                "agents": sorted(entry["agents"]),
+            }
+        )
+    items.sort(key=lambda x: (-x["count"], x["tag"]))
+    items = items[: max(1, min(int(limit), 500))]
+    return {
+        "total": len(items),
+        "items": items,
+        "filters": {"q": q or None, "min_count": min_count, "limit": limit},
+    }
 
 
 @mcp.tool(
@@ -175,6 +244,8 @@ async def recommend_agents(
     Args:
         agent_type: 호출자 agent context (Wave-7 P2). 설정 시 매니페스트 정책
                     (restrict/require/exclude) 적용 후 relevant_tools 필터.
+                    주의 — 추천 결과(agents 랭킹)를 이 값으로 필터하지 않는다.
+                    범위 제한이 아니라 "누가 부르는가"의 도구 가시성 컨텍스트다.
     """
     from sqlalchemy import select
 
@@ -476,7 +547,15 @@ async def agent_search(
                         h["score"] = round(min(1.0, (h.get("score") or 0.0) + delta), 6)
                 raw_hits.sort(key=lambda x: x.get("score", 0.0), reverse=True)
             if score_threshold is not None:
-                raw_hits = [h for h in raw_hits if (h.get("score") or 0.0) >= score_threshold]
+                # RRF score(통상 0.01~0.05)와 cosine threshold(~0.3)는 스케일이 달라
+                # 원 semantic 점수(score_semantic) 기준으로 필터한다. semantic 점수가
+                # 없는 FTS-only hit 은 통과시킨다 (키워드 정확 매칭 보존).
+                raw_hits = [
+                    h
+                    for h in raw_hits
+                    if h.get("score_semantic") is None
+                    or float(h.get("score_semantic") or 0.0) >= score_threshold
+                ]
             hits = raw_hits[:top_k]
 
         else:  # semantic (default)
@@ -559,6 +638,7 @@ async def agent_search(
             "applied_config": {
                 "top_k": top_k,
                 "score_threshold": score_threshold,
+                "threshold_basis": "semantic" if mode in ("semantic", "hybrid") else None,
                 "data_type_filter": data_type_filter,
                 "tag_boost_applied": bool(tag_boost),
                 "max_depth": max_depth,
@@ -849,8 +929,15 @@ async def data_aggregate(
                 op=op, column=column or None, group_by=group_by or None, where=where or None,
             )
         except ValueError as exc:
-            return {"error": str(exc), "code": "bad_request", "recoverable": True,
-                    "suggestion": "op/column/group_by 를 확인하세요 (data_columns 로 컬럼 목록 확인)."}
+            # 레코드가 이미 로드돼 있으므로 복구에 필요한 컬럼 정보를 직접 동봉한다
+            # (구 안내의 data_columns 는 MCP 에 존재하지 않는 REST 전용 도구였음).
+            return {
+                "error": str(exc), "code": "bad_request", "recoverable": True,
+                "headers": list(c.get("headers") or []),
+                "units": c.get("units") if isinstance(c.get("units"), list) else None,
+                "row_count": len(list(c.get("rows") or [])),
+                "suggestion": "위 headers/units 기준으로 op/column/group_by 를 맞춰 재호출하세요.",
+            }
         return {"record_id": rec.id, **result}
 
 
