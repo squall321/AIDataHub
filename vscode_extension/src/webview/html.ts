@@ -1663,7 +1663,10 @@ function clientScript(): string {
       '</div>' +
       '<input id="json-picker" type="file" accept=".json,application/json" style="display:none" />' +
       '<label>또는 JSON 텍스트 직접 붙여넣기</label>' +
-      '<textarea id="i-json-text" rows="14" placeholder=\'{"title": "...", "content": {"sections": []}, "data_type": "DOC", "team": "HE", "group": "CAE", "year": 2026}\'>' + escapeHtml(it.jsonText) + '</textarea>' +
+      // NOTE: 이 문자열은 웹뷰 인라인 <script> 안의 JS 문자열로 들어가므로,
+      // 작은따옴표 속성(\')은 클라이언트 JS 문자열을 조기 종료시킨다 (런타임 blank).
+      // 큰따옴표 속성 + &quot; 로 안전하게 표기한다.
+      '<textarea id="i-json-text" rows="14" placeholder="{&quot;title&quot;: &quot;...&quot;, &quot;content&quot;: {&quot;sections&quot;: []}, &quot;data_type&quot;: &quot;DOC&quot;, &quot;team&quot;: &quot;HE&quot;, &quot;group&quot;: &quot;CAE&quot;, &quot;year&quot;: 2026}">' + escapeHtml(it.jsonText) + '</textarea>' +
 
       '<h2>3. 옵션</h2>' +
       '<div class="toolbar">' +
