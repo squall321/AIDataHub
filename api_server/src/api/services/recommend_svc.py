@@ -32,6 +32,17 @@ from ..services import sample_embedding_svc, search_svc
 _SAMPLE_WEIGHT = float(os.environ.get("AGENT_SAMPLE_WEIGHT", "1.0"))
 _SAMPLE_TOP_K = int(os.environ.get("AGENT_SAMPLE_TOP_K", "20"))
 _SAMPLE_PER_AGENT_CAP = int(os.environ.get("AGENT_SAMPLE_PER_AGENT_CAP", "3"))
+# v0.15.0 — 역할/설명 어휘 매칭 항. record·sample 은 '데이터 양'에 좌우돼, 전문가가 많아지면
+# 데이터 얇은 적합 전문가가 top-N 후보 섹션에서 밀려 추천이 불발됐다(관측). 질의 토큰이 agent 의
+# description/name/tags/data_types 에 겹치면 데이터 없이도 '역할'로 라우팅한다(임베딩 인프라 불요).
+_DESC_WEIGHT = float(os.environ.get("AGENT_DESC_WEIGHT", "0.6"))
+
+
+def _tokenize(text: str) -> set[str]:
+    """공백/구두점 분리 후 길이 2+ 토큰 집합(소문자). 한국어 도메인어(열충격·복합재 등)는
+    공백 단위로 그대로 잡히고, 영문은 소문자 정규화. 부분일치는 매칭 단계에서 처리."""
+    import re
+    return {t for t in re.split(r"[\s,./·|()\[\]{}:;\"']+", (text or "").lower()) if len(t) >= 2}
 
 
 # ---------------------------------------------------------------------------
@@ -121,16 +132,28 @@ async def recommend_agents(
         sample_mean = (agent_sample_score[at] / n_smp) if n_smp else 0.0
         agent_score[at] = record_mean + _SAMPLE_WEIGHT * sample_mean
 
+    # 3d) 역할/설명 어휘 매칭 — 전체 agent 를 대상으로 질의 토큰 겹침을 점수화한다.
+    # record/sample 은 데이터가 있어야만 신호가 나오지만, 이 항은 데이터가 없어도 '역할'로
+    # 라우팅되게 해 풀이 커져도 적합 전문가가 밀리지 않게 한다. 전체 조회(바운드)라 meta 도 겸함.
+    all_metas = (await session.execute(select(Agent))).scalars().all()
+    meta_by_type = {a.agent_type: a for a in all_metas}
+    agent_desc_match: dict[str, float] = {}
+    qtok = _tokenize(query)
+    if qtok:
+        for a in all_metas:
+            profile = " ".join(
+                [a.name or "", a.description or "",
+                 " ".join(a.common_tags or []), " ".join(a.data_types or [])]
+            ).lower()
+            # 질의 토큰이 프로파일에 부분일치하는 비율(한국어 도메인어는 부분일치가 자연스럽다).
+            hits = sum(1 for t in qtok if t in profile)
+            if hits:
+                frac = hits / len(qtok)
+                agent_desc_match[a.agent_type] = frac
+                agent_score[a.agent_type] += _DESC_WEIGHT * frac
+
     if not agent_score:
         return []
-
-    # 4) agent 메타 일괄 조회
-    agent_metas = (
-        await session.execute(
-            select(Agent).where(Agent.agent_type.in_(list(agent_score.keys())))
-        )
-    ).scalars().all()
-    meta_by_type = {a.agent_type: a for a in agent_metas}
 
     # 5) ranked list — why 에 sample 매칭이 있으면 함께 표기
     ranked: list[dict[str, Any]] = []
@@ -149,6 +172,8 @@ async def recommend_agents(
                 f"sample 매칭 {len(agent_sample_hits[at])}건 (top: "
                 f"\"{top_sample['sample_text'][:40]}\" sim={top_sample['score']:.2f})"
             )
+        if agent_desc_match.get(at):
+            why_parts.append(f"역할/설명 어휘 매칭 {agent_desc_match[at] * 100:.0f}%")
         ranked.append(
             {
                 "agent_type": at,
