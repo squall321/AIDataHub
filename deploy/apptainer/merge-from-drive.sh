@@ -19,7 +19,9 @@ PSQL() { apptainer exec "instance://$INST" psql -h 127.0.0.1 -p "$PORT" -U "$USE
 # 1) 덤프 확보 — 로컬 지정 우선, 아니면 Drive 최신(sync-from-drive 의 다운로드 부분 재사용은
 #    피하고 여기서 직접 받는다 — merge 는 restore 와 독립 경로).
 DUMP="${AIDH_MERGE_DUMP:-}"
-if [ -z "$DUMP" ]; then
+# AIDH_MERGE_DUMP 미지정이거나, 지정됐어도 그 파일이 없으면(§3 의 --dry-run sync 가 latest.sql.gz
+# 심링크만 만들고 실제 덤프는 안 받은 경우 — '덤프 없음'으로 죽던 원인) Drive 최신을 직접 받는다.
+if [ -z "$DUMP" ] || [ ! -f "$DUMP" ]; then
   REMOTE="${AIDH_DRIVE_REMOTE:-}"; [ -n "$REMOTE" ] || { echo "[ERROR] AIDH_DRIVE_REMOTE 미설정"; exit 1; }
   command -v rclone >/dev/null || { echo "[ERROR] rclone 미설치"; exit 1; }
   LATEST="$(rclone lsf "$REMOTE/" 2>/dev/null | grep -E '\.sql\.gz$' | sort | tail -1)"
