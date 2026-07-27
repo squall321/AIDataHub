@@ -35,14 +35,69 @@ _SAMPLE_PER_AGENT_CAP = int(os.environ.get("AGENT_SAMPLE_PER_AGENT_CAP", "3"))
 # v0.15.0 — 역할/설명 어휘 매칭 항. record·sample 은 '데이터 양'에 좌우돼, 전문가가 많아지면
 # 데이터 얇은 적합 전문가가 top-N 후보 섹션에서 밀려 추천이 불발됐다(관측). 질의 토큰이 agent 의
 # description/name/tags/data_types 에 겹치면 데이터 없이도 '역할'로 라우팅한다(임베딩 인프라 불요).
-_DESC_WEIGHT = float(os.environ.get("AGENT_DESC_WEIGHT", "0.6"))
+# v0.15.1 — 가중을 크게 올린다: "PCB 휨" 같은 질의에서 이름이 정확히 일치하는 전문가(PCB 휨
+# Warpage Specialist)가 데이터 많은 무관 에이전트(~1.85)에 밀리던 문제(관측). 강한 이름/설명
+# 일치(distinctive 토큰 frac→1.0)가 데이터 점수를 이길 수 있어야 한다.
+_DESC_WEIGHT = float(os.environ.get("AGENT_DESC_WEIGHT", "2.0"))
+
+# 범용 불용어 — 모든 에이전트 데이터/이름에 흔해 질의 신호를 희석한다(결함 라이프사이클·대화체).
+# 이 단어들이 denominator(질의 토큰 수)를 부풀리면 distinctive 토큰의 frac 이 과소평가된다.
+_STOPWORDS = {
+    # 대화체·요청
+    "토론", "논의", "얘기", "이야기", "대해", "대한", "관련", "알려", "설명", "싶어", "하고",
+    "해줘", "진행", "궁금", "질문", "문의", "우리", "제가", "내가", "했는데", "한데",
+    # 결함 라이프사이클(범용)
+    "불량", "원인", "증상", "해법", "해결", "방법", "대책", "방안", "분석", "문제", "이슈",
+    "현상", "개선", "검토", "평가", "영향", "발생", "사례", "관점", "종합", "전반",
+    # generic english
+    "the", "and", "of", "to", "for", "with", "about", "issue", "issues", "problem", "problems",
+    "cause", "causes", "symptom", "symptoms", "solution", "solutions", "analysis", "discuss",
+    "discussion", "want", "how", "what", "why", "root",
+}
+# 한국어 조사 — 토큰 끝에서 떼어 어간을 얻는다("불량의"→"불량", "휨은"→"휨"). 긴 것부터 시도.
+_JOSA = ("으로써", "으로", "에서", "에게", "까지", "부터", "보다", "처럼", "라도", "이나",
+         "조차", "마저", "에는", "에도", "을", "를", "이", "가", "은", "는", "의", "에",
+         "과", "와", "도", "로", "만", "나")
+
+
+def _is_cjk(t: str) -> bool:
+    return any("가" <= ch <= "힣" or "一" <= ch <= "鿿" for ch in t)
+
+
+def _stem(t: str) -> str:
+    """한국어 조사 제거 — 어간이 2자 이상 남을 때만 뗀다. 2자 기술어가 조사자로 끝나
+    1자로 잘리는 오절단(회로→회·평가→평)을 막는다. 단일자 도메인어(휨)는 조사가 아니라
+    원토큰 그대로 유지된다."""
+    for j in sorted(_JOSA, key=len, reverse=True):
+        if t.endswith(j):
+            base = t[: -len(j)]
+            if len(base) >= 2:
+                return base
+    return t
 
 
 def _tokenize(text: str) -> set[str]:
-    """공백/구두점 분리 후 길이 2+ 토큰 집합(소문자). 한국어 도메인어(열충격·복합재 등)는
-    공백 단위로 그대로 잡히고, 영문은 소문자 정규화. 부분일치는 매칭 단계에서 처리."""
+    """공백/구두점 분리 후 토큰 집합(소문자). CJK 단일자(휨·열 등)는 도메인어라 유지하고,
+    비CJK 는 길이 2+ 만 취한다(과거 len>=2 로 '휨' 이 통째로 탈락하던 버그 수정)."""
     import re
-    return {t for t in re.split(r"[\s,./·|()\[\]{}:;\"']+", (text or "").lower()) if len(t) >= 2}
+    out = set()
+    for t in re.split(r"[\s,./·|()\[\]{}:;\"']+", (text or "").lower()):
+        if not t:
+            continue
+        if len(t) >= 2 or _is_cjk(t):
+            out.add(t)
+    return out
+
+
+def _query_terms(query: str) -> set[str]:
+    """desc 매칭용 질의어 — 조사 제거 + 불용어 제거로 distinctive 토큰만 남긴다."""
+    terms = set()
+    for t in _tokenize(query):
+        s = _stem(t)
+        if s in _STOPWORDS or t in _STOPWORDS:
+            continue
+        terms.add(s)
+    return terms
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +193,7 @@ async def recommend_agents(
     all_metas = (await session.execute(select(Agent))).scalars().all()
     meta_by_type = {a.agent_type: a for a in all_metas}
     agent_desc_match: dict[str, float] = {}
-    qtok = _tokenize(query)
+    qtok = _query_terms(query)  # 조사·불용어 제거 후 distinctive 토큰만
     if qtok:
         for a in all_metas:
             profile = " ".join(
