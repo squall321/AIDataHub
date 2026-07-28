@@ -779,9 +779,15 @@ async def dispatch_call(manifest: UploadManifest, args: dict[str, Any]) -> dict[
     # exec_in_container 가 결과 dict 에 "workdir" 키로 작업 디렉토리 경로를
     # 반환하면 그걸 스캔. 미반환 시 capture 비활성 (회귀 0).
     workdir_path = result.pop("workdir", None)  # 응답에 노출하지 않음
-    if manifest.capture_files.enabled and result.get("ok") and workdir_path:
+    if result.get("ok") and workdir_path:
+        # capture 미설정 manifest 도 이미지 산출물(PNG 등)은 항상 회수한다 — workdir 는 곧
+        # 삭제되므로 여기서 안 건지면 그래프가 영영 유실된다(챗 이미지 표시의 근원 데이터).
+        # 미설정 폴백은 이미지 한정 + 보수적 캡(2MB)으로 기존 동작 불변(텍스트/리소스 미캡처).
+        cf_use = manifest.capture_files if manifest.capture_files.enabled else CaptureFiles(
+            enabled=True, scan_dir=manifest.capture_files.scan_dir,
+            text_extensions=[], resource_extensions=[], max_inline_mb=2, max_total_mb=6)
         try:
-            captured = _capture_output_files(Path(workdir_path), manifest.capture_files)
+            captured = _capture_output_files(Path(workdir_path), cf_use)
             if captured.get("images") or captured.get("texts") or captured.get("resources"):
                 result["captured"] = captured
         except Exception as e:  # pragma: no cover — capture 실패가 tool 응답 막아선 안 됨
