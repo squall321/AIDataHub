@@ -227,7 +227,13 @@ class SentenceTransformerEmbedder(Embedder):
         # E5 계열 prefix 자동 적용 여부 (모델 이름에 'e5' 포함 시 ON)
         self._uses_e5_prefix = "e5" in resolved_name.lower()
         self._model_name = resolved_name
-        self._model = SentenceTransformer(resolved_name)
+        # 장치 선택 — GPU 가 vLLM 등으로 점유된 박스에서 CUDA OOM 으로 임베딩이 죽는다(실측).
+        # EMBEDDING_DEVICE=cpu 로 강제하거나, 미지정 시 CUDA 실패하면 CPU 로 폴백한다.
+        _dev = (os.environ.get("EMBEDDING_DEVICE") or "").strip() or None
+        try:
+            self._model = SentenceTransformer(resolved_name, device=_dev)
+        except Exception:  # noqa: BLE001 — 장치 문제면 CPU 로 재시도(소규모 코퍼스엔 충분)
+            self._model = SentenceTransformer(resolved_name, device="cpu")
         self.name = f"sentence-transformers-{resolved_name.split('/')[-1]}-d{self.dim}"
 
         # 모델의 실제 dim 검증 (다른 모델 사용 시 차원 불일치 조기 감지)
