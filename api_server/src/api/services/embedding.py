@@ -234,6 +234,24 @@ class SentenceTransformerEmbedder(Embedder):
             self._model = SentenceTransformer(resolved_name, device=_dev)
         except Exception:  # noqa: BLE001 — 장치 문제면 CPU 로 재시도(소규모 코퍼스엔 충분)
             self._model = SentenceTransformer(resolved_name, device="cpu")
+        self._name = resolved_name
+
+    def _to_cpu_and_retry(self, fn, *a, **kw):
+        """GPU OOM 은 로드가 아니라 encode 시점에 난다(실측: 'encode failed: CUDA error: out of
+        memory'). GPU 를 쓰되, 순간 점유로 실패하면 CPU 로 영구 강등해 서비스가 죽지 않게 한다."""
+        try:
+            return fn(*a, **kw)
+        except Exception as exc:  # noqa: BLE001
+            if "out of memory" not in str(exc).lower() and "cuda" not in str(exc).lower():
+                raise
+            try:
+                import torch
+                torch.cuda.empty_cache()
+            except Exception:  # noqa: BLE001
+                pass
+            log.warning("embedding: GPU 실패 → CPU 로 전환 (%s)", str(exc)[:120])
+            self._model = SentenceTransformer(self._name, device="cpu")
+            return fn(*a, **kw)
         self.name = f"sentence-transformers-{resolved_name.split('/')[-1]}-d{self.dim}"
 
         # 모델의 실제 dim 검증 (다른 모델 사용 시 차원 불일치 조기 감지)
@@ -267,7 +285,7 @@ class SentenceTransformerEmbedder(Embedder):
         wrapped = self._wrap(text, is_query=False)
         if not wrapped.strip():
             return [0.0] * self.dim
-        v = self._model.encode(wrapped, normalize_embeddings=True)
+        v = self._to_cpu_and_retry(self._model.encode, wrapped, normalize_embeddings=True)
         return v.astype("float32").tolist()
 
     def encode_query(self, text: str) -> list[float]:
@@ -275,7 +293,7 @@ class SentenceTransformerEmbedder(Embedder):
         wrapped = self._wrap(text, is_query=True)
         if not wrapped.strip():
             return [0.0] * self.dim
-        v = self._model.encode(wrapped, normalize_embeddings=True)
+        v = self._to_cpu_and_retry(self._model.encode, wrapped, normalize_embeddings=True)
         return v.astype("float32").tolist()
 
     def encode_many(self, texts: Sequence[str]) -> list[list[float]]:
