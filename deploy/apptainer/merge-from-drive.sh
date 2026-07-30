@@ -55,18 +55,25 @@ mkdir -p "$(dirname "$BK")" 2>/dev/null && \
 STAGE_SQL() { apptainer exec "instance://$INST" psql -h 127.0.0.1 -p "$PORT" -U "$USER" -d "$STAGE_DB" "$@"; }
 CFILE="/tmp/aidh_mg.bin"   # 컨테이너 내부 경로(서버 COPY 대상)
 
-merge_table() {  # $1=table $2=pk(csv) $3=updated_col(옵션)
-  local t="$1" pk="$2" upd="${3:-}"
+merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외컬럼(csv, 옵션)
+  # 충돌키는 **자연키**여야 한다. id 가 nextval() 대리키인 테이블(record_sections,
+  # external_id_map 등)은 박스마다 값이 독립 생성돼, dev 의 id 가 운영에 없더라도
+  # (record_id, section_id) 같은 자연키 유니크에 걸려 INSERT 전체가 죽는다
+  # (실제로 cae00 에서 "record_sections: merge 실패" → set -e 로 뒤 4개 테이블과
+  #  staging 정리까지 통째로 스킵됐다). 그런 테이블은 $4 로 id 를 제외해 운영 시퀀스가
+  # 새 id 를 부여하게 하고, 자연키로 충돌 판정한다.
+  local t="$1" pk="$2" upd="${3:-}" drop="${4:-}"
   [ "$(PSQL -d "$DB" -tA -c "SELECT to_regclass('public.$t') IS NOT NULL;")" = "t" ] \
     || { echo "    · $t: 운영에 없음 — skip"; return 0; }
   [ "$(STAGE_SQL -tA -c "SELECT to_regclass('public.$t') IS NOT NULL;")" = "t" ] \
     || { echo "    · $t: staging 에 없음 — skip"; return 0; }
 
-  local cols; cols="$(PSQL -d "$DB" -tA -c "SELECT string_agg(quote_ident(column_name),',' ORDER BY ordinal_position) FROM information_schema.columns WHERE table_schema='public' AND table_name='$t';")"
+  local cols; cols="$(PSQL -d "$DB" -tA -c "SELECT string_agg(quote_ident(column_name),',' ORDER BY ordinal_position) FROM information_schema.columns WHERE table_schema='public' AND table_name='$t' AND column_name <> ALL (string_to_array('$drop',','));")"
+  local skip="$pk"; [ -n "$drop" ] && skip="$pk,$drop"
   local setclause; setclause="$(PSQL -d "$DB" -tA -c "
     SELECT string_agg(quote_ident(column_name)||'=EXCLUDED.'||quote_ident(column_name),', ')
     FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='$t' AND column_name <> ALL (string_to_array('$pk',','));")"
+    WHERE table_schema='public' AND table_name='$t' AND column_name <> ALL (string_to_array('$skip',','));")"
   local where=""; [ -n "$upd" ] && where="WHERE $t.$upd IS NULL OR EXCLUDED.$upd >= $t.$upd"
   local action="DO UPDATE SET $setclause $where"; [ -n "$setclause" ] || action="DO NOTHING"
 
@@ -90,18 +97,27 @@ SQL
 
 echo "→ 테이블 merge (부모→자식 순)"
 : > /tmp/aidh-merge.log
-merge_table org_teams              "code"                ""
-merge_table org_groups             "team_code,code"      ""
-merge_table doc_types              "code"                ""
-merge_table agents                 "agent_type"          "updated_at"
-merge_table records                "id"                  "updated_at"
-merge_table agent_records          "agent_type,record_id" ""
-merge_table record_sections        "id"                  ""
-merge_table record_attachments     "id"                  ""
-merge_table agent_sample_embeddings "id"                 ""
-merge_table external_id_map        "id"                  ""
-merge_table mcp_upstreams          "alias"               ""
+# 한 테이블 실패가 나머지와 staging 정리까지 막지 않게 실패를 모아 마지막에 판정한다.
+FAILED=""
+try_merge() { merge_table "$@" || FAILED="$FAILED $1"; }
 
-# 5) staging 정리
+try_merge org_teams              "code"                 ""
+try_merge org_groups             "team_code,code"       ""
+try_merge doc_types              "code"                 ""
+try_merge agents                 "agent_type"           "updated_at"
+try_merge records                "id"                   "updated_at"
+try_merge agent_records          "agent_type,record_id" ""
+# ↓ id 가 대리키(nextval)라 자연키로 충돌 판정하고 id 는 운영 시퀀스에 맡긴다.
+try_merge record_sections        "record_id,section_id" ""          "id"
+try_merge record_attachments     "id"                   ""
+try_merge agent_sample_embeddings "id"                  ""
+try_merge external_id_map        "source,external_id"   ""          "id"
+try_merge mcp_upstreams          "alias"                ""
+
+# 5) staging 정리 (실패해도 반드시 수행 — 남으면 다음 실행이 이름 충돌로 막힌다)
 PSQL -d postgres -c "DROP DATABASE IF EXISTS $STAGE_DB WITH (FORCE);" >/dev/null
+if [ -n "$FAILED" ]; then
+  echo "✗ merge 일부 실패:$FAILED — /tmp/aidh-merge.log 확인 (나머지 테이블은 반영됨)"
+  exit 1
+fi
 echo "✓ merge 완료 — 운영 DB 유지 + dev 신규 반영. 롤백: restore-db.sh $BK"
