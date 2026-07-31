@@ -75,13 +75,18 @@ CONTENT_SHAPE_HINTS: dict[str, dict[str, Any]] = {
     },
     "SIM": {
         "required": ["solver", "inputs"],
-        "optional": ["solver_version", "outputs", "runtime"],
-        "shape": "{ solver, solver_version, inputs:{}, outputs:{}, runtime:{} }",
+        "optional": ["solver_version", "outputs", "runtime", "eng_meta", "bom",
+                     "components", "connectivity"],
+        "shape": "{ solver, solver_version, inputs:{}, outputs:{}, runtime:{}, "
+        "eng_meta:{}, bom:{}, components:[{pid,title,material}], "
+        "connectivity:{contact_edges:[]} }",
     },
     "CAD": {
         "required": ["cad_type", "file_format"],
-        "optional": ["file_metadata", "components"],
-        "shape": "{ cad_type, file_format, file_metadata:{}, components:[] }",
+        "optional": ["file_metadata", "components", "derived_formats",
+                     "eng_meta", "bom"],
+        "shape": "{ cad_type, file_format, file_metadata:{}, components:[], "
+        "derived_formats:[], eng_meta:{}, bom:{} }",
     },
     "LOG": {"required": [], "optional": [], "shape": "free-form"},
     "FORM": {"required": [], "optional": [], "shape": "free-form"},
@@ -621,6 +626,8 @@ def build_json_schema() -> dict[str, Any]:
                             "runtime": {"type": ["object", "null"]},
                             "eng_meta": {"type": ["object", "null"]},
                             "bom": {"type": ["object", "null"]},
+                            "components": {"type": "array"},
+                            "connectivity": {"type": ["object", "null"]},
                         },
                     },
                 },

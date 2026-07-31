@@ -108,6 +108,27 @@ cae 신설로 이관 완료).
 }
 ```
 
+**components / connectivity** (KooRemapper `modelmeta` op 산출 — 47번째 op).
+
+```jsonc
+"components": [               // 파트 목록 = modelmeta parts[]
+  { "pid": 2, "title": "CCLIP_ANT_01", "elem_class": "solid", "n_elems": 18,
+    "area_ext": 13.5, "volume": 2.25, "proj": {"x":0.75,"y":1.5,"z":4.5},
+    "material": { "mid": 2, "name": "BeCu", "category": "metal",
+                  "record_id": "DOC-MX-MAT-2026-00000000NN",   // 재료 카드 연계
+                  "match_basis": "name-mat" } }
+],
+"connectivity": {             // 파트 연결도 = modelmeta connectivity
+  "contact_edges": [{ "a": 1, "b": 2, "a_title": "CCLIP", "b_title": "PLATE",
+                      "type": "AUTOMATIC_NODES_TO_SURFACE", "fs": 0.2 }],
+  "single_surface": [], "geometric_edges": []
+}
+```
+
+**검색 승격(필수 관례)** — content 내부는 검색 API가 보지 못하므로, 업로더가
+파트명·재료명을 `subject_keywords` 와 `tags`(`part:`/`mat:` 접두)로 승격한다.
+재료 연계는 `components[].material.record_id` + 레코드 `related_record_ids` 병기.
+
 첨부(`kind="cae"`) `extra` 관례 — **unit_system 은 필수**(덱 파일 안에 명시가 없어
 메타로만 보존 가능한 정보다).
 

@@ -85,6 +85,20 @@ def test_normalizer_preserves_sim_eng_meta():
     assert content.get("bom", {}).get("codes") == ["2007-1"]
 
 
+def test_normalizer_preserves_sim_components_connectivity():
+    comps = [{"pid": 2, "title": "CCLIP_ANT_01", "elem_class": "solid",
+              "area_ext": 13.5, "volume": 2.25,
+              "material": {"mid": 2, "name": "BeCu", "record_id": None}}]
+    conn = {"contact_edges": [{"a": 1, "b": 2, "a_title": "CCLIP",
+                               "b_title": "PLATE", "type": "AUTOMATIC", "fs": 0.2}]}
+    raw = {"id": "SIM-MX-CA-2026-0000000002", "data_type": "SIM", "title": "t",
+           "content": {"solver": "LS-DYNA", "inputs": {},
+                       "components": comps, "connectivity": conn}}
+    content = _content_of(normalize(raw))
+    assert content.get("components") == comps
+    assert content.get("connectivity") == conn
+
+
 def test_normalizer_preserves_cad_eng_meta():
     raw = {"id": "CAD-MX-CA-2026-0000000001", "data_type": "CAD", "title": "t",
            "content": {"cad_type": "ECAD", "file_format": "ODB++",

@@ -279,6 +279,14 @@ def transform_record(
             "section_id": "1", "level": 1, "title": "본문", "content_text": str(body),
         }]}
 
+    # 4b. content 부가 필드 — 원본 raw 의 지정 필드를 content 에 그대로 보존
+    #     (예: materialtwin 의 attributes 수치 물성 — sections 재구성으로 유실되는
+    #      구조 데이터를 명시 리스트로 살린다)
+    for cf in rules.get("content_extra_fields") or []:
+        val = _get_path(raw, cf)
+        if val is not None:
+            out["content"][str(cf)] = val
+
     # 5. tags 누적 (tags_prefix 지원)
     tags_prefix = rules.get("tags_prefix") or {}
     tags: list[str] = []

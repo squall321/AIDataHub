@@ -175,6 +175,8 @@ sources:
       subject_keywords_fields:
         - name
         - material_code
+      content_extra_fields:        # 수치 물성 보존 — 파트 대표물성 즉시 조회용
+        - attributes
       valid_from_field: created_at
       year_field: created_at
       data_type: DOC

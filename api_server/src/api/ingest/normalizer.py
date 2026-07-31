@@ -311,7 +311,7 @@ def _extract_sim(raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     }
     # 엔지니어링 메타 보존 (eng_meta/bom) — 고정 키 재구성이 extra='allow' 를
     # 무력화해 드롭시키는 문제(DATA 의 graph_type 선례 B4 와 동일). 있을 때만.
-    for opt in ("eng_meta", "bom"):
+    for opt in ("eng_meta", "bom", "components", "connectivity"):
         if inner.get(opt) is not None:
             sim_content[opt] = inner[opt]
     SimContent.model_validate(sim_content)

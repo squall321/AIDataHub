@@ -42,5 +42,15 @@ class SimContent(BaseModel):
     eng_meta: EngMeta | None = None   # 과제·개발단계 리비전·설계안·DOE
     bom: BomLink | None = None        # 모델 내 부품 ↔ BOM 코드 요약
 
+    # ---- 모델 구조 메타 (KooRemapper modelmeta 산출) ----------------------
+    components: list[dict[str, Any]] = Field(default_factory=list)
+    """파트 목록 — modelmeta parts[] 관례: {pid, title(name), elem_class, n_elems,
+    area_ext, volume, proj{x,y,z}, material{mid, name, category, record_id,
+    match_basis}}. material.record_id 는 DataHub 재료 카드(DOC-MX-MAT-*) 연계."""
+
+    connectivity: dict[str, Any] | None = None
+    """파트 연결도 — modelmeta connectivity 관례: {contact_edges: [{a, b, a_title,
+    b_title, type, fs}], single_surface: [...], geometric_edges: [...]}."""
+
 
 __all__ = ["SimContent"]
