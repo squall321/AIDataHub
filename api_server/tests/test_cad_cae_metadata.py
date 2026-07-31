@@ -91,12 +91,17 @@ def test_normalizer_preserves_sim_components_connectivity():
               "material": {"mid": 2, "name": "BeCu", "record_id": None}}]
     conn = {"contact_edges": [{"a": 1, "b": 2, "a_title": "CCLIP",
                                "b_title": "PLATE", "type": "AUTOMATIC", "fs": 0.2}]}
+    atts = [{"id": "SIM-MX-CA-2026-0000000002-A001", "number": 1, "kind": "cae",
+             "caption": "입력 K파일", "file_name": "model.k",
+             "extra": {"solver": "LS-DYNA", "role": "input", "unit_system": "mm-t-s"}}]
     raw = {"id": "SIM-MX-CA-2026-0000000002", "data_type": "SIM", "title": "t",
            "content": {"solver": "LS-DYNA", "inputs": {},
-                       "components": comps, "connectivity": conn}}
+                       "components": comps, "connectivity": conn,
+                       "attachments": atts}}
     content = _content_of(normalize(raw))
     assert content.get("components") == comps
     assert content.get("connectivity") == conn
+    assert content.get("attachments") == atts   # kind=cae 첨부가 번들 경로에서 생존
 
 
 def test_normalizer_preserves_cad_eng_meta():
