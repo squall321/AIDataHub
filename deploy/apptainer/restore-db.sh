@@ -66,13 +66,34 @@ apptainer exec "instance://$INST_POSTGRES" \
        -c "CREATE EXTENSION IF NOT EXISTS vector;" >/dev/null
 
 echo "→ restore from $DUMP"
-gunzip -c "$DUMP" | apptainer exec "instance://$INST_POSTGRES" \
+# -v ON_ERROR_STOP=1 이 없으면 psql 은 SQL 에러가 나도, 입력이 0바이트여도 exit 0 이다.
+# 그래서 바로 위에서 DROP+CREATE 한 뒤 복원이 통째로 실패해도 '✓ restore 완료' 가 찍혔다.
+if ! gunzip -c "$DUMP" | apptainer exec "instance://$INST_POSTGRES" \
+  psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+  > /tmp/restore.log 2>&1; then
+  echo
+  echo "✗ restore 실패 — psql 이 에러로 중단했다." >&2
+  echo "  로그 꼬리(/tmp/restore.log):" >&2
+  tail -20 /tmp/restore.log | sed 's/^/    /' >&2
+  echo "  롤백용 안전 백업: $AUTO_BACKUP" >&2
+  exit 1
+fi
+
+# 복원 후 테이블이 실제로 생겼는지 본다. 세기만 하고 비교하지 않으면 0개도 '완료'가 된다.
+RESTORED_TABLES=$(apptainer exec "instance://$INST_POSTGRES" \
   psql -h 127.0.0.1 -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-  > /tmp/restore.log 2>&1
+  -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';" 2>/dev/null || echo "")
+case "$RESTORED_TABLES" in
+  ''|*[!0-9]*|0)
+    echo "✗ 복원 후 public 스키마 테이블이 ${RESTORED_TABLES:-조회불가} — 덤프가 비었거나 복원이 안 됐다." >&2
+    echo "  롤백용 안전 백업: $AUTO_BACKUP" >&2
+    exit 1 ;;
+esac
 
 echo
-echo "✓ restore 완료"
+echo "✓ restore 완료 — public schema tables=$RESTORED_TABLES"
 echo "  로그: /tmp/restore.log (마지막 5줄):"
+# 성공 경로라 5줄로 충분하다. 실패 경로에서는 위에서 20줄을 보여준다.
 tail -5 /tmp/restore.log | sed 's/^/    /'
 echo
 echo "  안전 백업 (필요 시 롤백): $AUTO_BACKUP"
