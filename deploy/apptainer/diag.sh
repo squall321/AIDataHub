@@ -88,7 +88,7 @@ fi
 # C-2 API health
 if command -v curl >/dev/null 2>&1; then
   HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
-              "http://127.0.0.1:${API_PORT}/api/system/health" 2>/dev/null || echo "000")
+              "http://127.0.0.1:${API_PORT}/api/system/health" 2>/dev/null)
   if [[ "$HTTP_CODE" == "200" ]]; then
     pass "api /api/system/health → 200"
   else

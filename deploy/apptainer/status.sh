@@ -30,8 +30,11 @@ if ss -tnl 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${POSTGRES_PORT}\$"; t
 if ss -tnl 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${API_PORT}\$"; then API_PORT_OK=ok; else API_PORT_OK=fail; fi
 
 # Health
+# `|| echo "000"` 을 붙이면 안 된다 — curl 은 연결 실패에도 -w 로 이미 000 을 찍고
+# 종료코드만 0 이 아니다. 폴백이 덧붙어 '000000' 이 되어 == "200" 비교를 비껴간다.
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 \
-            "http://127.0.0.1:${API_PORT}/api/system/health" 2>/dev/null || echo "000")
+            "http://127.0.0.1:${API_PORT}/api/system/health" 2>/dev/null)
+HTTP_CODE="${HTTP_CODE:-000}"
 [[ "$HTTP_CODE" == "200" ]] && API_HEALTH=ok || API_HEALTH=fail
 
 printf "%s postgres instance: %s\n" "$(mark $INST_OK)" "$INST_POSTGRES"
