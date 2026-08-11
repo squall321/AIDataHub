@@ -63,10 +63,22 @@ merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외�
   #  staging 정리까지 통째로 스킵됐다). 그런 테이블은 $4 로 id 를 제외해 운영 시퀀스가
   # 새 id 를 부여하게 하고, 자연키로 충돌 판정한다.
   local t="$1" pk="$2" upd="${3:-}" drop="${4:-}"
-  [ "$(PSQL -d "$DB" -tA -c "SELECT to_regclass('public.$t') IS NOT NULL;")" = "t" ] \
-    || { echo "    · $t: 운영에 없음 — skip"; return 0; }
-  [ "$(STAGE_SQL -tA -c "SELECT to_regclass('public.$t') IS NOT NULL;")" = "t" ] \
-    || { echo "    · $t: staging 에 없음 — skip"; return 0; }
+  # psql 이 접속·인증 실패로 죽으면 stdout 이 빈 문자열이라 '테이블 없음'과 구별되지 않는다.
+  # 그러면 전 테이블이 skip 되는데 FAILED 에도 안 잡혀 '✓ merge 완료' 로 끝난다 —
+  # 한 행도 안 들어왔는데 성공으로 보고된다. 'f' 만 진짜 '없음'이고 빈 값은 조회 실패다.
+  local _tex _sex
+  _tex="$(PSQL -d "$DB" -tA -c "SELECT to_regclass('public.$t') IS NOT NULL;" 2>/dev/null)"
+  case "$_tex" in
+    t) : ;;
+    f) echo "    · $t: 운영에 없음 — skip"; return 0 ;;
+    *) echo "    ✗ $t: 운영 DB 조회 실패(접속·인증 확인)" >&2; return 1 ;;
+  esac
+  _sex="$(STAGE_SQL -tA -c "SELECT to_regclass('public.$t') IS NOT NULL;" 2>/dev/null)"
+  case "$_sex" in
+    t) : ;;
+    f) echo "    · $t: staging 에 없음 — skip"; return 0 ;;
+    *) echo "    ✗ $t: staging 조회 실패" >&2; return 1 ;;
+  esac
 
   local cols; cols="$(PSQL -d "$DB" -tA -c "SELECT string_agg(quote_ident(column_name),',' ORDER BY ordinal_position) FROM information_schema.columns WHERE table_schema='public' AND table_name='$t' AND column_name <> ALL (string_to_array('$drop',','));")"
   local skip="$pk"; [ -n "$drop" ] && skip="$pk,$drop"
