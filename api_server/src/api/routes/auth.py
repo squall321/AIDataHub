@@ -74,6 +74,35 @@ async def revoke_key(
         raise NotFoundError(f"api key not found: id={key_id}")
 
 
+@router.post("/self-revoke", status_code=status.HTTP_204_NO_CONTENT)
+async def self_revoke(
+    principal: Principal = Depends(require_api_key),
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    """자기 자신의 SSO 키를 폐기한다 — 포털 로그아웃이 부른다.
+
+    왜 필요한가. 포털에서 로그아웃해도 이 서버의 접근 권한은 회수되지 않았다.
+    포털 타일을 누르면 portal_sso 가 name="sso:<email>" 인 ApiKey 행을 발급하고
+    (기본 TTL 30일) 그 평문이 브라우저 localStorage 에 남는데, 포털 로그아웃은
+    그 브라우저 사본만 지웠다. 서버의 행은 revoked=False 로 살아 있어, 키 사본을
+    가진 쪽은 최대 30일 그대로 들어온다. 재로그인 때는 _mint_sso_key 가 이전 키를
+    폐기하지만, 로그아웃만으로는 아무것도 폐기되지 않았다.
+
+    인가는 키 자신이다 — 제시한 키의 행만 지운다. 남의 키는 건드릴 수 없다.
+    bootstrap 키는 거부한다(그걸 지우면 운영자가 스스로를 잠근다).
+    sso: 로 시작하지 않는 키는 아무것도 하지 않고 204 로 끝낸다 — 사람이 직접 만든
+    장기 키가 로그아웃 한 번에 사라지면 곤란하고, 로그아웃은 어떤 경우에도 막히면 안 된다.
+    """
+    if principal.is_bootstrap or principal.key_id is None:
+        log.info("self-revoke 거부 — bootstrap 키")
+        return
+    if not (principal.name or "").startswith("sso:"):
+        log.info("self-revoke 생략 — SSO 키가 아님(name=%s)", principal.name)
+        return
+    await revoke_api_key(session, principal.key_id)
+    log.info("self-revoke 완료 — %s (id=%s)", principal.name, principal.key_id)
+
+
 @router.post("/verify", status_code=status.HTTP_200_OK)
 async def verify_key(
     principal: Principal = Depends(require_api_key),
