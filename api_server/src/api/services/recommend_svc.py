@@ -39,6 +39,9 @@ _SAMPLE_PER_AGENT_CAP = int(os.environ.get("AGENT_SAMPLE_PER_AGENT_CAP", "3"))
 # Warpage Specialist)가 데이터 많은 무관 에이전트(~1.85)에 밀리던 문제(관측). 강한 이름/설명
 # 일치(distinctive 토큰 frac→1.0)가 데이터 점수를 이길 수 있어야 한다.
 _DESC_WEIGHT = float(os.environ.get("AGENT_DESC_WEIGHT", "2.0"))
+# 최고 역할/설명 어휘 일치가 이 값 미만이면 low_confidence 를 붙인다.
+# 경계는 실측(덮임 최저 50% vs 안 덮임 최고 33%) 사이를 잡았다.
+_LOW_CONF_DESC = float(os.environ.get("AGENT_LOW_CONF_DESC", "0.40"))
 
 # 범용 불용어 — 모든 에이전트 데이터/이름에 흔해 질의 신호를 희석한다(결함 라이프사이클·대화체).
 # 이 단어들이 denominator(질의 토큰 수)를 부풀리면 distinctive 토큰의 frac 이 과소평가된다.
@@ -241,9 +244,21 @@ async def recommend_agents(
                 "matched_sections": agent_sections[at],
                 "matched_samples": len(agent_sample_hits[at]),
                 "why": " · ".join(why_parts) if why_parts else "(no direct evidence)",
+                "desc_match": round(agent_desc_match.get(at, 0.0), 4),
             }
         )
 
+    # 상위 항목에 붙여 호출자가 '풀에 맞는 사람이 없다'를 판정할 수 있게 한다.
+    # ⚠ 점수(score)로는 판정할 수 없다. record/sample 항은 e5 코사인 절대값인데 이
+    # 임베더는 무관한 문장끼리도 0.87~0.90 이 나온다 — 어떤 질의든 그럴듯한 점수가
+    # 붙어 항상 5명이 확신에 차서 나온다. 실제 사고: 'OCA 의 산소 확산 계수' 질의에
+    # 백플레인 TFT·안테나 OTA·낙하해석이 추천됐고, 조사해 보니 풀에 그 전문성이 아예
+    # 없었다(산소 3명은 전부 MLCC·열폭주, permeab 0명).
+    # 역할/설명 어휘 일치는 다르다 — 실측으로 갈린다.
+    #   덮이는 질의 50/86/78/75%  vs  안 덮이는 질의 30/0/33%
+    best_match = max((r.get('desc_match') or 0.0) for r in ranked) if ranked else 0.0
+    for r in ranked[:top_k]:
+        r['low_confidence'] = best_match < _LOW_CONF_DESC
     return ranked[:top_k]
 
 
