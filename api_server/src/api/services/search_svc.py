@@ -294,7 +294,10 @@ async def semantic_search(
         )
         if data_types:
             stmt = stmt.where(Record.data_type.in_(list(data_types)))
-        if record_ids:
+        # ⚠ `is not None` 이다. 빈 리스트를 falsy 로 흘리면 필터가 통째로 사라져
+        #   "이 좌석 범위에서 찾아라" 가 "전역에서 찾아라" 로 조용히 바뀐다 —
+        #   바인딩 0 인 좌석이 남의 문서를 자기 근거로 받게 된다(2026-09-01 실측).
+        if record_ids is not None:
             stmt = stmt.where(RecordSection.record_id.in_(list(record_ids)))
         stmt = stmt.order_by(distance.asc()).limit(fetch_k)
         rows = (await session.execute(stmt)).all()
@@ -338,7 +341,7 @@ async def semantic_search(
     )
     if data_types:
         stmt = stmt.where(Record.data_type.in_(list(data_types)))
-    if record_ids:
+    if record_ids is not None:      # 위 주석 참조 — 빈 리스트는 '전역'이 아니라 '해당 없음'
         stmt = stmt.where(RecordSection.record_id.in_(list(record_ids)))
     rows = (await session.execute(stmt)).all()
 
@@ -573,7 +576,7 @@ async def hybrid_search(
 
     # 2) FTS 결과 가져오기 (record_ids/data_types 필터는 후처리)
     fts_items, _ = await fts_search(session, q, limit=fetch_k)
-    rid_set = set(record_ids) if record_ids else None
+    rid_set = set(record_ids) if record_ids is not None else None
     dt_set = set(data_types) if data_types else None
     if rid_set is not None:
         fts_items = [it for it in fts_items if it.get("record_id") in rid_set]
