@@ -42,6 +42,10 @@ _DESC_WEIGHT = float(os.environ.get("AGENT_DESC_WEIGHT", "2.0"))
 # 최고 역할/설명 어휘 일치가 이 값 미만이면 low_confidence 를 붙인다.
 # 경계는 실측(덮임 최저 50% vs 안 덮임 최고 33%) 사이를 잡았다.
 _LOW_CONF_DESC = float(os.environ.get("AGENT_LOW_CONF_DESC", "0.40"))
+# context-bundle 레코드 선택에 쓰는 sample_query 앵커 개수. 질의 하나당 벡터검색 1회라
+# 비용이 선형으로 는다. 좌석당 sample_queries 는 보통 10개인데 앞의 몇 개면 도메인을 충분히
+# 덮는다(2026-09-01 실측: 3개로 갈바닉·염수분무·크리프 부식 축이 모두 잡혔다).
+_ANCHOR_QUERIES = int(os.environ.get("AGENT_BUNDLE_ANCHORS", "3"))
 
 # 범용 불용어 — 모든 에이전트 데이터/이름에 흔해 질의 신호를 희석한다(결함 라이프사이클·대화체).
 # 이 단어들이 denominator(질의 토큰 수)를 부풀리면 distinctive 토큰의 frac 이 과소평가된다.
@@ -339,28 +343,77 @@ async def build_context_bundle(
 
     # agent 소속 records — agents ARRAY 에 포함된 것
     # GIN index 활용을 위해 PostgreSQL 의 ANY 연산 사용 (dialect-agnostic 폴백 X).
+    #
+    # ⚠ 정렬을 relevance 로 바꾼 이유(2026-09-01 실측). 종전은 created_at DESC + limit
+    #   이었고, relevance 필터는 **이미 고른 레코드 안의 섹션**에만 걸렸다. 그래서 레코드
+    #   선택 자체가 관련도와 무관한 "최근 적재순"이 되어, 부식 전문가(rel-chemical-corrosion)
+    #   번들에 공구강 카탈로그·글루코스 바이오센서 논문이 올라왔다. 정작 그 좌석의 갈바닉
+    #   부식 카드는 semantic_search 로는 0.94 로 잘 나오는데 번들에서만 밀려났다 —
+    #   최근 적재분이 아니라서다. 심의 6석 중 5석에서 재현돼 도구 결함으로 기록됐다.
+    #
+    #   절대 임계로는 못 고친다. e5 임베더는 무관 텍스트에도 코사인 0.8 대를 주고
+    #   (sim+1)/2 매핑까지 거치면 무관 0.90 / 관련 0.94 로 폭이 0.04 뿐이라
+    #   score_threshold=0.3 은 아무것도 거르지 못한다. 반면 **순위는 정상 작동한다.**
+    #   그래서 임계값을 건드리지 않고 후보를 넓게 떠서 relevance 로 재정렬한 뒤 자른다.
     from sqlalchemy import literal
-    stmt = (
-        select(Record)
-        .where(literal(agent_type) == Record.agents.any_())  # type: ignore[attr-defined]
-        .order_by(Record.created_at.desc())
-        .limit(max_records)
-    )
-    try:
-        rec_rows = (await session.execute(stmt)).scalars().all()
-    except Exception:
-        # 폴백 — 파이썬 후필터
-        rec_rows = []
-        all_rows = (
-            await session.execute(select(Record).order_by(Record.created_at.desc()))
-        ).scalars().all()
-        for r in all_rows:
-            if agent_type in (r.agents or []):
-                rec_rows.append(r)
-                if len(rec_rows) >= max_records:
-                    break
 
-    records_payload: list[dict[str, Any]] = []
+    # ① do_filter 면 pgvector 인덱스로 관련 레코드를 먼저 고른다.
+    #    파이썬으로 전수 스코어링하지 않는 이유 — 한 좌석에 280 레코드가 묶여 있고
+    #    전체 섹션이 86만 행이다. 임베딩을 파이썬으로 끌어와 도는 순간 비용이 터진다.
+    #    반면 semantic_search 는 이미 이 좌석의 갈바닉 카드를 0.94 로 정확히 찾아낸다.
+    #    그 검증된 경로를 record_ids 로 좌석 범위에 묶어 재사용한다.
+    rank_by_id: dict[str, float] = {}
+    if do_filter:
+        bound_ids = list(
+            (await session.execute(
+                select(Record.id).where(literal(agent_type) == Record.agents.any_())  # type: ignore[attr-defined]
+            )).scalars().all()
+        )
+        if bound_ids:
+            # sample_queries 를 앵커로 — 너무 많으면 비용이 선형으로 늘어 앞의 몇 개만 쓴다.
+            for sq in sample_queries[:_ANCHOR_QUERIES]:
+                try:
+                    hits = await search_svc.semantic_search(
+                        session, sq, top_k=max_records * 3, record_ids=bound_ids
+                    )
+                except Exception:
+                    break     # 검색 실패는 비치명 — 아래 recency 폴백으로 간다
+                for h in hits or []:
+                    rid = h.get("record_id") or h.get("id")
+                    if not rid:
+                        continue
+                    sc = float(h.get("score") or 0.0)
+                    if sc > rank_by_id.get(rid, -1.0):
+                        rank_by_id[rid] = sc
+
+    # ② 검색이 뭔가 골랐으면 그 순서로, 아니면 종전대로 최근 적재순.
+    if rank_by_id:
+        ordered_ids = [rid for rid, _ in sorted(rank_by_id.items(), key=lambda t: t[1], reverse=True)][:max_records]
+        rows = (await session.execute(select(Record).where(Record.id.in_(ordered_ids)))).scalars().all()
+        by_id = {r.id: r for r in rows}
+        rec_rows = [by_id[i] for i in ordered_ids if i in by_id]
+    else:
+        stmt = (
+            select(Record)
+            .where(literal(agent_type) == Record.agents.any_())  # type: ignore[attr-defined]
+            .order_by(Record.created_at.desc())
+            .limit(max_records)
+        )
+        try:
+            rec_rows = (await session.execute(stmt)).scalars().all()
+        except Exception:
+            rec_rows = []
+            all_rows = (
+                await session.execute(select(Record).order_by(Record.created_at.desc()))
+            ).scalars().all()
+            for r in all_rows:
+                if agent_type in (r.agents or []):
+                    rec_rows.append(r)
+                    if len(rec_rows) >= max_records:
+                        break
+
+    # (record 최고 relevance, payload) — do_filter 일 때 이 값으로 재정렬해 자른다.
+    scored_records: list[tuple[float, dict[str, Any]]] = []
     for r in rec_rows:
         if do_filter:
             # relevance 필터 활성 — level cap 전에 후보를 넓게 가져와서
@@ -416,7 +469,14 @@ async def build_context_bundle(
                 }
                 for s in secs
             ]
-        records_payload.append(
+        # 이 레코드의 대표 relevance = 살아남은 섹션의 최고값. 스코어가 하나도 없으면
+        # -1 로 두어 스코어된 레코드보다 뒤로 민다(스코어 불가 ≠ 관련 있음).
+        _best = max(
+            (it["relevance"] for it in key_sections if "relevance" in it),
+            default=-1.0,
+        )
+        scored_records.append((
+            _best,
             {
                 "id": r.id,
                 "data_type": r.data_type,
@@ -427,8 +487,13 @@ async def build_context_bundle(
                 "tags": list(r.tags or []),
                 "doc_type": r.doc_type,
                 "key_sections": key_sections,
-            }
-        )
+                **({"relevance": round(_best, 4)} if _best >= 0 else {}),
+            },
+        ))
+
+    # 순서는 이미 rank_by_id(또는 recency)가 정했다. 섹션 최고값으로 다시 흔들지 않는다 —
+    # 레코드 간 비교는 인덱스 검색 점수가, 레코드 안 섹션 정렬은 relevance 가 맡는다.
+    records_payload = [p for _, p in scored_records[:max_records]]
 
     return {
         "agent": {
@@ -453,6 +518,10 @@ async def build_context_bundle(
             "applied": bool(do_filter),
             "score_threshold": score_threshold if do_filter else None,
             "anchor": "sample_queries",
+            # 레코드 선택 근거 — relevance 면 후보 풀에서 관련도순으로 골랐다는 뜻이고,
+            # recency 면 필터가 꺼져 종전대로 최근 적재순이라는 뜻이다.
+            "record_order": "semantic" if rank_by_id else "recency",
+            "record_candidates": len(rank_by_id),
         },
         "totals": {
             "records_returned": len(records_payload),
