@@ -977,7 +977,9 @@ async def get_record(record_id: str) -> dict[str, Any]:
 @mcp.tool(
     title="Get RAG section chunks for a record",
     description=(
-        "Returns sectioned (chunked) body of a record, suitable for RAG. "
+        "Returns sectioned (chunked) body of an **AIDataHub record** (record_id), "
+        "suitable for RAG. This is the tool to use when you hold a record_id — "
+        "`get_section` belongs to the document-editing app and takes a document `slug`. "
         "PREFER passing `sections` (list of section_ids from a search hit) to "
         "fetch only what you cite — keeps token cost low. Omit `sections` to "
         "get the first `limit` sections (default 10). Each section returns "
