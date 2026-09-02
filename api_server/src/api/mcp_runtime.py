@@ -227,7 +227,11 @@ async def list_tags(
     description=(
         "Given a natural-language query, returns ranked agents based on semantic "
         "search aggregation + sample query matching. Use this when the user describes "
-        "an intent and you need to pick the right agent."
+        "an intent and you need to pick the right agent. "
+        "RETURNS {query, agents:[{agent_type, name, description, score, ...}]} — the list "
+        "key is `agents` (not `recommendations`/`results`); `agent_type` is the seat key. "
+        "TIP: a long query embeds to a mush centroid and returns the same neighbours as any "
+        "other long query — split the topic into short domain phrases and call once per phrase."
     ),
 )
 async def recommend_agents(
