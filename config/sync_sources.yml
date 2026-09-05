@@ -143,18 +143,27 @@ sources:
 
   # ---------------------------------------------------------------------------
   # MaterialTwin — 재료 물성 카탈로그(heax 앱). heax Caddy 경유(포트 무관 안정 URL).
-  #   앱은 /api/materials 를 서빙하고 Caddy 가 /apps/<id>/ 프리픽스를 strip 하므로
-  #   list_endpoint 에 /api 를 포함한다. 응답은 {items,total,page,size} 페이지네이션.
+  #   Caddy 가 /apps/<id>/ 프리픽스를 strip 하므로 list_endpoint 에 /api 를 포함한다.
   #   무인증(company visibility) — api_key 불필요.
+  #
+  # 2026-08-08 — /api/materials → /api/export/materials 로 바꿨다. 이유 둘.
+  #   (1) /api/materials 는 목록이라 attributes 가 {"source":"mcp"} 한 줄뿐이었다.
+  #       그래서 허브에 재료 이름만 523건 쌓이고 물성값은 0건이었다(실측).
+  #       /api/export/materials 는 재료마다 물성값·측정조건·tier·출처를 다 실어 보낸다.
+  #   (2) _fetch_page 는 응답에서 next_cursor 를 찾고 없으면 한 페이지에서 종료한다.
+  #       구 엔드포인트는 {items,total,page,size} 만 줘서 매 실행 100건에서 멈춰 있었다
+  #       (sync_runs.fetched_count 가 계속 100). 새 엔드포인트가 next_cursor 를 낸다.
+  #   page_size 를 50 으로 낮춘 것은 문서 하나가 물성 수백 건을 안고 오기 때문이다
+  #   (EMC 는 512 건). 100 이면 한 응답이 과하게 커진다.
   # ---------------------------------------------------------------------------
   - name: materialtwin
-    description: "MaterialTwin 재료 물성 카탈로그 — heax 앱 미러"
+    description: "MaterialTwin 재료 물성 카탈로그 — 물성값·조건·출처 포함 미러"
     base_url: "http://127.0.0.1:4180"
-    list_endpoint: "/apps/materialtwin_web/api/materials"
+    list_endpoint: "/apps/materialtwin_web/api/export/materials"
     list_method: GET
     cursor_param: page             # materialtwin 은 page/size 페이지네이션(offset 아님)
     limit_param: size
-    page_size: 100
+    page_size: 50
     max_rps: 2.0
     retry_max: 3
     retry_backoff_sec: 2.0
@@ -164,8 +173,11 @@ sources:
     mapping_rules:
       id_field: id
       title_field: name
-      summary_template: "{category} — {name} (code: {material_code})"
-      body_field: description
+      summary_template: "{category} — {name} (물성 {n_properties}건 · 출처 {n_sources}건)"
+      # body 는 앱이 렌더한 물성 목록 텍스트다 — 물성명·값·단위·조건·tier·출처가 한 줄씩
+      # 펴져 있어 전문검색이 걸린다. description 은 카탈로그 재료에서 전부 null 이라
+      # 본문이 빈 문서가 적재되고 있었다.
+      body_field: body
       tags_fields:
         - category
         - material_code
@@ -175,8 +187,9 @@ sources:
       subject_keywords_fields:
         - name
         - material_code
-      content_extra_fields:        # 수치 물성 보존 — 파트 대표물성 즉시 조회용
-        - attributes
+      content_extra_fields:        # 구조 보존 — 값·단위·조건·tier·출처 원형 그대로
+        - properties
+        - sources
       valid_from_field: created_at
       year_field: created_at
       data_type: DOC
