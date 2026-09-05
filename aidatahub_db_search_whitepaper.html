@@ -1,0 +1,663 @@
+<!-- AI Data Hub 의 DB 수집·검색 방식을 코드 근거로 검증해 정리한 기술 백서(단일 파일 슬라이드 덱) -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>AI Data Hub — 데이터 수집·검색 기술 백서</title>
+<style>
+:root{
+ --blue:#1e40af; --blue2:#3b82f6; --blue-dark:#1e3a8a;
+ --light:#eff6ff; --dark:#0f172a; --darker:#020617;
+ --gray:#64748b; --gray-light:#94a3b8; --border:#e2e8f0;
+ --green:#16a34a; --green-light:#dcfce7;
+ --orange:#ea580c; --orange-light:#ffedd5;
+ --red:#dc2626; --red-light:#fee2e2;
+ --purple:#7c3aed; --purple-light:#ede9fe;
+ --teal:#0d9488; --teal-light:#ccfbf1;
+ --yellow:#eab308; --yellow-light:#fef9c3;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+html,body{font-family:'Segoe UI','Apple SD Gothic Neo','Noto Sans KR',sans-serif;
+ background:#f8fafc;color:var(--dark);line-height:1.6;}
+
+.nav{position:fixed;top:0;left:0;right:0;z-index:200;background:var(--darker);color:#fff;
+ display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:52px;
+ font-size:.85rem;box-shadow:0 2px 8px rgba(0,0,0,.2);}
+.nav-title{font-weight:700;letter-spacing:.03em;display:flex;align-items:center;gap:.6rem;}
+.nav-title .nav-cat{color:#93c5fd;font-size:.78rem;font-weight:600;}
+.nav-controls{display:flex;gap:.35rem;align-items:center;flex-wrap:wrap;}
+.nav-controls a{background:#1e293b;color:#cbd5e1;text-decoration:none;
+ padding:.35rem .7rem;border-radius:5px;cursor:pointer;font-size:.72rem;
+ font-weight:600;transition:all .15s;}
+.nav-controls a:hover{background:var(--blue2);color:#fff;}
+
+.slide{min-height:calc(100vh - 52px);display:flex;flex-direction:column;justify-content:flex-start;
+ padding:2.6rem 3.4rem;border-bottom:1px solid var(--border);scroll-margin-top:52px;position:relative;}
+.slide:not(.cover):nth-child(odd){background:#ffffff;}
+.slide:not(.cover):nth-child(even){background:#f8fafc;}
+.slides-wrapper{padding-top:52px;}
+
+.slide-num{font-size:.72rem;font-weight:800;letter-spacing:.18em;
+ color:var(--blue2);text-transform:uppercase;margin-bottom:.5rem;}
+h2.slide-title{font-size:1.85rem;font-weight:900;color:var(--dark);margin-bottom:.35rem;line-height:1.15;}
+h2.slide-title span{color:var(--blue2);}
+.slide-sub{font-size:.92rem;color:var(--gray);margin-bottom:1.2rem;max-width:1000px;}
+h3.sec{font-size:1.02rem;font-weight:800;color:var(--blue);margin:1.1rem 0 .55rem;
+ padding-left:.7rem;border-left:4px solid var(--blue2);}
+p,li{font-size:.88rem;line-height:1.65;color:#334155;}
+ul{padding-left:1.25rem;}
+li{margin-bottom:.15rem;}
+code{background:#f1f5f9;border-radius:4px;padding:.1em .38em;font-size:.84em;
+ color:var(--blue);font-family:'Consolas','Menlo',monospace;font-weight:600;}
+b,strong{color:#0f172a;}
+
+.cover{min-height:calc(100vh - 52px);display:flex;flex-direction:column;justify-content:center;
+ padding:3rem 4.2rem;color:#fff;position:relative;overflow:hidden;
+ background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#0d4a6b 100%);}
+.cover::before{content:'';position:absolute;top:0;left:0;right:0;bottom:0;
+ background-image:radial-gradient(circle at 20% 20%,rgba(255,255,255,.12) 0%,transparent 50%),
+ radial-gradient(circle at 80% 80%,rgba(255,255,255,.08) 0%,transparent 50%);pointer-events:none;}
+.cover-wrap{position:relative;z-index:2;max-width:1200px;}
+.cover-tagline{font-size:.82rem;font-weight:800;letter-spacing:.22em;
+ text-transform:uppercase;margin-bottom:1rem;opacity:.85;display:flex;align-items:center;gap:.8rem;}
+.cover-tagline .dot{width:8px;height:8px;border-radius:50%;background:currentColor;}
+.cover-title-block{margin-bottom:1.6rem;}
+.cover-title-block h1{font-size:3.2rem;font-weight:900;color:#fff;line-height:1.05;margin-bottom:.4rem;
+ text-shadow:0 2px 20px rgba(0,0,0,.3);}
+.cover-title-block .subtitle{font-size:1.05rem;color:rgba(255,255,255,.85);font-weight:500;}
+.cover-desc{font-size:1rem;color:rgba(255,255,255,.9);max-width:900px;line-height:1.7;
+ margin-bottom:1.4rem;}
+.cover-badges{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.4rem;}
+.cover-badge{background:rgba(255,255,255,.15);backdrop-filter:blur(10px);
+ border:1px solid rgba(255,255,255,.25);color:#fff;padding:.45rem 1rem;border-radius:100px;
+ font-size:.8rem;font-weight:700;}
+.cover-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:.8rem;margin-top:1.2rem;max-width:1000px;}
+.cover-stat{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);
+ border-radius:12px;padding:.9rem 1rem;}
+.cover-stat .n{font-size:1.5rem;font-weight:900;color:#fff;line-height:1;}
+.cover-stat .l{font-size:.66rem;color:rgba(255,255,255,.7);text-transform:uppercase;
+ letter-spacing:.08em;margin-top:.4rem;font-weight:700;}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:1.3rem;align-items:start;}
+.three-col{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;}
+.four-col{display:grid;grid-template-columns:repeat(4,1fr);gap:.8rem;}
+@media(max-width:900px){.two-col,.three-col,.four-col{grid-template-columns:1fr;}
+ .cover-stats{grid-template-columns:repeat(2,1fr);} .slide{padding:2rem 1.4rem;}}
+
+.card{background:#fff;border:1.5px solid var(--border);border-radius:12px;
+ padding:.95rem 1.15rem;box-shadow:0 1px 3px rgba(0,0,0,.04);margin-bottom:.7rem;}
+.card h4{font-size:.92rem;font-weight:800;color:var(--blue);margin-bottom:.4rem;}
+.card p,.card li{font-size:.82rem;color:#475569;}
+.card ul{margin:.2rem 0;padding-left:1.05rem;}
+.card ul li{margin-bottom:.16rem;}
+.card.green{border-color:#86efac;background:linear-gradient(135deg,#fff,#f0fdf4);}
+.card.green h4{color:var(--green);}
+.card.orange{border-color:#fed7aa;background:linear-gradient(135deg,#fff,#fff7ed);}
+.card.orange h4{color:var(--orange);}
+.card.purple{border-color:#c4b5fd;background:linear-gradient(135deg,#fff,#faf5ff);}
+.card.purple h4{color:var(--purple);}
+.card.teal{border-color:#5eead4;background:linear-gradient(135deg,#fff,#f0fdfa);}
+.card.teal h4{color:var(--teal);}
+.card.red{border-color:#fca5a5;background:linear-gradient(135deg,#fff,#fff1f2);}
+.card.red h4{color:var(--red);}
+.card.dark{background:var(--darker);color:#cbd5e1;border-color:#1e293b;}
+.card.dark h4{color:#60a5fa;}
+.card.dark p,.card.dark li{color:#94a3b8;}
+.card.accent{border-color:var(--blue2);background:linear-gradient(135deg,#fff,var(--light));}
+.card.accent h4{color:var(--blue);}
+
+table{width:100%;border-collapse:collapse;font-size:.8rem;margin-bottom:1rem;
+ background:#fff;border-radius:10px;overflow:hidden;border:1px solid var(--border);}
+th{background:var(--darker);color:#e2e8f0;padding:.5rem .8rem;text-align:left;
+ font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
+td{padding:.48rem .8rem;border-bottom:1px solid var(--border);vertical-align:top;font-size:.8rem;color:#334155;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:var(--light);}
+.tbl-scroll{overflow-x:auto;}
+
+.tag{display:inline-flex;align-items:center;font-size:.68rem;font-weight:700;
+ padding:.2em .6em;border-radius:100px;margin:.1rem .06rem;}
+.tag-blue{background:#dbeafe;color:var(--blue);}
+.tag-green{background:#dcfce7;color:var(--green);}
+.tag-orange{background:#ffedd5;color:var(--orange);}
+.tag-teal{background:#ccfbf1;color:var(--teal);}
+.tag-purple{background:#ede9fe;color:var(--purple);}
+.tag-red{background:#fee2e2;color:var(--red);}
+.tag-gray{background:#e2e8f0;color:#475569;}
+
+.flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;margin:.6rem 0 1rem;}
+.flow-step{flex:1;min-width:130px;background:#fff;border:1.5px solid var(--border);
+ border-radius:10px;padding:.7rem .8rem;position:relative;margin:.25rem;}
+.flow-step .fs-n{font-size:.64rem;font-weight:800;color:var(--blue2);letter-spacing:.1em;text-transform:uppercase;}
+.flow-step .fs-t{font-size:.86rem;font-weight:800;color:var(--dark);margin:.15rem 0 .2rem;}
+.flow-step .fs-d{font-size:.72rem;color:#64748b;line-height:1.45;}
+.flow-step code{font-size:.7rem;}
+.flow-arrow{display:flex;align-items:center;color:var(--blue2);font-weight:900;font-size:1.1rem;padding:0 .1rem;}
+
+.pill-row{display:flex;flex-wrap:wrap;gap:.35rem;margin:.3rem 0 .6rem;}
+.cite{font-family:'Consolas','Menlo',monospace;font-size:.72rem;color:#94a3b8;font-weight:600;}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:.2rem .8rem;font-size:.82rem;}
+.kv dt{font-weight:800;color:var(--blue);}
+.kv dd{color:#334155;}
+.callout{border-radius:10px;padding:.8rem 1rem;font-size:.84rem;margin:.5rem 0;border-left:4px solid;}
+.callout.info{background:var(--light);border-color:var(--blue2);color:#1e3a8a;}
+.callout.warn{background:#fff7ed;border-color:var(--orange);color:#9a3412;}
+.callout.ok{background:#f0fdf4;border-color:var(--green);color:#166534;}
+.lead{font-size:1rem;color:#1e293b;font-weight:600;line-height:1.6;margin-bottom:.5rem;}
+.mono-block{background:var(--darker);color:#cbd5e1;border-radius:10px;padding:.9rem 1.1rem;
+ font-family:'Consolas','Menlo',monospace;font-size:.78rem;line-height:1.7;overflow-x:auto;margin:.5rem 0;}
+.mono-block .c{color:#64748b;} .mono-block .k{color:#93c5fd;} .mono-block .g{color:#86efac;} .mono-block .y{color:#fcd34d;}
+.foot{padding:1.6rem 3.4rem;background:var(--darker);color:#94a3b8;font-size:.78rem;}
+.foot b{color:#cbd5e1;}
+.badge-verify{display:inline-block;font-size:.66rem;font-weight:800;padding:.16em .55em;border-radius:5px;letter-spacing:.03em;}
+.bv-ok{background:var(--green-light);color:#166534;}
+.bv-cond{background:var(--yellow-light);color:#854d0e;}
+.bv-warn{background:var(--orange-light);color:#9a3412;}
+</style>
+</head>
+<body>
+
+<div class="nav">
+ <div class="nav-title"><span class="nav-cat">MOBILE eXPERIENCE</span> AI Data Hub — 데이터 수집·검색 기술 백서</div>
+ <div class="nav-controls">
+  <a href="#s1">개요</a>
+  <a href="#s3">데이터경로</a>
+  <a href="#s4">스키마</a>
+  <a href="#s5">수집</a>
+  <a href="#s8">포맷재사용</a>
+  <a href="#s9">검색</a>
+  <a href="#s12">검증결과</a>
+ </div>
+</div>
+
+<div class="slides-wrapper">
+
+<!-- ============ COVER ============ -->
+<section class="slide cover" id="s0">
+ <div class="cover-wrap">
+  <div class="cover-tagline"><span class="dot"></span> CODE-VERIFIED TECHNICAL WHITEPAPER · 2026</div>
+  <div class="cover-title-block">
+   <h1>어떻게 DB를 모으고,<br/>어떻게 검색하는가</h1>
+   <div class="subtitle">AI Data Hub — 사업부 문서·측정·시뮬·CAD·로그 통합 카탈로그의 수집/검색 아키텍처</div>
+  </div>
+  <div class="cover-desc">
+   두 질문 — <b>"어떻게 DB를 모을 것인가"</b>, <b>"어떻게 검색할 것인가"</b> — 에 대한 답을
+   실제 코드(<span class="cite">api_server/src</span>)로 검증해 정리한다. 핵심 서사는 하나다.
+   <b>검색에 필요한 공통 포맷(스키마·분류)을 MCP로 한 번 정의해 데이터 포맷을 형성하고, 한 번 형성되면 이후 데이터 추가는 최소 입력으로 일관되게 이뤄진다.</b>
+  </div>
+  <div class="cover-badges">
+   <span class="cover-badge">PostgreSQL + pgvector</span>
+   <span class="cover-badge">HNSW 벡터색인</span>
+   <span class="cover-badge">Hybrid 검색 (RRF k=60)</span>
+   <span class="cover-badge">multilingual-e5 임베딩</span>
+   <span class="cover-badge">Agent-aware RAG</span>
+   <span class="cover-badge">MCP 도구 40+</span>
+  </div>
+  <div class="cover-stats">
+   <div class="cover-stat"><div class="n">17</div><div class="l">ORM 테이블</div></div>
+   <div class="cover-stat"><div class="n">4</div><div class="l">수집 경로</div></div>
+   <div class="cover-stat"><div class="n">6+1</div><div class="l">검색 모달리티</div></div>
+   <div class="cover-stat"><div class="n">7 / 39</div><div class="l">data_type / doc_type</div></div>
+   <div class="cover-stat"><div class="n">29</div><div class="l">DB 마이그레이션</div></div>
+  </div>
+ </div>
+</section>
+
+<!-- ============ 1. 두 질문 요약 ============ -->
+<section class="slide" id="s1">
+ <div class="slide-num">01 · Executive Summary</div>
+ <h2 class="slide-title">두 질문에 대한 <span>한 장 요약</span></h2>
+ <p class="slide-sub">모든 수집 경로는 하나의 코어(<code>write_record()</code>)로 수렴하고, 모든 검색은 하나의 코어(<code>search_svc</code>)로 수렴한다. 그 사이를 잇는 것이 "공통 포맷"이다.</p>
+
+ <div class="three-col">
+  <div class="card accent">
+   <h4>Q1. 어떻게 모을 것인가</h4>
+   <ul>
+    <li>원본 파일(docx·xlsx·pptx·md·pdf) → <b>표준 JSON</b>으로 변환</li>
+    <li>4개 진입점(REST 벌크 / 파일업로드 / CLI 배치 / MCP)이 모두 <code>RecordIn → write_record</code>로 수렴</li>
+    <li>메타데이터는 <b>유사데이터 기반 자동제안</b>(doc_type·tags·graph_type) + <b>사람 확정</b>(team·group)으로 이원화</li>
+    <li><code>content_hash</code> 기반 멱등 UPSERT로 중복 흡수</li>
+   </ul>
+  </div>
+  <div class="card teal">
+   <h4>Q2. 어떻게 검색할 것인가</h4>
+   <ul>
+    <li>태그 / 전문(FTS) / 의미(벡터) / <b>하이브리드(RRF)</b> / 유사도 / 에이전트-스코프</li>
+    <li>의미검색은 <b>pgvector HNSW</b> 코사인, 하이브리드는 <b>RRF k=60</b>으로 어휘+의미 융합</li>
+    <li>선택적 <b>cross-encoder 리랭킹</b>(bge-reranker-v2-m3)</li>
+    <li>에이전트 persona가 <code>retrieval_config</code>로 검색 범위·임계·가중을 결정</li>
+   </ul>
+  </div>
+  <div class="card purple">
+   <h4>연결고리 — 공통 포맷</h4>
+   <ul>
+    <li><b>1회 정의</b>: <code>doc_type</code>(권장 섹션·임베딩 정책) + <code>agent</code>(검색 레시피)를 MCP로 만든다</li>
+    <li><b>이후 용이</b>: 같은 종류 데이터는 <code>data_type/team/group/year</code>만 주면 ID 자동채번·동일 임베딩 정책 상속</li>
+    <li>유사도 제안이 "비슷한 데이터를 비슷하게" 분류해 상호검색성 유지</li>
+   </ul>
+  </div>
+ </div>
+
+ <div class="callout info">
+  <b>설계 철학.</b> 사람이 화면에서 보기 위한 포맷(PPT·Excel)을 기계가 처리하는 포맷(구조화 JSON + 벡터)으로 바꾸는 것이 목표다.
+  변환·분류·임베딩의 반복 비용을 <b>공통 포맷을 먼저 세워</b> 상수화하고, 개별 레코드 추가는 그 위에 얹기만 한다.
+  <span class="cite">ai_data_strategy.md §2 · mcp_runtime.py:45-78(_INSTRUCTIONS)</span>
+ </div>
+</section>
+
+<!-- ============ 2. 전체 데이터 경로 ============ -->
+<section class="slide" id="s3">
+ <div class="slide-num">02 · End-to-End Pipeline</div>
+ <h2 class="slide-title">수집에서 검색까지 <span>전체 데이터 경로</span></h2>
+ <p class="slide-sub">파일/JSON 이 들어와 검색 가능한 레코드가 되기까지의 실제 스테이지. 굵은 화살표가 공통 코어다.</p>
+
+ <div class="flow">
+  <div class="flow-step"><div class="fs-n">Ingest</div><div class="fs-t">변환</div><div class="fs-d">원본 → dict payload. <code>converter_dispatch.convert_file()</code></div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step"><div class="fs-n">Normalize</div><div class="fs-t">정규화</div><div class="fs-d">변종감지·언어감지·capabilities 산출 → <code>RecordIn</code> 검증</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step"><div class="fs-n">ID / Dedup</div><div class="fs-t">채번·중복</div><div class="fs-d"><code>next_seq</code>+<code>format_id</code> / <code>content_hash</code> 멱등</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step"><div class="fs-n">Persist</div><div class="fs-t">저장</div><div class="fs-d"><code>write_record()</code> UPSERT + 섹션 평탄화</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step"><div class="fs-n">Embed</div><div class="fs-t">임베딩</div><div class="fs-d">시그니처(즉시) + 섹션(잡 스케줄)</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step" style="border-color:var(--teal);background:#f0fdfa;"><div class="fs-n">Search</div><div class="fs-t">검색</div><div class="fs-d">tag/fts/semantic/hybrid → 리랭크 → 인용</div></div>
+ </div>
+
+ <div class="two-col">
+  <div>
+   <h3 class="sec">공통 수렴 지점</h3>
+   <ul>
+    <li>어떤 진입점이든 최종적으로 <code>RecordIn</code>(pydantic) → <code>write_record()</code> → <code>records</code>/<code>record_sections</code> INSERT/UPSERT 로 수렴.<br/><span class="cite">ingest/normalizer.py:416 · ingest/db_writer.py:280</span></li>
+    <li>정규화가 <b>변종(variant)</b>을 자동 판별: <code>schema_version+meta+sections</code>→DOC, <code>headers+rows</code>→DATA, <code>solver+inputs</code>→SIM, <code>cad_type</code>→CAD, 그 외 OTHER.<br/><span class="cite">normalizer.py:150-180</span></li>
+    <li>커밋 성공 후에만 임베딩 잡 스케줄 → 실패 시 유령 잡 방지.<br/><span class="cite">db_writer.py:538-584 · records.py:829-833</span></li>
+   </ul>
+  </div>
+  <div>
+   <h3 class="sec">두 종류의 임베딩(타이밍이 다름)</h3>
+   <ul>
+    <li><b>시그니처 임베딩</b> <code>records.signature_embedding</code> — 유사데이터 자동분류(ANN)용. MCP 저장 시 <b>즉시</b> 계산, REST 배치는 스케줄러가 <b>매 60초</b> NULL 백필.<br/><span class="cite">similarity_svc.py:239 · main.py:153-170</span></li>
+    <li><b>섹션 임베딩</b> <code>record_sections.embedding</code> — 의미검색용. 커밋 후 <code>maybe_schedule_auto_embed</code>로 잡 등록, 안전망 sweep 매 30분.<br/><span class="cite">jobs.py:193 · main.py:128-149</span></li>
+    <li><code>doc_type.mode == "data_extract"</code>(대량 수치) 면 섹션 임베딩 <b>스킵</b>해 비용 절감.<br/><span class="cite">db_writer.py:557-566</span></li>
+   </ul>
+  </div>
+ </div>
+</section>
+
+<!-- ============ 3. 데이터 모델 & ID ============ -->
+<section class="slide" id="s4">
+ <div class="slide-num">03 · Data Model</div>
+ <h2 class="slide-title">데이터 모델 & <span>공통 스키마</span></h2>
+ <p class="slide-sub">PostgreSQL 전용 + pgvector. 17개 ORM 모델. 사람이 읽는 ID가 곧 분류키다. <span class="cite">db/models.py · db/base.py</span></p>
+
+ <div class="two-col">
+  <div>
+   <h3 class="sec">핵심 테이블</h3>
+   <div class="tbl-scroll"><table>
+    <tr><th>테이블</th><th>역할</th><th>핵심 컬럼</th></tr>
+    <tr><td><code>records</code></td><td>최상위 레코드</td><td>id(PK)·data_type·team·group·year·seq·<code>content</code>(JSONB)·<code>content_hash</code>·<code>signature_embedding</code>(Vector)·tags·agents</td></tr>
+    <tr><td><code>record_sections</code></td><td>RAG 청크</td><td>section_id·level·content_text·<code>embedding</code>(Vector)·section_path·chunk_index</td></tr>
+    <tr><td><code>doc_types</code></td><td>의미 taxonomy</td><td>code(PK)·expected_sections·<code>mode</code></td></tr>
+    <tr><td><code>agents</code></td><td>검색 페르소나</td><td><code>retrieval_config</code>·system_prompt·response_config·required_doc_type·sample_queries</td></tr>
+    <tr><td><code>agent_sample_embeddings</code></td><td>라우팅 신호</td><td>agent_type·sample_text·embedding(Vector)</td></tr>
+    <tr><td><code>org_teams</code>/<code>org_groups</code></td><td>조직 마스터</td><td>code·name·is_active</td></tr>
+    <tr><td><code>record_attachments</code></td><td>첨부 메타</td><td>kind·caption·file_path·hash_sha256 (바이너리는 파일시스템)</td></tr>
+    <tr><td><code>external_id_map</code></td><td>외부연동</td><td>(source,external_id)↔record_id</td></tr>
+   </table></div>
+   <p style="font-size:.76rem;color:#94a3b8;">그 외 agents_history·api_keys·users·audit_log·sync_sources/runs·mcp_uploads/upstreams. <span class="cite">models.py:1089-1107(__all__)</span></p>
+  </div>
+  <div>
+   <h3 class="sec">레코드 ID 체계 (v3)</h3>
+   <div class="mono-block"><span class="k">DOC</span>-<span class="g">HE</span>-<span class="y">CAE</span>-2026-0000000001
+<span class="c">│    │   │    │    └ SEQ  자동채번 10자리</span>
+<span class="c">│    │   │    └───── YEAR 4자리</span>
+<span class="c">│    │   └────────── GROUP 조직 그룹(2~5)</span>
+<span class="c">│    └────────────── TEAM  조직 팀(2~4)</span>
+<span class="c">└─────────────────── DATA_TYPE 7종 중 하나</span></div>
+   <p style="font-size:.78rem;color:#475569;">자연키 <code>(data_type,team,group,year,seq)</code> UNIQUE. SEQ는 <code>MAX(seq)+1</code> 채번 + UNIQUE 제약으로 경쟁 방어. <span class="cite">schemas/id_format.py:3-63 · services/seq.py:31-72</span></p>
+
+   <h3 class="sec">data_type — 구조 7종(카테고리)</h3>
+   <div class="pill-row">
+    <span class="tag tag-blue">DOC 문서</span><span class="tag tag-green">DATA 측정</span><span class="tag tag-purple">SIM 시뮬</span>
+    <span class="tag tag-orange">CAD 형상</span><span class="tag tag-teal">LOG 로그</span><span class="tag tag-gray">FORM 양식</span><span class="tag tag-gray">OTHER</span>
+   </div>
+   <p style="font-size:.78rem;color:#475569;"><span class="cite">id_format.py:34-44 · routes/taxonomy.py:159-167</span></p>
+  </div>
+ </div>
+
+ <h3 class="sec">doc_type — 의미 taxonomy (soft) + 임베딩 정책축 <code>mode</code></h3>
+ <div class="two-col">
+  <div class="card">
+   <h4>39종 시드 (4 초기 + 35 확장)</h4>
+   <p>manual·report·checklist·training + design_spec·test_plan·material_test_data·<span style="white-space:nowrap">*_sim</span>(drop/crash/thermal/cfd/battery…)·simulation_report·whitepaper 등.<br/><span class="cite">0011:48-69 · 0026:37-123</span></p>
+  </div>
+  <div class="card">
+   <h4><code>mode</code> 3종 — 임베딩 비용 제어</h4>
+   <ul>
+    <li><span class="tag tag-blue">llm_context</span> 텍스트, 임베딩 필수</li>
+    <li><span class="tag tag-green">data_extract</span> 수치대량, 임베딩 스킵</li>
+    <li><span class="tag tag-purple">hybrid</span> 둘 다</li>
+   </ul>
+   <p style="font-size:.76rem;">미등록 doc_type 은 <b>warn-only</b>(거부 아님). <span class="cite">db_writer.py:333-338</span></p>
+  </div>
+ </div>
+</section>
+
+<!-- ============ 4. 어떻게 모을건데 (1) 업로드 경로 ============ -->
+<section class="slide" id="s5">
+ <div class="slide-num">04 · Ingestion (1/3)</div>
+ <h2 class="slide-title">어떻게 모을 것인가 — <span>4개 업로드 경로</span></h2>
+ <p class="slide-sub">사용자 상황에 맞춘 4개 진입점. 전부 동일 코어(<code>write_record</code>)를 공유하므로 어느 경로로 넣어도 같은 포맷으로 저장된다.</p>
+
+ <div class="tbl-scroll"><table>
+  <tr><th>경로</th><th>진입점</th><th>대상</th><th>흐름</th><th>근거</th></tr>
+  <tr><td><b>① REST 벌크 import</b></td><td><code>POST /api/records/import</code></td><td>JSON 레코드(단건/배열, 최대 1000)</td><td>auto_seq 채번 → team/group strict 검증 → write_record → auto_embed</td><td class="cite">routes/records.py:892,646</td></tr>
+  <tr><td><b>② 파일 업로드→적재</b></td><td><code>POST /api/convert/ingest</code></td><td>docx·xlsx·pptx·md·pdf 업로드</td><td>임시저장 → detect_format → convert → normalize → write_record</td><td class="cite">routes/convert.py:332</td></tr>
+  <tr><td><b>③ CLI 배치</b></td><td><code>python -m api.ingest.batch &lt;dir&gt;</code></td><td>폴더 재귀(대량)</td><td>확장자 수집 → 4-워커 병렬 → 건별 변환·적재 → 첨부 복사</td><td class="cite">ingest/batch.py:129,323</td></tr>
+  <tr><td><b>④ MCP 도구</b></td><td><code>import_record</code> / <code>convert_file</code></td><td>Claude Desktop drag&amp;drop, LLM 주도</td><td>dry_run 되묻기 → 부족필드 스캔 → 유사도 제안 → 저장 → 시그니처 즉시 임베딩</td><td class="cite">mcp_runtime.py:993 · mcp_write_svc.py:108</td></tr>
+ </table></div>
+
+ <div class="two-col">
+  <div>
+   <h3 class="sec">파일 → JSON 변환기</h3>
+   <div class="tbl-scroll"><table>
+    <tr><th>포맷</th><th>변환기</th><th>산출</th></tr>
+    <tr><td>.docx</td><td><code>converter/core</code></td><td>DOC (meta·toc·sections·figures·tables)</td></tr>
+    <tr><td>.xlsx</td><td><code>excel_converter</code></td><td>DATA (headers·rows·units; 다중시트 번들)</td></tr>
+    <tr><td>.pptx</td><td><code>ppt_converter</code></td><td>DOC (+차트 처리)</td></tr>
+    <tr><td>.md</td><td><code>md_converter</code></td><td>DOC</td></tr>
+    <tr><td>.pdf</td><td><code>pdf_converter</code></td><td>DOC (+선택 OCR tesseract)</td></tr>
+   </table></div>
+   <p style="font-size:.76rem;color:#475569;">OCR은 텍스트 5자 미만 페이지만 대상(선택 설치). <span class="cite">pdf_converter/ocr.py:53</span></p>
+  </div>
+  <div>
+   <h3 class="sec">변환 없이 넣는 표준 레코드(JSON)</h3>
+   <div class="mono-block"><span class="c">// examples/HE-CAE-2026-000001.json</span>
+{
+  <span class="k">"schema_version"</span>: <span class="g">"1.0"</span>,
+  <span class="k">"meta"</span>: { <span class="k">"doc_id"</span>,<span class="k">"title"</span>,<span class="k">"doc_type"</span>,
+           <span class="k">"department"</span>,<span class="k">"tags"</span>,<span class="k">"summary"</span> },
+  <span class="k">"toc"</span>: [ {id,level,title}, ... ],
+  <span class="k">"sections"</span>: [ {id,title,blocks,content_text}, ... ]
+}</div>
+   <div class="callout warn" style="margin-top:.3rem;">
+    <b>검증 참고.</b> <code>html_converter</code> 코드는 존재하나 <code>converter_dispatch</code>에 <b>미연결</b> — HTML은 표준 업로드 경로로 자동 적재되지 않는다(별도 수단 필요). <span class="cite">converter_dispatch.py:64-71</span>
+   </div>
+  </div>
+ </div>
+</section>
+
+<!-- ============ 5. 어떻게 모을건데 (2) 메타데이터 ============ -->
+<section class="slide" id="s6">
+ <div class="slide-num">05 · Ingestion (2/3)</div>
+ <h2 class="slide-title">메타데이터를 채우는 법 — <span>제안(AI) vs 확정(사람)</span></h2>
+ <p class="slide-sub">"수많은 데이터가 쌓여도 서로 일관되게 분류돼야 나중에 찾을 수 있다." 그 일관성을 유사도 엔진이 유도한다. <span class="cite">similarity_svc.py:65 suggest_by_similarity</span></p>
+
+ <div class="two-col">
+  <div class="card green">
+   <h4>suggested — AI가 제안(검토 후 채움)</h4>
+   <ul>
+    <li><b>doc_type / graph_type</b>: 같은 data_type 이웃 top-k 중 medium↑ 다수결</li>
+    <li><b>tags</b>: strong 이웃(≥0.88) 태그 합집합 상위</li>
+    <li>신규 데이터의 시그니처(title+헤더컬럼명)를 e5로 인코딩 → pgvector HNSW ANN으로 유사 이웃 검색</li>
+   </ul>
+   <p style="font-size:.76rem;">confidence 임계 <code>HIGH=0.93 / MED=0.88</code>. <span class="cite">similarity_svc.py:121-137</span></p>
+  </div>
+  <div class="card orange">
+   <h4>needs_human — 사람이 확정(자동 금지)</h4>
+   <ul>
+    <li><b>team / group</b>: 후보(candidates)+most_similar+"어느 팀/그룹인가요?" 질문만 제시</li>
+    <li>유사도가 높아도 <b>다른 팀 데이터일 수 있어</b> 자동 확정 시 영영 못 찾게 됨</li>
+    <li>top_score &lt; 0.88 이면 "추측 말고 직접 물어라"로 안내문 교체</li>
+   </ul>
+   <p style="font-size:.76rem;">MCP 서버 지시문과 1:1. <span class="cite">similarity_svc.py:139-157 · mcp_runtime.py:45-78</span></p>
+  </div>
+ </div>
+
+ <div class="mono-block"><span class="c"># 정상 주입 규약 (MCP _INSTRUCTIONS)</span>
+1. <span class="k">find_similar_data</span>(headers/caption)   <span class="c"># 기존 유사 데이터 먼저 확인</span>
+2. suggested(doc_type/tags/graph_type) <span class="c"># 검토 후 record 에 채움 → 일관성 유지</span>
+3. needs_human(team/group)             <span class="c"># 후보 보여주고 사람이 결정</span>
+4. confidence=low/none                 <span class="c"># describe_record_schema 로 사용자에게 직접 질의</span></div>
+
+ <h3 class="sec">정규화가 자동으로 채우는 결정론적 필드</h3>
+ <div class="pill-row">
+  <span class="tag tag-gray">variant 자동감지 DOC/DATA/SIM/CAD</span>
+  <span class="tag tag-gray">language ko/en/ja/zh/mixed</span>
+  <span class="tag tag-gray">capabilities sections·tables·rows…</span>
+  <span class="tag tag-gray">classification=internal</span>
+  <span class="tag tag-gray">status=draft · derivation=original</span>
+ </div>
+ <p style="font-size:.78rem;color:#475569;"><span class="cite">normalizer.py:150-180,491-498 · ingest/capabilities.py:27</span></p>
+</section>
+
+<!-- ============ 6. 어떻게 모을건데 (3) dedup ============ -->
+<section class="slide" id="s7">
+ <div class="slide-num">06 · Ingestion (3/3)</div>
+ <h2 class="slide-title">중복·일관성 — <span>content_hash 멱등</span></h2>
+ <p class="slide-sub">같은 것을 두 번 넣어도 안전하고, 내용이 바뀌면 파생 신호가 자동으로 갱신된다.</p>
+
+ <div class="three-col">
+  <div class="card">
+   <h4>content_hash</h4>
+   <p><code>sha256(canonical_json(content))</code> — 키정렬·콤팩트·NaN 거부. 같은 id에 같은 해시면 <code>action=skipped</code>(무변경), 다르면 전체 UPDATE.</p>
+   <p class="cite">normalizer.py:131-147 · db_writer.py:390-446</p>
+  </div>
+  <div class="card">
+   <h4>시그니처 stale 리셋</h4>
+   <p>content_hash 변경 시 <code>signature_embedding = NULL</code>로 리셋 → 다음 sweep이 새 시그니처로 재계산. (최근 커밋 반영)</p>
+   <p class="cite">db_writer.py:417-419</p>
+  </div>
+  <div class="card">
+   <h4>외부 ID 일관성</h4>
+   <p><code>ExternalIdMap(source, external_id, record_id)</code>로 외부 시스템(SignalForge/MXWP) 재sync 시 같은 레코드 UPSERT. 병렬 경쟁은 UNIQUE+재시도.</p>
+   <p class="cite">routes/records.py:684-720,842-882</p>
+  </div>
+ </div>
+
+ <div class="callout ok">
+  <b>결과.</b> 대량/자동 주입(배치·MCP·외부동기화)에서도 (1) 중복은 해시로 흡수, (2) 분류는 유사도로 수렴, (3) 내용 변경은 파생 임베딩 자동 갱신 — 세 축이 데이터가 쌓일수록 상호검색성을 유지한다.
+ </div>
+
+ <h3 class="sec">첨부·파일 스토리지</h3>
+ <ul>
+  <li>바이너리는 <b>DB 미저장</b> — 파일시스템 <code>{attachments_dir}/{record_id}/A{nnn}.{ext}</code>, DB엔 메타(kind·caption·hash·경로)만.<br/><span class="cite">models.py:530-584 · config.py:62-65</span></li>
+  <li>MCP 도구 업로드는 <b>콘텐츠 주소(sha256 디렉터리)</b> 저장 — <code>_uploads/{sha}/</code>에 sif·manifest·소스.<br/><span class="cite">mcp_upload_svc.py:484-489</span></li>
+ </ul>
+</section>
+
+<!-- ============ 7. 공통 포맷 1회 정의 → 이후 용이 ============ -->
+<section class="slide" id="s8">
+ <div class="slide-num">07 · Format-Once, Add-Easily</div>
+ <h2 class="slide-title">공통 포맷을 <span>한 번 정의</span>하면, 이후 추가는 <span>쉬워진다</span></h2>
+ <p class="slide-sub">검색에 필요한 공통 부분(스키마·분류·검색레시피)을 MCP로 입력해 포맷을 형성한다. 형성 후 개별 레코드 추가는 최소 입력으로 기존 포맷에 슬롯팅된다.</p>
+
+ <div class="two-col">
+  <div class="card purple">
+   <h4>(a) 한 번 DEFINE 되는 것 — 재사용 "포맷"</h4>
+   <ul>
+    <li><b>doc_type</b> = 의미분류 코드 + <code>expected_sections</code>(권장 골격) + <code>mode</code>(임베딩 정책). <span class="cite">create_doc_type → doc_type_svc.py:28</span></li>
+    <li><b>agent</b> = 검색 페르소나: <code>system_prompt</code> + <code>retrieval_config</code> + required_doc_type/tags. <span class="cite">create_agent → mcp_write_svc.py:282</span></li>
+    <li><b>안내 표면</b>: <code>describe_record_schema</code>(필수/권장 필드·enum·예시), <code>describe_data_capability</code>(타입별 shape). <span class="cite">ingest_guide_svc.py:39 · discover_svc.py:97</span></li>
+    <li><b>Ingest Kit</b>: SYSTEM_PROMPT + SCHEMA.json + <b>self-contained validate.py</b>(enums 하드코딩, 오프라인 반복검증). <span class="cite">ingest_kit_svc.py:36</span></li>
+    <li><b>Word 템플릿</b>: agent의 required_doc_type+expected_sections를 채운 .docx 생성. <span class="cite">template_svc.py:26</span></li>
+   </ul>
+  </div>
+  <div class="card green">
+   <h4>(b) 이후 EASY 해지는 것 — 레코드 일관 추가</h4>
+   <ul>
+    <li><b>auto_seq 슬롯팅</b>: id 없이 <code>data_type/team/group/year</code>만 주면 다음 seq 채번+format_id → 기존 번호체계에 자동 편입. <span class="cite">records.py:724-751</span></li>
+    <li><b>임베딩 정책 상속</b>: 같은 doc_type의 2번째 레코드는 첫 레코드와 <b>동일 mode</b>로 임베딩 여부 자동 결정. <span class="cite">db_writer.py:542-570</span></li>
+    <li><b>유사도 제안 순환</b>: 저장 즉시 시그니처 임베딩 → 다음 데이터의 <code>find_similar_data</code> 이웃 풀에 편입. <span class="cite">mcp_write_svc.py:203-211</span></li>
+    <li><b>폴더 대량 추가</b>: batch는 team/group/year 한 번만 주고 폴더를 던지면 반복 적재. <span class="cite">ingest/batch.py:84-99</span></li>
+    <li><b>부모(campaign) 연결 제안</b>: doc_type 동일이 최강 신호인 결정론적 휴리스틱. <span class="cite">parent_suggest_svc.py:55</span></li>
+   </ul>
+  </div>
+ </div>
+
+ <div class="callout warn">
+  <b>정직한 검증.</b> 포맷은 <b>강제(hard-reject)가 아니라 권고(warn-only)</b>다. 미등록 doc_type·expected_sections 불일치·required_tags 누락은 모두 로그 경고만 남기고 저장된다(<span class="cite">db_writer.py:333-383</span>).
+  주입 순서(find_similar_data → import) 역시 서버가 강제하지 않고 MCP 지시문으로 클라이언트 LLM에 위임한다. 즉 <b>일관성은 (유사도 제안) + (LLM이 규약을 따른다는 전제)</b>로 달성되며, DB 제약으로 봉인되지 않는다.
+ </div>
+</section>
+
+<!-- ============ 8. 어떻게 검색할건데 (1) ============ -->
+<section class="slide" id="s9">
+ <div class="slide-num">08 · Search (1/2)</div>
+ <h2 class="slide-title">어떻게 검색할 것인가 — <span>6+1 모달리티</span></h2>
+ <p class="slide-sub">단일 엔진(<code>search_svc.py</code>)이 어휘·의미·태그·융합을 모두 제공한다. 질의 성격에 맞춰 모드를 고른다.</p>
+
+ <div class="tbl-scroll"><table>
+  <tr><th>모드</th><th>백엔드 / 연산</th><th>스코어</th><th>특징</th><th>근거</th></tr>
+  <tr><td><b>tag_search</b></td><td>PG 배열 <code>@&gt;</code> (AND 포함)</td><td>없음(최신순)</td><td>정확 태그 필터</td><td class="cite">search_svc.py:55</td></tr>
+  <tr><td><b>fts_search</b></td><td>tsvector <code>@@ websearch_to_tsquery('simple')</code></td><td>rank/순서</td><td>AND 0건이면 토큰 OR 재시도</td><td class="cite">search_svc.py:82</td></tr>
+  <tr><td><b>semantic_search</b></td><td>pgvector 코사인 <code>&lt;=&gt;</code> + HNSW</td><td><code>1 − d/2</code> (0~1)</td><td>tag_boost·min_score 재랭크</td><td class="cite">search_svc.py:202</td></tr>
+  <tr><td><b>hybrid_search</b></td><td><b>RRF (k=60)</b> 어휘+의미 융합</td><td>RRF 점수</td><td>검색 기본 추천 모드</td><td class="cite">search_svc.py:526</td></tr>
+  <tr><td><b>find_similar_data</b></td><td>시그니처 벡터 이웃(ANN)</td><td>코사인</td><td>주입 시 자동분류에도 재사용</td><td class="cite">similarity_svc.py:65</td></tr>
+  <tr><td><b>data_for_agent</b></td><td>agents 배열 overlap + hit 카운트</td><td>priority 가중</td><td>에이전트 스코프</td><td class="cite">search_svc.py:397</td></tr>
+ </table></div>
+
+ <div class="two-col">
+  <div class="card accent">
+   <h4>Hybrid = Reciprocal Rank Fusion</h4>
+   <div class="mono-block" style="margin:.3rem 0;">score = Σ  1 / (<span class="y">k</span> + rank)   <span class="c">// k=60, Cormack 2009</span>
+   <span class="c">semantic·fts 각각 top_k×3 취득 → rank 합산</span></div>
+   <p style="font-size:.78rem;">가중합이 아니라 <b>순위 기반 융합</b>이라 두 신호의 스코어 스케일 차이에 강건하다. 중복키 <code>(record_id, section_id)</code>. <span class="cite">search_svc.py:534-606</span></p>
+  </div>
+  <div class="card teal">
+   <h4>선택적 리랭킹 (cross-encoder)</h4>
+   <ul>
+    <li>모델 <code>BAAI/bge-reranker-v2-m3</code> (multilingual, ~568MB), sigmoid로 [0,1] 정규화</li>
+    <li><b>hybrid 경로에서만</b> 자동 호출, 원점수는 <code>score_pre_rerank</code>로 보존</li>
+    <li>기본 <b>off</b> — <code>AIDH_RERANK_PROVIDER</code> 설정 시 활성(미설정이면 회귀 0)</li>
+   </ul>
+   <p class="cite">rerank.py:40-137 · search_svc.py:610-612</p>
+  </div>
+ </div>
+</section>
+
+<!-- ============ 9. 어떻게 검색할건데 (2) 에이전트 ============ -->
+<section class="slide" id="s10">
+ <div class="slide-num">09 · Search (2/2) · Agent-aware RAG</div>
+ <h2 class="slide-title">에이전트가 <span>검색을 조율</span>한다</h2>
+ <p class="slide-sub">"무엇을·어떻게 검색·어떻게 응답"을 에이전트 persona가 결정한다. 정상 흐름은 discover → recommend → session → search → sections.</p>
+
+ <div class="flow">
+  <div class="flow-step"><div class="fs-n">step 1</div><div class="fs-t">discover</div><div class="fs-d">전모(카운트·타입·에이전트) 1콜</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step"><div class="fs-n">step 2</div><div class="fs-t">recommend_agents</div><div class="fs-d">자연어 q → 적합 에이전트</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step"><div class="fs-n">step 3</div><div class="fs-t">get_agent_session</div><div class="fs-d">persona+retrieval_config 채택</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step"><div class="fs-n">step 4</div><div class="fs-t">agent_search</div><div class="fs-d">config 자동적용 검색(PRIMARY)</div></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step" style="border-color:var(--teal);background:#f0fdfa;"><div class="fs-n">step 5</div><div class="fs-t">get_record_sections</div><div class="fs-d">RAG 청크 + id 인용</div></div>
+ </div>
+
+ <div class="three-col">
+  <div class="card">
+   <h4>retrieval_config (검색 변형)</h4>
+   <ul>
+    <li><code>top_k</code>·<code>score_threshold</code></li>
+    <li><code>data_type_filter</code> (없으면 agent.data_types)</li>
+    <li><code>tag_boost</code> · <code>max_depth</code>(계층깊이)</li>
+    <li>required/excluded_tags 후필터</li>
+   </ul>
+   <p class="cite">mcp_runtime.py:337-451</p>
+  </div>
+  <div class="card">
+   <h4>response_config (거부 규약)</h4>
+   <p>hits 없거나 top score &lt; <code>refuse_below_score</code>면 <code>refused=true</code> + <code>refusal_message</code>. 근거 없는 환각 대신 <b>정직한 거부</b>.</p>
+   <p class="cite">mcp_runtime.py:348-461</p>
+  </div>
+  <div class="card">
+   <h4>recommend_agents (라우팅)</h4>
+   <p>의미검색 섹션 평균유사도(record항) + sample_queries 유사도(sample항)를 <code>record_mean + w·sample_mean</code>으로 합산.</p>
+   <p class="cite">recommend_svc.py:40-167</p>
+  </div>
+ </div>
+
+ <div class="callout info">
+  <b>인용 규약.</b> 모든 답변은 record id 를 출처로 인용한다 (예: <code>source: DOC-HE-CAE-2026-0000000001 §4</code>). get_agent_session이 반환하는 system_prompt가 그 시점부터 세션의 지배 규칙이 된다. <span class="cite">MCP server instructions</span>
+ </div>
+</section>
+
+<!-- ============ 10. 스택 & MCP 도구 ============ -->
+<section class="slide" id="s11">
+ <div class="slide-num">10 · Stack & MCP Tools</div>
+ <h2 class="slide-title">임베딩·색인 스택과 <span>MCP 도구 인벤토리</span></h2>
+
+ <div class="two-col">
+  <div>
+   <h3 class="sec">임베딩 · 벡터색인</h3>
+   <dl class="kv">
+    <dt>임베딩 provider</dt><dd>hash(기본) / <code>multilingual-e5</code>(small·base·large) / openai. env <code>EMBEDDING_PROVIDER</code></dd>
+    <dt>차원</dt><dd>앱 기본 384, 운영 컬럼 768(mig 0013/0029) → <code>EMBEDDING_DIM=768</code> 정합 필요</dd>
+    <dt>질의/문서 공간</dt><dd>E5 비대칭 prefix — <code>passage:</code>(적재) / <code>query:</code>(검색) 자동, 동일 모델·동일 공간</dd>
+    <dt>벡터색인</dt><dd>HNSW <code>(m=16, ef_construction=64)</code>, cosine, partial(NOT NULL)</dd>
+    <dt>전문검색</dt><dd>tsvector 쿼리시점 계산('simple' config), 저장형 tsvector 컬럼 없음</dd>
+   </dl>
+   <p class="cite">embedding.py:39-357 · rerank.py · mig 0004/0013/0018/0029</p>
+  </div>
+  <div>
+   <h3 class="sec">MCP 도구 (운영 서버 <code>mcp_runtime.py</code>, HTTP <code>/mcp</code>)</h3>
+   <p style="font-size:.8rem;margin-bottom:.4rem;"><b>탐색·검색</b></p>
+   <div class="pill-row">
+    <span class="tag tag-teal">discover</span><span class="tag tag-teal">recommend_agents</span><span class="tag tag-teal">get_agent_session</span>
+    <span class="tag tag-teal">agent_search</span><span class="tag tag-teal">semantic/hybrid/fts/tag_search</span><span class="tag tag-teal">find_similar_data</span>
+    <span class="tag tag-teal">get_record(_sections)</span><span class="tag tag-teal">list_records</span><span class="tag tag-teal">data_aggregate</span>
+   </div>
+   <p style="font-size:.8rem;margin:.3rem 0 .4rem;"><b>정의·주입(쓰기)</b></p>
+   <div class="pill-row">
+    <span class="tag tag-purple">create_doc_type</span><span class="tag tag-purple">list_doc_types</span>
+    <span class="tag tag-purple">create/patch/draft_agent</span><span class="tag tag-purple">bind_records_to_agent</span>
+    <span class="tag tag-purple">import_record</span><span class="tag tag-purple">convert_file</span>
+    <span class="tag tag-blue">describe_record_schema</span><span class="tag tag-blue">describe_data_capability</span>
+   </div>
+   <div class="callout warn" style="margin-top:.4rem;font-size:.78rem;">
+    <b>서버 2개 주의.</b> 위 풀 도구셋은 <code>mcp_runtime.py</code>(연결 대상). 레거시 stdio <code>mcp_server/server.py</code>는 discover_schema·ask·search만 가진 구형이며 agent_search/hybrid_search 등이 없다.
+   </div>
+  </div>
+ </div>
+</section>
+
+<!-- ============ 11. 기술 검증 결과 ============ -->
+<section class="slide" id="s12">
+ <div class="slide-num">11 · Verification Verdict</div>
+ <h2 class="slide-title">기술 검증 결과 — <span>확인 / 조건부 / 주의</span></h2>
+ <p class="slide-sub">코드 근거로 각 주장을 판정했다. 자동화가 아니라 정직한 감사 결과다.</p>
+
+ <div class="tbl-scroll"><table>
+  <tr><th>주장</th><th>판정</th><th>근거 / 조건</th></tr>
+  <tr><td>4개 진입점이 단일 코어 write_record로 수렴</td><td><span class="badge-verify bv-ok">확인</span></td><td class="cite">records.py · convert.py · batch.py · mcp_write_svc.py</td></tr>
+  <tr><td>doc_type/agent를 MCP로 1회 정의 → 이후 최소입력 추가</td><td><span class="badge-verify bv-ok">확인</span></td><td class="cite">create_doc_type · auto_seq records.py:724 · db_writer.py:542</td></tr>
+  <tr><td>제안(doc_type/tags) vs 사람확정(team/group) 이원화</td><td><span class="badge-verify bv-ok">확인</span></td><td class="cite">similarity_svc.py:121-157</td></tr>
+  <tr><td>Hybrid = RRF k=60, 의미검색 pgvector HNSW</td><td><span class="badge-verify bv-ok">확인</span></td><td class="cite">search_svc.py:526 · mig 0018</td></tr>
+  <tr><td>content_hash 멱등 + 변경 시 시그니처 리셋</td><td><span class="badge-verify bv-ok">확인</span></td><td class="cite">db_writer.py:390-446</td></tr>
+  <tr><td>운영 임베딩 차원 768</td><td><span class="badge-verify bv-cond">조건부</span></td><td>ORM 기본 384 ≠ 컬럼 768. env <code>EMBEDDING_DIM=768</code>+e5_base 필수 <span class="cite">models.py:53 vs 0013</span></td></tr>
+  <tr><td>cross-encoder 리랭킹 적용</td><td><span class="badge-verify bv-cond">조건부</span></td><td>기본 off. <code>AIDH_RERANK_PROVIDER</code> 설정 & hybrid 경로에서만 <span class="cite">rerank.py:40</span></td></tr>
+  <tr><td>슬라이딩 윈도우 청킹</td><td><span class="badge-verify bv-cond">조건부</span></td><td>기본 off(<code>AIDH_CHUNK_WINDOW</code>). 기본은 섹션 트리 level≤3 평탄화 <span class="cite">db_writer.py:69-171</span></td></tr>
+  <tr><td>포맷(doc_type·required_tags) 강제</td><td><span class="badge-verify bv-warn">주의</span></td><td>hard-reject 아님 — <b>warn-only</b> 저장됨 <span class="cite">db_writer.py:333-383</span></td></tr>
+  <tr><td>FTS 한국어 형태소 분석</td><td><span class="badge-verify bv-warn">주의</span></td><td>'simple' config — 형태소 미인식, 토큰 OR 폴백으로 보완 <span class="cite">sql_compat.py:260-291</span></td></tr>
+  <tr><td>HTML 파일 표준 자동적재</td><td><span class="badge-verify bv-warn">주의</span></td><td>html_converter 미연결 — 별도 수단 필요 <span class="cite">converter_dispatch.py:64-71</span></td></tr>
+  <tr><td>사전 시드 에이전트 존재</td><td><span class="badge-verify bv-warn">주의</span></td><td>코드 시드 0종(deprecated). 운영 agent는 대시보드/REST로 관리 <span class="cite">seed/agents_data.py:24</span></td></tr>
+ </table></div>
+
+ <div class="callout info">
+  <b>종합.</b> "어떻게 모으고 어떻게 검색하나"의 골격 — 단일 코어 수집, 유사도 기반 일관 분류, pgvector+RRF 하이브리드 검색, 에이전트-인지 RAG — 은 코드로 <b>확인</b>됐다.
+  단, (1) 운영 임베딩 차원/리랭커/청킹은 <b>env 설정에 의존</b>하고, (2) 포맷 일관성은 DB 제약이 아니라 <b>유사도 제안 + 클라이언트 LLM의 규약 준수</b>로 달성된다. 이 두 가지가 배포·운영 시 확인·강화 포인트다.
+ </div>
+</section>
+
+</div>
+
+<div class="foot">
+ <b>AI Data Hub — 데이터 수집·검색 기술 백서</b> · 코드 검증 기준 <span class="cite">/home/koopark/claude/AIDataHub/api_server/src</span> ·
+ 인용의 <span class="cite">path:line</span>은 실제 소스 위치다. 운영 파라미터(EMBEDDING_PROVIDER/DIM, RERANK/CHUNK 스위치)는 배포 <code>.env</code>에서 확인.
+</div>
+
+</body>
+</html>

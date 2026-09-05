@@ -1,0 +1,167 @@
+<!-- AI Data Hub 의 수집·검색 순서도와 방법론을 16:9 한 페이지로 압축한 PPT용 단일 슬라이드 -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>AI Data Hub — 수집·검색 순서도 & 방법론 (1-page)</title>
+<style>
+:root{
+ --blue:#1e40af; --blue2:#3b82f6; --dark:#0f172a; --darker:#020617;
+ --gray:#64748b; --border:#e2e8f0; --light:#eff6ff;
+ --green:#16a34a; --orange:#ea580c; --purple:#7c3aed; --teal:#0d9488;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{font-family:'Segoe UI','Apple SD Gothic Neo','Noto Sans KR',sans-serif;
+ background:#0b1220;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px;}
+
+/* 16:9 고정 슬라이드 (1280x720). 작은 화면에서도 비율 유지 */
+.slide{width:1280px;height:720px;background:#ffffff;border-radius:14px;overflow:hidden;
+ box-shadow:0 24px 70px rgba(0,0,0,.5);display:flex;flex-direction:column;
+ transform-origin:center center;position:relative;}
+@media (max-width:1320px){ .slide{transform:scale(calc((100vw - 32px)/1280));} }
+
+/* 헤더 */
+.head{background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 55%,#0d4a6b 100%);color:#fff;
+ padding:16px 30px;display:flex;align-items:center;justify-content:space-between;}
+.head .t h1{font-size:22px;font-weight:900;letter-spacing:.01em;line-height:1.15;}
+.head .t .sub{font-size:12px;color:#93c5fd;font-weight:700;letter-spacing:.14em;text-transform:uppercase;margin-bottom:3px;}
+.head .badges{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:430px;}
+.head .badge{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);
+ color:#fff;font-size:10.5px;font-weight:700;padding:4px 10px;border-radius:100px;white-space:nowrap;}
+
+.body{flex:1;padding:20px 30px 12px;display:flex;flex-direction:column;justify-content:space-between;gap:12px;}
+
+/* 순서도 블록 */
+.flowblock{}
+.flowblock .lbl{display:flex;align-items:center;gap:9px;margin-bottom:7px;}
+.flowblock .lbl .kr{font-size:14px;font-weight:900;color:var(--dark);}
+.flowblock .lbl .en{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--blue2);}
+.flowblock .lbl .line{flex:1;height:1px;background:var(--border);}
+
+.flow{display:flex;align-items:stretch;gap:0;}
+.entry{display:flex;flex-direction:column;justify-content:center;gap:4px;padding-right:6px;margin-right:4px;
+ border-right:2px dashed #cbd5e1;}
+.entry .e{font-size:10px;font-weight:700;color:#475569;background:#f1f5f9;border-radius:5px;padding:3px 7px;white-space:nowrap;}
+.entry .e b{color:var(--blue);}
+
+.step{flex:1;background:#fff;border:1.6px solid var(--border);border-radius:9px;padding:8px 9px;
+ display:flex;flex-direction:column;justify-content:center;min-width:0;}
+.step .n{font-size:8.5px;font-weight:800;color:var(--blue2);letter-spacing:.1em;text-transform:uppercase;}
+.step .st{font-size:12.5px;font-weight:800;color:var(--dark);margin:2px 0 2px;line-height:1.12;}
+.step .sd{font-size:10px;color:#64748b;line-height:1.35;}
+.step code{font-family:'Consolas','Menlo',monospace;font-size:9.5px;color:var(--blue);font-weight:700;background:#f1f5f9;border-radius:3px;padding:.5px 3px;}
+.step .tech{font-family:'Consolas','Menlo',monospace;font-size:8px;color:#94a3b8;font-weight:700;margin-top:3px;letter-spacing:.01em;}
+.step.end{border-color:var(--teal);background:#f0fdfa;}
+.step.key{border-color:var(--blue2);background:var(--light);}
+.arw{display:flex;align-items:center;color:var(--blue2);font-weight:900;font-size:16px;padding:0 4px;flex:0 0 auto;}
+.note{font-size:10px;color:#9a3412;background:#fff7ed;border-left:3px solid var(--orange);
+ border-radius:5px;padding:4px 9px;margin-top:6px;}
+.note b{color:#7c2d12;}
+
+/* 방법론 */
+.method{}
+.method .lbl{display:flex;align-items:center;gap:9px;margin-bottom:7px;}
+.method .lbl .kr{font-size:14px;font-weight:900;color:var(--dark);}
+.method .lbl .en{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--purple);}
+.method .lbl .line{flex:1;height:1px;background:var(--border);}
+.mgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;}
+.mcard{border:1.5px solid var(--border);border-radius:9px;padding:9px 10px;background:#fff;}
+.mcard .mh{font-size:12px;font-weight:900;margin-bottom:4px;line-height:1.15;}
+.mcard .mb{font-size:10px;color:#475569;line-height:1.4;}
+.mcard .mb code{font-family:'Consolas','Menlo',monospace;font-size:9px;color:#334155;font-weight:700;}
+.mcard .mtech{font-family:'Consolas','Menlo',monospace;font-size:8px;color:#94a3b8;font-weight:700;margin-top:4px;}
+.mcard.c1{border-top:3px solid var(--blue);} .mcard.c1 .mh{color:var(--blue);}
+.mcard.c2{border-top:3px solid var(--orange);} .mcard.c2 .mh{color:var(--orange);}
+.mcard.c3{border-top:3px solid var(--purple);} .mcard.c3 .mh{color:var(--purple);}
+.mcard.c4{border-top:3px solid var(--teal);} .mcard.c4 .mh{color:var(--teal);}
+.mcard.c5{border-top:3px solid var(--green);} .mcard.c5 .mh{color:var(--green);}
+
+.foot{background:#f8fafc;border-top:1px solid var(--border);padding:6px 30px;
+ display:flex;align-items:center;justify-content:space-between;font-size:10px;color:#94a3b8;}
+.foot b{color:#475569;}
+.foot .stack{font-family:'Consolas','Menlo',monospace;}
+</style>
+</head>
+<body>
+<div class="slide">
+
+ <div class="head">
+  <div class="t">
+   <div class="sub">Mobile eXperience · AI Data Hub</div>
+   <h1>데이터 수집·검색 순서도 &amp; 방법론</h1>
+  </div>
+  <div class="badges">
+   <span class="badge">통합 데이터 창고</span>
+   <span class="badge">의미로 검색</span>
+   <span class="badge">키워드+의미 결합</span>
+   <span class="badge">다국어 지원</span>
+   <span class="badge">전문 AI가 안내</span>
+   <span class="badge">출처 근거 제시</span>
+  </div>
+ </div>
+
+ <div class="body">
+
+  <!-- 수집 순서도 -->
+  <div class="flowblock">
+   <div class="lbl"><span class="kr">① 자료를 모으는 순서</span><span class="en">어떤 방식으로 넣어도 → 하나의 창고로</span><span class="line"></span></div>
+   <div class="flow">
+    <div class="entry">
+     <div class="e">여러 건 <b>한꺼번에 등록</b></div>
+     <div class="e">파일 <b>올리면 자동 변환</b></div>
+     <div class="e"><b>폴더째</b> 통째로</div>
+     <div class="e"><b>AI 도구</b>로 끌어넣기</div>
+    </div>
+    <div class="step"><div class="n">1단계</div><div class="st">표준 형식으로 변환</div><div class="sd">문서·표·발표·PDF 등 어떤 파일이든 통일된 형식으로 바꿈</div><div class="tech">docx·xlsx·pptx·md·pdf → JSON</div></div>
+    <div class="arw">→</div>
+    <div class="step"><div class="n">2단계</div><div class="st">내용 정리·점검</div><div class="sd">종류·언어를 자동 인식하고 형식이 맞는지 확인</div><div class="tech">정규화 · 언어감지 · 검증</div></div>
+    <div class="arw">→</div>
+    <div class="step"><div class="n">3단계</div><div class="st">중복 거르고 번호 부여</div><div class="sd">같은 자료는 자동으로 걸러내고 고유 번호를 매김</div><div class="tech">content_hash · ID 자동채번</div></div>
+    <div class="arw">→</div>
+    <div class="step key"><div class="n">4단계</div><div class="st">하나의 창고에 저장</div><div class="sd">위 어떤 경로든 똑같은 방식으로 같은 창고에 저장</div><div class="tech">write_record() 공통 코어</div></div>
+    <div class="arw">→</div>
+    <div class="step end"><div class="n">5단계</div><div class="st">AI가 찾을 수 있게 색인</div><div class="sd">뜻으로 검색되도록 AI가 이해하는 형태로 색인 생성</div><div class="tech">임베딩 · 벡터 색인</div></div>
+   </div>
+   <div class="note"><b>분류를 채우는 법</b> — 비슷한 기존 자료를 보고 <b>문서종류·태그는 자동 추천</b>, 다만 <b>어느 팀·그룹 자료인지는 사람이 최종 확정</b>. 잘못 분류하면 나중에 영영 못 찾기 때문.</div>
+  </div>
+
+  <!-- 검색 순서도 -->
+  <div class="flowblock">
+   <div class="lbl"><span class="kr">② 검색하는 순서</span><span class="en">전문 AI가 근거를 찾아 출처와 함께 답</span><span class="line"></span></div>
+   <div class="flow">
+    <div class="step"><div class="n">1단계</div><div class="st">전체 한눈에 파악</div><div class="sd">어떤 자료·전문 AI가 있는지 먼저 확인</div><div class="tech">discover</div></div>
+    <div class="arw">→</div>
+    <div class="step"><div class="n">2단계</div><div class="st">담당 AI 추천</div><div class="sd">질문에 가장 잘 맞는 분야 전문 AI를 골라줌</div><div class="tech">recommend_agents</div></div>
+    <div class="arw">→</div>
+    <div class="step key"><div class="n">3단계</div><div class="st">전문가 모드 켜기</div><div class="sd">그 분야의 '무엇을·어떻게 찾을지' 규칙을 적용</div><div class="tech">get_agent_session · retrieval_config</div></div>
+    <div class="arw">→</div>
+    <div class="step"><div class="n">4단계</div><div class="st">관련 자료 찾기</div><div class="sd">키워드와 뜻을 함께 써서 가장 관련된 자료 검색</div><div class="tech">agent_search · hybrid</div></div>
+    <div class="arw">→</div>
+    <div class="step end"><div class="n">5단계</div><div class="st">근거·출처 제시</div><div class="sd">찾은 근거 문단과 출처 번호를 함께 보여줌</div><div class="tech">get_record_sections · 인용</div></div>
+   </div>
+   <div class="note" style="background:#eff6ff;border-color:var(--blue2);color:#1e3a8a;"><b>검색의 강점</b> — 단어가 정확히 같지 않아도 <b>'뜻이 비슷한'</b> 자료까지 찾음. 근거가 약하면 억지로 답하지 않고 <b>'자료 없음'을 정직하게</b> 알림.</div>
+  </div>
+
+  <!-- 방법론 -->
+  <div class="method">
+   <div class="lbl"><span class="kr">핵심 방법론 5가지</span><span class="en">Methodology</span><span class="line"></span></div>
+   <div class="mgrid">
+    <div class="mcard c1"><div class="mh">하나의 창고로 모음</div><div class="mb">어떤 방법으로 넣어도 같은 형식으로 저장돼 뒤섞이지 않음.</div><div class="mtech">single core · write_record</div></div>
+    <div class="mcard c2"><div class="mh">자동 추천 +<br/>사람 확정</div><div class="mb">분류는 AI가 추천, 소속(팀·그룹) 같은 중요한 건 사람이 결정.</div><div class="mtech">suggest vs needs_human</div></div>
+    <div class="mcard c3"><div class="mh">틀 한 번,<br/>이후엔 쉽게</div><div class="mb">자료 '틀'을 한 번 정해두면 다음부터 최소 입력으로 추가.</div><div class="mtech">doc_type · agent 재사용</div></div>
+    <div class="mcard c4"><div class="mh">똑똑한 검색</div><div class="mb">키워드와 뜻을 합쳐 찾고, 필요하면 정밀하게 재정렬.</div><div class="mtech">hybrid(RRF) · rerank</div></div>
+    <div class="mcard c5"><div class="mh">전문 AI가 안내</div><div class="mb">분야별 AI가 검색 범위·기준을 정하고 반드시 출처를 붙임.</div><div class="mtech">agent-aware RAG · 인용</div></div>
+   </div>
+  </div>
+
+ </div>
+
+ <div class="foot">
+  <div><b>핵심 서사</b> — 검색에 필요한 공통 포맷을 MCP로 한 번 정의해 데이터 포맷을 형성하고, 형성 후 데이터 추가는 최소 입력으로 일관되게 이뤄진다.</div>
+  <div class="stack">코드 검증: api_server/src</div>
+ </div>
+
+</div>
+</body>
+</html>
