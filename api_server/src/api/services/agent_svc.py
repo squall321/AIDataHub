@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -209,6 +209,16 @@ async def delete_agent(
         return False
     # delete 전 스냅샷 — 삭제된 agent 도 이력으로 조회 가능해야 함.
     _log_history(session, agent=agent, operation="delete", changed_by=changed_by)
+    # ⚠ records.agents 는 FK 가 없는 맨 text[] 다(GIN 인덱스만 달려 있다). agent_records·
+    # agent_sample_embeddings 는 ON DELETE CASCADE 로 따라 지워지지만 이 배열은 문자열이
+    # 그대로 남아 **고아 키**가 된다. 그 키는 recommend_agents 의 점수 집계를 그냥 통과해
+    # 이름이 빈 좌석으로 추천되고(실측 2026-09-09: 기본 top_k=5 중 2석), 그걸 집어
+    # agent_search 를 부르면 "agent not found" 로 즉사한다. 일회성 잔재가 아니라
+    # 삭제할 때마다 재현되므로 삭제 경로가 같은 트랜잭션에서 직접 치운다.
+    await session.execute(
+        text("UPDATE records SET agents = array_remove(agents, :at) WHERE agents @> ARRAY[:at]"),
+        {"at": agent_type},
+    )
     await session.delete(agent)
     await session.commit()
     return True

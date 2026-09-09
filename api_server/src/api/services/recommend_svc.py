@@ -221,6 +221,13 @@ async def recommend_agents(
     ranked: list[dict[str, Any]] = []
     for at, sc in sorted(agent_score.items(), key=lambda kv: kv[1], reverse=True):
         meta = meta_by_type.get(at)
+        # ⚠ agents 표에 없는 키는 내보내지 않는다. records.agents 는 FK 가 없어 좌석을 지워도
+        # 문자열이 남고(고아 키), 예전에는 meta 가 None 이면 키 자체를 이름으로 써서 그대로
+        # 통과했다. 그 좌석은 name·description 이 빈 채로 추천되고, 집으면 agent_search 가
+        # "agent not found" 로 죽는다 — 호출자가 빠져나올 수 없는 막다른 길이다.
+        # 삭제 경로(agent_svc.delete_agent)가 근본 수정이고 이건 이중 안전장치다.
+        if meta is None:
+            continue
         why_parts = []
         if agent_sections[at] or agent_records[at]:
             why_parts.append(
