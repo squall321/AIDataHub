@@ -478,10 +478,12 @@ async def agent_search(
             data_type_filter = list(agent.data_types)
 
         # agent 소속 record_ids 조회 (max_depth 지정 시 depth 필터 동시 적용)
+        # ⚠ `x = ANY(col)` 로 쓰면 GIN 인덱스(idx_records_agents)를 **못 쓴다**. 실측 —
+        # `= ANY` Seq Scan 13.9ms vs `@> ARRAY[x]` Bitmap Index Scan 3.8ms. 인덱스는 처음부터
+        # 있었고 쿼리 모양이 그것을 죽여 놓고 있었다(2026-09-09). 되돌리지 말 것.
         try:
-            from sqlalchemy import literal
             id_stmt = select(Record.id).where(
-                literal(agent_type) == Record.agents.any_()  # type: ignore[attr-defined]
+                Record.agents.op("@>")([agent_type])  # type: ignore[attr-defined]
             )
             if max_depth is not None:
                 id_stmt = id_stmt.where(Record.depth <= max_depth)
@@ -690,9 +692,8 @@ async def semantic_search(
         record_ids: list[str] | None = None
         if agent_type:
             try:
-                from sqlalchemy import literal
                 id_stmt = select(Record.id).where(
-                    literal(agent_type) == Record.agents.any_()  # type: ignore[attr-defined]
+                    Record.agents.op("@>")([agent_type])  # type: ignore[attr-defined]
                 )
                 record_ids = list((await session.execute(id_stmt)).scalars().all())
             except Exception:
@@ -735,9 +736,8 @@ async def hybrid_search(
         record_ids: list[str] | None = None
         if agent_type:
             try:
-                from sqlalchemy import literal
                 id_stmt = select(Record.id).where(
-                    literal(agent_type) == Record.agents.any_()  # type: ignore[attr-defined]
+                    Record.agents.op("@>")([agent_type])  # type: ignore[attr-defined]
                 )
                 record_ids = list((await session.execute(id_stmt)).scalars().all())
             except Exception:
@@ -777,9 +777,8 @@ async def fts_search(
         items, _ = await search_svc.fts_search(session, q, limit=top_k * 3)
         if agent_type:
             try:
-                from sqlalchemy import literal
                 id_stmt = select(Record.id).where(
-                    literal(agent_type) == Record.agents.any_()  # type: ignore[attr-defined]
+                    Record.agents.op("@>")([agent_type])  # type: ignore[attr-defined]
                 )
                 scope = set((await session.execute(id_stmt)).scalars().all())
             except Exception:
@@ -829,9 +828,8 @@ async def tag_search(
         ]
         if agent_type:
             try:
-                from sqlalchemy import literal
                 id_stmt = select(Record.id).where(
-                    literal(agent_type) == Record.agents.any_()  # type: ignore[attr-defined]
+                    Record.agents.op("@>")([agent_type])  # type: ignore[attr-defined]
                 )
                 scope = set((await session.execute(id_stmt)).scalars().all())
             except Exception:

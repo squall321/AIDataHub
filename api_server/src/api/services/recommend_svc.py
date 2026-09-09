@@ -355,7 +355,6 @@ async def build_context_bundle(
     #   (sim+1)/2 매핑까지 거치면 무관 0.90 / 관련 0.94 로 폭이 0.04 뿐이라
     #   score_threshold=0.3 은 아무것도 거르지 못한다. 반면 **순위는 정상 작동한다.**
     #   그래서 임계값을 건드리지 않고 후보를 넓게 떠서 relevance 로 재정렬한 뒤 자른다.
-    from sqlalchemy import literal
 
     # ① do_filter 면 pgvector 인덱스로 관련 레코드를 먼저 고른다.
     #    파이썬으로 전수 스코어링하지 않는 이유 — 한 좌석에 280 레코드가 묶여 있고
@@ -366,7 +365,7 @@ async def build_context_bundle(
     if do_filter:
         bound_ids = list(
             (await session.execute(
-                select(Record.id).where(literal(agent_type) == Record.agents.any_())  # type: ignore[attr-defined]
+                select(Record.id).where(Record.agents.op("@>")([agent_type]))  # type: ignore[attr-defined]
             )).scalars().all()
         )
         if bound_ids:
@@ -395,7 +394,7 @@ async def build_context_bundle(
     else:
         stmt = (
             select(Record)
-            .where(literal(agent_type) == Record.agents.any_())  # type: ignore[attr-defined]
+            .where(Record.agents.op("@>")([agent_type]))  # type: ignore[attr-defined]
             .order_by(Record.created_at.desc())
             .limit(max_records)
         )
