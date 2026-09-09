@@ -61,6 +61,25 @@ Execution Time: 25633.010 ms
 - `record_sections` 8.3GB(대부분 임베딩), `/data` 여유 3.6TB.
 - `word is too long to be indexed`(2047자 초과 단어 무시)는 NOTICE 이고 실패가 아니다.
 
+## 원인 ③ 배열 조회 — 인덱스가 있는데 쿼리 모양이 못 썼다
+
+`agent_search` 는 매 호출 좌석의 레코드 목록을 뽑는다. 그 질의가
+`'x' = ANY(records.agents)` 였는데, 배열 GIN 이 지원하는 연산자는 `@>` 와 `&&` 뿐이라
+`idx_records_agents` 가 **처음부터 있었는데도** 죽어 있었다.
+
+`EXPLAIN` 실측(53,622행) — Seq Scan **13.9ms** → Bitmap Index Scan **3.8ms**.
+7곳을 `records.agents @> ARRAY[x]` 로 바꿨다.
+
+## 최종 실측
+
+| 경로 | 전 | 후 |
+|---|---|---|
+| `agent_search` fts | 221.4초 / 0건 | **0.1초 / 6건** |
+| `agent_search` hybrid | 102.5초 / 3건 | **0.5초 / 6건** |
+| `agent_search` semantic | 0.1초 / 3건 | 0.3초 / 3건 |
+| 전역 `/api/search` fts | 25초 스캔 × 4 | **0.02~0.22초** |
+| `recommend_agents` | — | 0.4~1.2초 |
+
 ## 호출부가 해야 할 것 — 느린 것을 상정한다
 
 인덱스를 깔아도 이 경로는 네트워크 너머 도구 호출이다. 호출부는 **느릴 수 있다고
