@@ -1,0 +1,17 @@
+id	array_to_string
+DOC-HE-STRAT-2026-0000000003	strategy-analyst
+DOC-HE-DOCS-2026-0000000031	docs-helper
+DATA-HE-CAE-2026-0000000004	cae-analyst
+DOC-HE-CAE-2026-0000000002	cae-analyst,kooremapper-iga
+DOC-HE-CAE-2026-0000000030	iga-analyst
+DOC-HE-AUTO-2026-0000000002	docs-helper
+DOC-HE-DOCS-2026-0000000007	docs-helper
+DOC-HE-CAE-2026-0000000001	doc-curator
+DOC-HE-CAE-2026-0000000050	iga-analyst,kooremapper-iga
+DOC-HE-AUTO-2026-0000000001	iga-analyst,cae-reporter,doc-curator,docs-helper,kooremapper-iga
+DOC-HE-DOCS-2026-0000000020	iga-analyst,cae-reporter,doc-curator,kooremapper-iga
+DOC-HE-TST-2026-0000000001	iga-analyst,cae-reporter,cae-analyst,kooremapper-iga
+DOC-HE-CAE-2026-0000000051	docs-helper,doc-curator
+DOC-HE-TST-2026-0000000002	iga-analyst,cae-reporter,doc-curator,cae-analyst,kooremapper-iga
+DOC-HE-CAE-2026-0000000005	iga-analyst
+(15 rows)

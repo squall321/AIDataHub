@@ -235,23 +235,6 @@ class SentenceTransformerEmbedder(Embedder):
         except Exception:  # noqa: BLE001 — 장치 문제면 CPU 로 재시도(소규모 코퍼스엔 충분)
             self._model = SentenceTransformer(resolved_name, device="cpu")
         self._name = resolved_name
-
-    def _to_cpu_and_retry(self, fn, *a, **kw):
-        """GPU OOM 은 로드가 아니라 encode 시점에 난다(실측: 'encode failed: CUDA error: out of
-        memory'). GPU 를 쓰되, 순간 점유로 실패하면 CPU 로 영구 강등해 서비스가 죽지 않게 한다."""
-        try:
-            return fn(*a, **kw)
-        except Exception as exc:  # noqa: BLE001
-            if "out of memory" not in str(exc).lower() and "cuda" not in str(exc).lower():
-                raise
-            try:
-                import torch
-                torch.cuda.empty_cache()
-            except Exception:  # noqa: BLE001
-                pass
-            log.warning("embedding: GPU 실패 → CPU 로 전환 (%s)", str(exc)[:120])
-            self._model = SentenceTransformer(self._name, device="cpu")
-            return fn(*a, **kw)
         self.name = f"sentence-transformers-{resolved_name.split('/')[-1]}-d{self.dim}"
 
         # 모델의 실제 dim 검증 (다른 모델 사용 시 차원 불일치 조기 감지)
@@ -275,6 +258,25 @@ class SentenceTransformerEmbedder(Embedder):
                 f"마이그레이션을 갱신할 것."
             )
 
+    def _to_cpu_and_retry(self, fn, *a, **kw):
+        """GPU OOM 은 로드가 아니라 encode 시점에 난다(실측: 'encode failed: CUDA error: out of
+        memory'). GPU 를 쓰되, 순간 점유로 실패하면 CPU 로 영구 강등해 서비스가 죽지 않게 한다."""
+        try:
+            return fn(*a, **kw)
+        except Exception as exc:  # noqa: BLE001
+            if "out of memory" not in str(exc).lower() and "cuda" not in str(exc).lower():
+                raise
+            try:
+                import torch
+                torch.cuda.empty_cache()
+            except Exception:  # noqa: BLE001
+                pass
+            # ⚠ log 가 아니라 logger 다(이 모듈에 log 는 없다). 예전엔 여기서 NameError 가 나서
+            # **서비스를 살리려고 만든 CPU 폴백 경로가 진입하는 순간 죽었다** — GPU OOM 때
+            # 정확히 이 줄에 도달한다.
+            logger.warning("embedding: GPU 실패 → CPU 로 전환 (%s)", str(exc)[:120])
+            self._model = SentenceTransformer(self._name, device="cpu")
+            return fn(*a, **kw)
     def _wrap(self, text: str, *, is_query: bool) -> str:
         text = (text or "")[:8000]
         if not self._uses_e5_prefix:
