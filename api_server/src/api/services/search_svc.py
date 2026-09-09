@@ -86,6 +86,8 @@ async def fts_search(
     *,
     limit: int = 20,
     offset: int = 0,
+    record_ids: Sequence[str] | None = None,
+    data_types: Sequence[str] | None = None,
 ) -> tuple[list[dict], int]:
     """텍스트 검색.
 
@@ -97,6 +99,12 @@ async def fts_search(
     토큰 하나만 어긋나도 AND 가 통째로 실패하기 때문.
 
     ``fts_match`` 헬퍼가 dialect 분기를 담당한다.
+
+    ``record_ids`` / ``data_types`` 는 **SQL 술어로** 건다. 예전엔 호출부가 전역 결과를
+    받아 파이썬에서 걸렀는데, 그건 느린 것보다 나쁜 문제였다 — 전역 상위 N 을 뽑고
+    **그 다음에** 범위로 거르므로, 그 범위의 문서가 전역 상위에 없으면 결과가 통째로
+    0건이 된다. 좌석 하나의 레코드는 중앙값 47건(전체의 0.09%)이라 거의 항상 그랬고,
+    hybrid 의 FTS 절반이 지연만 치르고 아무것도 기여하지 못했다(2026-09-09 실측).
     """
     if not q.strip():
         return [], 0
@@ -125,6 +133,17 @@ async def fts_search(
                 fts_match(Record.summary, q, session, any_token=any_token),
             )
         ).where(Record.deleted_at.is_(None))
+        # 범위를 SQL 로 좁힌다 — 스캔 대상 자체가 줄고, 상위 N 이 범위 안에서 뽑힌다.
+        if record_ids is not None:
+            rid = list(record_ids)
+            if not rid:
+                return [], []          # 빈 범위 = 결과 없음(전역 검색으로 넓히지 않는다)
+            section_stmt = section_stmt.where(Record.id.in_(rid))
+            record_stmt = record_stmt.where(Record.id.in_(rid))
+        if data_types:
+            dts = list(data_types)
+            section_stmt = section_stmt.where(Record.data_type.in_(dts))
+            record_stmt = record_stmt.where(Record.data_type.in_(dts))
         s_rows = (await session.execute(section_stmt.limit(limit * 3))).all()
         r_rows = (await session.execute(record_stmt.limit(limit * 3))).scalars().all()
         return s_rows, r_rows
@@ -574,14 +593,12 @@ async def hybrid_search(
         record_ids=record_ids,
     )
 
-    # 2) FTS 결과 가져오기 (record_ids/data_types 필터는 후처리)
-    fts_items, _ = await fts_search(session, q, limit=fetch_k)
-    rid_set = set(record_ids) if record_ids is not None else None
-    dt_set = set(data_types) if data_types else None
-    if rid_set is not None:
-        fts_items = [it for it in fts_items if it.get("record_id") in rid_set]
-    if dt_set is not None:
-        fts_items = [it for it in fts_items if it.get("data_type") in dt_set]
+    # 2) FTS 결과 가져오기 — 범위를 **SQL 로** 건다.
+    #    예전엔 전역으로 fetch_k 건을 뽑고 파이썬에서 걸렀는데, 그러면 상위 N 이 범위 밖에서
+    #    정해져 범위 안 결과가 거의 항상 0건이 된다(좌석 레코드는 코퍼스의 0.09%). 지연은
+    #    지연대로 치르고 FTS 절반은 아무것도 기여하지 못했다 — 성능이 아니라 정확성 문제였다.
+    fts_items, _ = await fts_search(
+        session, q, limit=fetch_k, record_ids=record_ids, data_types=data_types)
 
     # 3) RRF 합산
     fused: dict[tuple[str, str | None], dict] = {}

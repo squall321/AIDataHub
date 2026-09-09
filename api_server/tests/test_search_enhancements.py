@@ -102,7 +102,9 @@ def test_hybrid_search_rrf(monkeypatch: pytest.MonkeyPatch) -> None:
             {"record_id": "r2", "section_id": "C", "score": 0.88, "tags": []},
         ][:top_k]
 
-    async def fake_fts(_s, q, *, limit):
+    # record_ids/data_types 는 이제 fts_search 의 1급 인자다(전역 조회 후 파이썬 후필터가
+    # 아니라 SQL 술어). 가짜도 같은 계약을 받아야 회귀를 잡는다.
+    async def fake_fts(_s, q, *, limit, record_ids=None, data_types=None):
         return (
             [
                 {"record_id": "r2", "section_id": "C", "data_type": "DOC", "tags": [], "snippet": ""},
@@ -148,3 +150,33 @@ def test_rerank_empty_hits() -> None:
     from api.services.rerank import maybe_rerank
 
     assert maybe_rerank("q", []) == []
+
+
+# ---------------------------------------------------------------------------
+# 범위 위임 — hybrid 가 record_ids 를 fts_search 에 **넘겨야** 한다
+# ---------------------------------------------------------------------------
+def test_hybrid_pushes_scope_into_fts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """예전엔 전역으로 뽑고 파이썬에서 걸렀다. 그러면 상위 N 이 범위 밖에서 정해져
+    범위 안 결과가 거의 항상 0건이 된다 — 느린 것보다 나쁜 정확성 문제였다."""
+    from api.services import search_svc
+
+    seen: dict = {}
+
+    async def fake_semantic(_s, q, *, top_k, **kw):
+        return []
+
+    async def fake_fts(_s, q, *, limit, record_ids=None, data_types=None):
+        seen["record_ids"] = record_ids
+        seen["data_types"] = data_types
+        return ([], 0)
+
+    monkeypatch.setattr(search_svc, "semantic_search", fake_semantic)
+    monkeypatch.setattr(search_svc, "fts_search", fake_fts)
+
+    async def run():
+        return await search_svc.hybrid_search(
+            object(), "q", top_k=4, record_ids=["r1", "r2"], data_types=["DOC"])
+
+    asyncio.run(run())
+    assert seen["record_ids"] == ["r1", "r2"]
+    assert seen["data_types"] == ["DOC"]

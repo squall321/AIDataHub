@@ -502,14 +502,12 @@ async def agent_search(
         hits: list[dict[str, Any]] = []
 
         if mode == "fts":
-            raw, _ = await search_svc.fts_search(session, q, limit=top_k * 3)
-            # agent record 범위 필터
-            if scope_record_ids:
-                scope_set = set(scope_record_ids)
-                raw = [r for r in raw if r.get("record_id") in scope_set]
-            # data_type 필터
-            if data_type_filter:
-                raw = [r for r in raw if r.get("data_type") in data_type_filter]
+            # 범위를 SQL 로 넘긴다. 전역으로 뽑고 나서 파이썬으로 거르면 상위 N 이 범위 밖에서
+            # 정해져 좌석 결과가 거의 항상 0건이 된다(hybrid 에서 실제로 그랬다).
+            raw, _ = await search_svc.fts_search(
+                session, q, limit=top_k * 3,
+                record_ids=scope_record_ids,
+                data_types=data_type_filter or None)
             hits = raw[:top_k]
 
         elif mode == "tag":
