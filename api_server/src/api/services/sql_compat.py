@@ -291,6 +291,33 @@ def fts_match(
     return summary_ilike(column, q)
 
 
+def fts_rank(column: Any, q: str, session: AsyncSession, *, any_token: bool = False) -> Any:
+    """관련도 점수. PG 는 ``ts_rank``, 그 외는 ``None``(정렬하지 않는다).
+
+    ⚠ **이 식을 전체 매칭 집합에 ORDER BY 로 걸면 안 된다.** GIN 은 순위를 저장하지
+    않으므로 ts_rank 는 매칭 행마다 ``to_tsvector`` 를 다시 계산한다(디토스트 + 파싱).
+    실측(2026-09-10, 11,258행 매칭) — 정렬 없음 1.6ms vs 전체 ORDER BY ts_rank **2,707ms**.
+    호출부는 후보를 먼저 **한정**한 뒤 그 안에서만 이 식으로 정렬해야 한다
+    (후보 500 → 54ms). ``search_svc.fts_search`` 가 그렇게 쓴다.
+    """
+    if not q or not is_postgres(session):
+        return None
+    from sqlalchemy import literal_column
+
+    cfg = literal_column("'simple'::regconfig")
+    tsvector = func.to_tsvector(cfg, column)
+    if any_token:
+        tokens = [t for t in q.split() if t.strip()][:12]
+        if not tokens:
+            return None
+        # 토큰별 순위의 합 — any_token 매칭(OR)과 같은 기준으로 점수를 매긴다.
+        expr = func.ts_rank(tsvector, func.plainto_tsquery(cfg, literal(tokens[0])))
+        for t in tokens[1:]:
+            expr = expr + func.ts_rank(tsvector, func.plainto_tsquery(cfg, literal(t)))
+        return expr
+    return func.ts_rank(tsvector, func.websearch_to_tsquery(cfg, literal(q)))
+
+
 # ---------------------------------------------------------------------------
 # Pagination helper (re-exported here for convenience; svc layer also uses)
 # ---------------------------------------------------------------------------

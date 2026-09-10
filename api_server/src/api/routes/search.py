@@ -209,23 +209,44 @@ async def search_faceted(
     candidate_ids: set[str] | None = None
     semantic_score_map: dict[str, float] = {}
     if q and q.strip():
+        # ⚠ **범위를 검색에 먼저 넘긴다.** 예전에는 전역에서 후보를 뽑고 그 **다음에**
+        #   agent·data_type 으로 걸렀다. 그러면 그 좌석/유형의 문서가 전역 상위 200 에
+        #   없을 때 결과가 통째로 비고, 사용자에게는 "그런 자료가 없다" 로 보인다 —
+        #   agent_search 가 0건이던 것과 **같은 병리**다(bf57f06·189afaa 에서 고친 것).
+        scope_ids: list[str] | None = None
+        if agent:
+            pred = array_overlap(Record.agents, [agent], session)
+            id_stmt = select(Record.id).where(pred.where_clause).where(
+                Record.deleted_at.is_(None))
+            scope_ids = list((await session.execute(id_stmt)).scalars().all())
+            if pred.python_filter is None and not scope_ids:
+                # 그 좌석에 바인딩된 문서가 0건 — 전역으로 넓히지 않고 빈 결과로 끝낸다.
+                return _empty_faceted(q, limit, offset)
+            if pred.python_filter is not None:
+                scope_ids = None      # 비-PG 폴백은 아래 파이썬 후필터가 담당한다
+        dt_scope = _split_csv(data_type) or None
+        # 다축 필터가 뒤에서 더 줄이므로 풀은 넉넉히 잡는다.
+        pool = max(limit * 5, 200)
         if mode == "semantic":
             try:
-                # 더 큰 풀을 잡아둔다 (다축 필터가 추가로 줄이므로).
                 sem_items = await semantic_search(
-                    session, q, top_k=max(limit * 5, 50)
+                    session, q, top_k=pool, data_types=dt_scope, record_ids=scope_ids
                 )
             except RuntimeError as exc:
                 log.warning("faceted semantic search unavailable: %s", exc)
-                # semantic 실패 → fts 폴백.
-                fts_items, _ = await fts_search(session, q, limit=200, offset=0)
+                # semantic 실패 → fts 폴백(범위는 그대로 유지한다).
+                fts_items, _ = await fts_search(
+                    session, q, limit=pool, offset=0,
+                    data_types=dt_scope, record_ids=scope_ids)
                 candidate_ids = {it["record_id"] for it in fts_items}
             else:
                 candidate_ids = {it["record_id"] for it in sem_items}
                 for it in sem_items:
                     semantic_score_map[it["record_id"]] = float(it.get("score", 0))
         else:  # fts
-            fts_items, _ = await fts_search(session, q, limit=200, offset=0)
+            fts_items, _ = await fts_search(
+                session, q, limit=pool, offset=0,
+                data_types=dt_scope, record_ids=scope_ids)
             candidate_ids = {it["record_id"] for it in fts_items}
 
     stmt = select(Record).where(Record.deleted_at.is_(None))

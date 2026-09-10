@@ -12,9 +12,10 @@ ARRAY/JSONB 등 방언 의존 표현은 모두 :mod:`api.services.sql_compat` �
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Sequence
 
-from sqlalchemy import Float, or_, select
+from sqlalchemy import Float, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.db.models import AgentRecord, Record, RecordSection
@@ -24,6 +25,7 @@ from .sql_compat import (
     array_contains,
     array_overlap,
     fts_match,
+    fts_rank,
     is_postgres,
     paginate_rows,
     summary_ilike,
@@ -89,6 +91,11 @@ async def tag_search(
 # ---------------------------------------------------------------------------
 # FTS-ish search (ILIKE on summary + section text)
 # ---------------------------------------------------------------------------
+# 관련도 정렬에 태울 후보 수. **전체 매칭에 ORDER BY ts_rank 를 걸면 안 된다** —
+# GIN 은 순위를 저장하지 않아 매칭 행마다 to_tsvector 를 다시 계산한다.
+# 실측(2026-09-10, 11,258행 매칭): 정렬 없음 1.6ms · 전체 정렬 2,707ms · 후보 500 54ms.
+# 좌석 범위 검색(record_ids 지정)은 매칭이 대개 이 수 아래라 사실상 전량 정렬이 된다.
+_RANK_POOL = int(os.environ.get("FTS_RANK_POOL", "500"))
 async def fts_search(
     session: AsyncSession,
     q: str,
@@ -114,11 +121,19 @@ async def fts_search(
     **그 다음에** 범위로 거르므로, 그 범위의 문서가 전역 상위에 없으면 결과가 통째로
     0건이 된다. 좌석 하나의 레코드는 중앙값 47건(전체의 0.09%)이라 거의 항상 그랬고,
     hybrid 의 FTS 절반이 지연만 치르고 아무것도 기여하지 못했다(2026-09-09 실측).
+
+    **정렬** — 후보를 ``_RANK_POOL`` 개로 한정한 뒤 그 안에서 ``ts_rank`` 로 정렬한다.
+    예전에는 ORDER BY 가 아예 없어 "상위 N" 이 **테이블 물리 저장 순서**였고, 그 순위가
+    그대로 hybrid 의 RRF 에 들어갔다. 전체 매칭에 정렬을 걸면 1,700배 느려진다
+    (sql_compat.fts_rank 주석 참조).
+
+    ``total`` 은 **매칭 수**(중복 제거 전, 섹션+레코드)다. 예전에는 잘라 낸 뒤의
+    ``len(items)`` 라 상한을 넘을 수 없어 늘 거짓이었다. GIN 덕에 COUNT 는 싸다(1.8~18ms).
     """
     if not q.strip():
         return [], 0
 
-    async def _run(any_token: bool) -> tuple[list, list]:
+    async def _run(any_token: bool) -> tuple[list, list, int]:
         section_stmt = (
             select(
                 Record.id.label("record_id"),
@@ -146,20 +161,68 @@ async def fts_search(
         if record_ids is not None:
             rid = list(record_ids)
             if not rid:
-                return [], []          # 빈 범위 = 결과 없음(전역 검색으로 넓히지 않는다)
+                return [], [], 0       # 빈 범위 = 결과 없음(전역 검색으로 넓히지 않는다)
             section_stmt = section_stmt.where(Record.id.in_(rid))
             record_stmt = record_stmt.where(Record.id.in_(rid))
         if data_types:
             dts = list(data_types)
             section_stmt = section_stmt.where(Record.data_type.in_(dts))
             record_stmt = record_stmt.where(Record.data_type.in_(dts))
-        s_rows = (await session.execute(section_stmt.limit(limit * 3))).all()
-        r_rows = (await session.execute(record_stmt.limit(limit * 3))).scalars().all()
-        return s_rows, r_rows
+        pool = max(limit * 3, _RANK_POOL)
+        # 후보를 먼저 한정하고(서브쿼리) 그 안에서만 관련도로 정렬한다 — 전체 매칭에
+        # ORDER BY ts_rank 를 걸면 매칭 행마다 to_tsvector 를 다시 계산해 1,700배 느려진다.
+        s_rank = fts_rank(RecordSection.content_text, q, session, any_token=any_token)
+        if s_rank is not None:
+            # ⚠ 후보 풀에서 **본문(content_text)까지 끌어오면 안 된다.** 500행 × 평균 1.4KB
+            #   를 디토스트해서 정렬 대상으로 물어 오느라 전역 질의가 220ms → 1,725ms 가
+            #   됐다(실측 2026-09-10). id 와 점수만으로 순위를 정하고, 이긴 몇 행만 본문을
+            #   가져온다.
+            key_stmt = section_stmt.with_only_columns(
+                RecordSection.id, s_rank.label("rank_")).limit(pool).subquery()
+            top_ids = [
+                r[0] for r in (await session.execute(
+                    select(key_stmt.c.id).order_by(key_stmt.c.rank_.desc()).limit(limit * 3))).all()
+            ]
+            if top_ids:
+                rows = (await session.execute(
+                    section_stmt.with_only_columns(*section_stmt.selected_columns,
+                                                   RecordSection.id.label("sec_pk"))
+                    .where(RecordSection.id.in_(top_ids)))).all()
+                order = {sid: i for i, sid in enumerate(top_ids)}
+                s_rows = sorted(rows, key=lambda x: order.get(x.sec_pk, 1 << 30))
+            else:
+                s_rows = []
+        else:
+            s_rows = (await session.execute(section_stmt.limit(limit * 3))).all()
 
-    section_rows, record_rows = await _run(False)
+        r_rank = fts_rank(Record.title, q, session, any_token=any_token)
+        if r_rank is not None:
+            sub_r = record_stmt.with_only_columns(
+                Record.id, r_rank.label("rank_")).limit(pool).subquery()
+            ranked_ids = [
+                r[0] for r in (await session.execute(
+                    select(sub_r.c.id).order_by(sub_r.c.rank_.desc()).limit(limit * 3))).all()
+            ]
+            if ranked_ids:
+                fetched = (await session.execute(
+                    select(Record).where(Record.id.in_(ranked_ids)))).scalars().all()
+                order = {rid: i for i, rid in enumerate(ranked_ids)}
+                r_rows = sorted(fetched, key=lambda x: order.get(x.id, 1 << 30))
+            else:
+                r_rows = []
+        else:
+            r_rows = (await session.execute(record_stmt.limit(limit * 3))).scalars().all()
+
+        # 매칭 수 — 자르기 **전** 기준이라 "더 있다" 를 정직하게 말할 수 있다.
+        n_s = (await session.execute(
+            select(func.count()).select_from(section_stmt.subquery()))).scalar() or 0
+        n_r = (await session.execute(
+            select(func.count()).select_from(record_stmt.subquery()))).scalar() or 0
+        return s_rows, r_rows, int(n_s) + int(n_r)
+
+    section_rows, record_rows, match_total = await _run(False)
     if not section_rows and not record_rows and len(q.split()) >= 2:
-        section_rows, record_rows = await _run(True)
+        section_rows, record_rows, match_total = await _run(True)
 
     seen: set[tuple[str, str | None]] = set()
     items: list[dict] = []
@@ -187,9 +250,13 @@ async def fts_search(
         if tabs:
             entry["table_refs"] = tabs
         items.append(entry)
+    # 같은 레코드가 섹션 히트로 이미 들어갔으면 레코드 항목을 또 넣지 않는다 — 범위를
+    # 좁힌 뒤로는 레코드 히트가 잘리지 않고 살아남아 한 레코드가 상위 슬롯을 두 번 먹는다
+    # (예전엔 섹션 히트가 limit 을 채워 레코드 항목이 통째로 잘렸다).
+    seen_records = {r for r, _ in seen}
     for rec in record_rows:
         key = (rec.id, None)
-        if key in seen:
+        if key in seen or rec.id in seen_records:
             continue
         seen.add(key)
         items.append(
@@ -204,8 +271,8 @@ async def fts_search(
             }
         )
 
-    total = len(items)
-    return items[offset : offset + limit], total
+    # total 은 **매칭 수**다(중복 제거 전). len(items) 는 상한에 갇힌 값이라 늘 거짓이었다.
+    return items[offset : offset + limit], match_total
 
 
 def _make_snippet(text: str, q: str, *, length: int = 300) -> str:
