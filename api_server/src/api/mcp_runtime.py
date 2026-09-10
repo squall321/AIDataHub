@@ -669,6 +669,8 @@ async def _agent_record_ids(session, agent_type: str) -> list[str]:
     `= ANY` Seq Scan 13.9ms vs `@> ARRAY[x]` Bitmap Index Scan 3.8ms. 되돌리지 말 것.
     비-PG(SQLite 테스트)는 sql_compat 폴백을 탄다.
     """
+    from types import SimpleNamespace
+
     from sqlalchemy import select
 
     from .db.models import Record
@@ -678,13 +680,19 @@ async def _agent_record_ids(session, agent_type: str) -> list[str]:
             Record.agents.op("@>")([agent_type])  # type: ignore[attr-defined]
         )
         return list((await session.execute(stmt)).scalars().all())
-    except Exception:  # noqa: BLE001 — 배열 연산자 미지원 백엔드
+    except Exception:  # noqa: BLE001 — 배열 연산자 미지원 백엔드(SQLite 테스트)
         from .services.sql_compat import array_overlap
 
+        # ⚠ 폴백에서 `select(Record.id).where(pred.where_clause)` 만 하면 안 된다.
+        #   비-PG 의 array_overlap 은 where_clause 가 `true()` 라 **전 코퍼스**가 그 좌석의
+        #   범위가 된다. 좁히는 일은 python_filter 가 하므로 행을 받아 걸러야 하고,
+        #   그러려면 id 만이 아니라 agents 컬럼도 함께 가져와야 한다.
         pred = array_overlap(Record.agents, [agent_type], session)
-        return list(
-            (await session.execute(select(Record.id).where(pred.where_clause))).scalars().all()
-        )
+        rows = (await session.execute(
+            select(Record.id, Record.agents).where(pred.where_clause))).all()
+        if pred.python_filter is None:
+            return [r[0] for r in rows]
+        return [r[0] for r in rows if pred.python_filter(SimpleNamespace(agents=r[1]))]
 
 
 def _refused_result(

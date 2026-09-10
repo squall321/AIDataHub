@@ -127,3 +127,67 @@ leave-one-out 라우팅을 돌렸다.
 [0.895, 0.97] 로 압축해서, `_SAMPLE_WEIGHT=1.0` 이면 **전역 top-20 에 들기만 하면 누구나
 +0.9 를 거의 평평하게 받는다.** `recommend_svc.py:256-262` 가 기록한 오라우팅 사고가
 그 결과다. 프리픽스를 바꿔도 이건 안 움직인다. 별건으로 남긴다.
+
+---
+
+# 후속 — 감사가 잡은 것 (2026-09-10)
+
+위 수정 뒤 5개 렌즈 적대 감사(`wbym753kt`, 39 에이전트)를 돌렸다. 20건이 살아남았고
+그중 아래를 고쳤다. **"고쳤다"고 선언한 것이 호출부에서 무력화돼 있던 게 핵심이었다.**
+
+## 고친 것
+
+| 무엇 | 실측 |
+|---|---|
+| 바인딩 0건 좌석이 **남의 문서**를 자기 근거로 받았다 | `sim-thermal-sed` → sw-app-messages MMS 10건, `refused:false` |
+| 좌석 범위 후필터가 MCP `fts_search`·`tag_search`·`mode='tag'` 에 남아 있었다 | 전역 상위 15 → 좌석 생존 **0건** vs 고친 뒤 5건 |
+| FTS 에 정렬이 없어 RRF 순위가 **물리 저장 순서**였다 | ts_rank 도입, 웜 131~174ms 유지 |
+| 한 레코드가 상위 슬롯을 두 번 먹었다 | 섹션·레코드 중복 제거 |
+| `total` 이 늘 거짓(잘린 뒤 `len(items)`) | 실제 매칭 수, COUNT 1.8~18ms |
+| `/api/search/faceted` 가 전역 후보 → agent 후필터 | '해석' 22건 중 **0건** 생존 → 22건 |
+| SQLite 폴백이 좌석 범위를 **전 코퍼스**로 벌렸다 | `where_clause=true()` 인데 `python_filter` 를 안 불렀다 |
+
+## 인덱스가 죽었는지 확인하는 법
+
+`CREATE INDEX CONCURRENTLY` 는 실패하면 **INVALID 인덱스를 남긴다.** 그러면 플래너가
+안 쓰고 조용히 예전 속도로 돌아간다. `IF NOT EXISTS` 는 그 INVALID 를 '있다'고 보고
+건너뛰므로 재실행으로도 안 고쳐진다.
+
+```sql
+select c.relname, i.indisvalid, i.indisready
+from pg_index i join pg_class c on c.oid = i.indexrelid
+where c.relname like '%fts_gin%';
+```
+
+`indisvalid = f` 면 **DROP 후 재생성**한다(`DROP INDEX CONCURRENTLY <name>;` → 0031 재실행).
+
+## 롤백
+
+- 인덱스만 되돌리기 — `alembic downgrade 0030` (CONCURRENTLY DROP, 쓰기 안 막는다).
+- 정렬만 끄기 — `FTS_RANK_POOL` 은 후보 수일 뿐 정렬 자체를 끄지는 않는다. 정렬을
+  되돌리려면 `search_svc.fts_search` 의 `fts_rank` 분기를 지운다(권장하지 않는다 —
+  순위가 다시 물리 저장 순서가 된다).
+
+## 재현
+
+```bash
+# 좌석 범위가 SQL 로 들어가는지 (0건이면 후필터로 되돌아간 것)
+psql -c "explain (analyze) select rs.record_id from records r
+  join record_sections rs on rs.record_id=r.id
+  where to_tsvector('simple'::regconfig, rs.content_text)
+        @@ websearch_to_tsquery('simple','낙하 충격')
+    and r.deleted_at is null
+    and r.id in (select id from records where agents @> ARRAY['sim-drop-impact'])
+  limit 54;"
+```
+
+## 안 고친 것 — 비용이지 결함이 아니다
+
+- **본문이 안 바뀌는 UPDATE 에도 GIN 이 청구된다.** `record_sections` 의 임베딩 백필은
+  `embedding` 만 바꾸는데, 그 컬럼에 부분 HNSW(3,408MB)가 걸려 있어 HOT 이 될 수 없다.
+  비-HOT UPDATE 는 표현식 인덱스의 식을 다시 평가하므로 `to_tsvector` 가 재계산된다.
+  대기 물량 214,836행 기준 낭비는 분 단위(백필 본체는 시간 단위)라 백필을 막을 이유는
+  아니다. 없애려면 `content_text` 를 생성 tsvector 컬럼으로 물질화해야 하는데 디스크가
+  또 든다.
+- **autovacuum 이 이 표에서 오래 걸린다.** 인덱스 4.1GB(HNSW 3.4GB + GIN 543MB)라
+  인덱스 패스가 길다. 실측 1시간 38분 관측. 검색에는 영향이 없다.
