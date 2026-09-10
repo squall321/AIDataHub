@@ -526,8 +526,12 @@ async def agent_search(
             tags_list = [t.strip() for t in q.split(",") if t.strip()]
             if not tags_list:
                 return _refused_result(agent_type, q, mode, refusal_message, "태그 없음")
-            rows, _ = await search_svc.tag_search(session, tags_list, limit=top_k * 3)
-            raw = [
+            # 범위를 SQL 로 넘긴다 — fts·hybrid 와 같은 규율. 전역으로 뽑고 파이썬에서
+            # 거르면 상위 N 이 범위 밖에서 정해져 좌석 결과가 거의 항상 0건이 된다.
+            rows, _ = await search_svc.tag_search(
+                session, tags_list, limit=top_k * 3, record_ids=scope_record_ids
+            )
+            hits = [
                 {
                     "record_id": r.id,
                     "title": r.title,
@@ -536,11 +540,7 @@ async def agent_search(
                     "score": 1.0,
                 }
                 for r in rows
-            ]
-            if scope_record_ids:
-                scope_set = set(scope_record_ids)
-                raw = [r for r in raw if r["record_id"] in scope_set]
-            hits = raw[:top_k]
+            ][:top_k]
 
         elif mode == "hybrid":
             # semantic + fts RRF 결합 — 패러프레이즈와 정확 키워드 모두 강함.
@@ -660,6 +660,31 @@ async def agent_search(
                 "agent_record_scope": len(agent_record_ids) if agent_record_ids else "all",
             },
         }
+
+
+async def _agent_record_ids(session, agent_type: str) -> list[str]:
+    """그 좌석에 바인딩된 레코드 id. 없으면 **빈 리스트**(전역이라는 뜻이 아니다).
+
+    ⚠ `x = ANY(col)` 로 쓰면 GIN 인덱스(idx_records_agents)를 **못 쓴다**. 실측 —
+    `= ANY` Seq Scan 13.9ms vs `@> ARRAY[x]` Bitmap Index Scan 3.8ms. 되돌리지 말 것.
+    비-PG(SQLite 테스트)는 sql_compat 폴백을 탄다.
+    """
+    from sqlalchemy import select
+
+    from .db.models import Record
+
+    try:
+        stmt = select(Record.id).where(
+            Record.agents.op("@>")([agent_type])  # type: ignore[attr-defined]
+        )
+        return list((await session.execute(stmt)).scalars().all())
+    except Exception:  # noqa: BLE001 — 배열 연산자 미지원 백엔드
+        from .services.sql_compat import array_overlap
+
+        pred = array_overlap(Record.agents, [agent_type], session)
+        return list(
+            (await session.execute(select(Record.id).where(pred.where_clause))).scalars().all()
+        )
 
 
 def _refused_result(
@@ -787,22 +812,12 @@ async def fts_search(
     from .services import search_svc
 
     async with SessionLocal() as session:
-        items, _ = await search_svc.fts_search(session, q, limit=top_k * 3)
-        if agent_type:
-            try:
-                id_stmt = select(Record.id).where(
-                    Record.agents.op("@>")([agent_type])  # type: ignore[attr-defined]
-                )
-                scope = set((await session.execute(id_stmt)).scalars().all())
-            except Exception:
-                from .services.sql_compat import array_overlap
-                pred = array_overlap(Record.agents, [agent_type], session)
-                scope = set(
-                    (await session.execute(select(Record.id).where(pred.where_clause)))
-                    .scalars().all()
-                )
-            items = [it for it in items if it.get("record_id") in scope]
-
+        # ⚠ 좌석 범위는 **SQL 로** 넘긴다. 전역 상위 N 을 뽑고 파이썬에서 거르면 그 좌석의
+        #   문서가 전역 상위에 없을 때 결과가 통째로 0건이 된다 — agent_search 가 정확히
+        #   그 이유로 0건이었다(bf57f06). agent_type 이 있는데 바인딩이 0건이면 []가 넘어가
+        #   search_svc 의 빈-범위 가드가 결과 없음으로 끝낸다(전역으로 넓히지 않는다).
+        scope_ids = await _agent_record_ids(session, agent_type) if agent_type else None
+        items, _ = await search_svc.fts_search(session, q, limit=top_k * 3, record_ids=scope_ids)
         return items[:top_k]
 
 
@@ -828,8 +843,11 @@ async def tag_search(
         return []
 
     async with SessionLocal() as session:
-        rows, _ = await search_svc.tag_search(session, tag_list, limit=top_k * 3)
-        results = [
+        scope_ids = await _agent_record_ids(session, agent_type) if agent_type else None
+        rows, _ = await search_svc.tag_search(
+            session, tag_list, limit=top_k * 3, record_ids=scope_ids
+        )
+        return [
             {
                 "record_id": r.id,
                 "title": r.title,
@@ -838,23 +856,7 @@ async def tag_search(
                 "summary": (r.summary or "")[:200],
             }
             for r in rows
-        ]
-        if agent_type:
-            try:
-                id_stmt = select(Record.id).where(
-                    Record.agents.op("@>")([agent_type])  # type: ignore[attr-defined]
-                )
-                scope = set((await session.execute(id_stmt)).scalars().all())
-            except Exception:
-                from .services.sql_compat import array_overlap
-                pred = array_overlap(Record.agents, [agent_type], session)
-                scope = set(
-                    (await session.execute(select(Record.id).where(pred.where_clause)))
-                    .scalars().all()
-                )
-            results = [r for r in results if r["record_id"] in scope]
-
-        return results[:top_k]
+        ][:top_k]
 
 
 # ===========================================================================

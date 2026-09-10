@@ -58,12 +58,19 @@ async def tag_search(
     *,
     limit: int = 20,
     offset: int = 0,
+    record_ids: Sequence[str] | None = None,
 ) -> tuple[list[Record], int]:
     """태그 모두 포함(AND) 검색.
 
     ``Record.tags @> [tags...]`` 의미. SQLite 에서는 파이썬 후필터로 동등한
     동작을 보장한다.
+
+    ``record_ids`` 는 **SQL 술어로** 건다(fts_search 와 같은 규율). 호출부가 전역으로
+    뽑아 놓고 파이썬에서 거르면, 상위 N 이 범위 밖에서 정해져 좌석 결과가 거의 항상
+    0건이 된다 — fts 에서 실제로 그랬다. ``[]`` 는 '전역'이 아니라 '해당 없음'이다.
     """
+    if record_ids is not None and not list(record_ids):
+        return [], 0                # 빈 범위 = 결과 없음(전역으로 넓히지 않는다)
     pred = array_contains(Record.tags, list(tags), session)
     stmt = (
         select(Record)
@@ -71,6 +78,8 @@ async def tag_search(
         .where(Record.deleted_at.is_(None))
         .order_by(Record.updated_at.desc(), Record.id.desc())
     )
+    if record_ids is not None:
+        stmt = stmt.where(Record.id.in_(list(record_ids)))
     pyfilters = [pred] if pred.python_filter is not None else []
     return await paginate_rows(
         session, stmt, limit=limit, offset=offset, extra_python_predicates=pyfilters
