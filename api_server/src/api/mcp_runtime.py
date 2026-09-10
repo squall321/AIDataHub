@@ -498,7 +498,16 @@ async def agent_search(
             all_recs = (await session.execute(fb_stmt)).scalars().all()
             agent_record_ids = list(all_recs)
 
-        scope_record_ids = agent_record_ids or None  # None = 범위 제한 없음
+        # ⚠ 빈 목록을 None(=범위 제한 없음)으로 접으면 안 된다. 이 도구는 agent_type 이
+        #   **필수**라 빈 목록은 언제나 '이 좌석에 바인딩된 문서가 0건'이라는 뜻이지
+        #   '전역으로 찾아라'가 아니다. 접어 버리면 그 좌석이 **남의 문서를 자기 근거로**
+        #   refused:false 로 돌려준다(실측 2026-09-10 — sim-thermal-sed 가 sw-app-messages 의
+        #   MMS 문서 10건을 받았다). 같은 상황의 올바른 처리가 preview_svc.py:67-83 에 있다.
+        if not agent_record_ids:
+            return _refused_result(
+                agent_type, q, mode, refusal_message, f"agent '{agent_type}' has 0 mapped records"
+            )
+        scope_record_ids = agent_record_ids
 
         # --- 검색 실행 ---
         hits: list[dict[str, Any]] = []
@@ -709,7 +718,9 @@ async def semantic_search(
             q,
             top_k=top_k,
             data_types=data_types or None,
-            record_ids=record_ids or None,
+            # ⚠ `or None` 금지 — record_ids 는 agent_type 이 있을 때만 채워지므로 []는
+            #   '그 좌석이 0건'이다. 접으면 전역 검색이 되어 남의 문서가 돌아온다.
+            record_ids=record_ids,
         )
 
 
@@ -752,7 +763,9 @@ async def hybrid_search(
             q,
             top_k=top_k,
             data_types=data_types or None,
-            record_ids=record_ids or None,
+            # ⚠ `or None` 금지 — record_ids 는 agent_type 이 있을 때만 채워지므로 []는
+            #   '그 좌석이 0건'이다. 접으면 전역 검색이 되어 남의 문서가 돌아온다.
+            record_ids=record_ids,
         )
 
 
