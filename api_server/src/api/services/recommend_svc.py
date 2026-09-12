@@ -10,7 +10,10 @@
 """
 from __future__ import annotations
 
+import json
+import logging
 import os
+from pathlib import Path
 from collections import defaultdict
 from typing import Any
 
@@ -19,6 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.models import Agent, Record, RecordSection
 from ..services import sample_embedding_svc, search_svc
+
+log = logging.getLogger(__name__)
 
 # v0.14.0 — recommend_agents 점수 정책 (실데이터 적재로 스케일 불균형 발견 후 개정).
 # 과거: record 항 = sum/candidate_sections (전역 50 으로 나눠 항상 과소),
@@ -122,28 +127,33 @@ def _query_terms(query: str) -> set[str]:
 # 크로스인코더를 켜도 고쳐지지 않는다(둘 다 실측). 사람이 쓰는 말에 현장 용어를 **덧붙인다**
 # (치환이 아니다 — 원문도 그대로 두어 잘 되던 질의를 망가뜨리지 않는다).
 # LLM 없이 도는 결정적 표라 모델 상태와 무관하게 항상 작동한다.
-_JARGON: dict[str, str] = {
-    "부풀": "스웰링 swelling 팽창 가스발생",
-    "부었": "스웰링 swelling 팽창",
-    "깨지": "파손 크랙 fracture 낙하",
-    "깨짐": "파손 크랙 fracture",
-    "떨어뜨리": "낙하 drop impact 충격",
-    "떨어뜨렸": "낙하 drop impact 충격",
-    "떨어트": "낙하 drop impact 충격",
-    "뜨거": "발열 thermal 온도상승",
-    "발열": "thermal 온도상승",
-    "느려": "성능저하 throttling 지연",
-    "끊겨": "단선 접촉불량 통신두절",
-    "안 켜": "부팅실패 전원불량",
-    "안켜": "부팅실패 전원불량",
-    "금이": "크랙 균열 fracture",
-    "휘어": "휨 warpage bending",
-    "휨": "warpage",
-    "녹": "부식 corrosion",
-    "소리": "음향 acoustic 노이즈",
-    "잡음": "노이즈 noise EMI",
-    "배터리가 빨리": "배터리 소모 전류소비",
-}
+_TERMS_PATH = Path(os.environ.get("AIDH_FIELD_TERMS")
+                   or Path(__file__).resolve().parents[3] / "config" / "field_terms.json")
+_TERMS_CACHE: dict[str, object] = {"mtime": None, "data": {}}
+
+
+def _field_terms() -> dict[str, str]:
+    """현장표현 사전 — 파일만 고치면 반영된다(mtime 감시, 재기동 불필요).
+
+    파일이 없거나 깨졌으면 **빈 표**다(확장 없이 종전대로 검색). 조용히 비면 원인을 모르므로
+    한 번은 경고를 남긴다."""
+    try:
+        st = _TERMS_PATH.stat().st_mtime
+    except OSError:
+        if _TERMS_CACHE.get("mtime") != "missing":
+            log.warning("현장표현 사전이 없다(%s) — 구어 질의 확장 없이 검색한다", _TERMS_PATH)
+            _TERMS_CACHE["mtime"] = "missing"
+        return {}
+    if _TERMS_CACHE.get("mtime") != st:
+        try:
+            raw = json.loads(_TERMS_PATH.read_text(encoding="utf-8"))
+            terms = raw.get("terms") if isinstance(raw, dict) else raw
+            _TERMS_CACHE["data"] = {str(k): str(v) for k, v in (terms or {}).items()}
+            _TERMS_CACHE["mtime"] = st
+            log.info("현장표현 사전 %d개 로드", len(_TERMS_CACHE["data"]))
+        except Exception as exc:  # noqa: BLE001 — 깨진 파일이 검색을 죽이면 안 된다
+            log.warning("현장표현 사전을 못 읽었다(%r) — 직전 표를 쓴다", exc)
+    return _TERMS_CACHE["data"]  # type: ignore[return-value]
 
 
 def expand_query(q: str) -> str:
@@ -151,7 +161,7 @@ def expand_query(q: str) -> str:
     if not q:
         return q
     extra: list[str] = []
-    for k, v in _JARGON.items():
+    for k, v in _field_terms().items():
         if k in q:
             extra.extend(t for t in v.split() if t not in q)
     return f"{q} {' '.join(dict.fromkeys(extra))}" if extra else q

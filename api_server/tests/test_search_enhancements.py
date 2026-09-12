@@ -203,3 +203,23 @@ def test_구어를_현장_용어로_넓힌다():
     # 걸리는 게 없으면 손대지 않는다 — 잘 되던 질의를 망가뜨리지 않는 것이 더 중요하다.
     assert expand_query("ABD 행렬 계산") == "ABD 행렬 계산"
     assert expand_query("") == ""
+
+
+def test_현장표현_사전은_코퍼스에_있는_말만_쓴다():
+    """확장어가 인덱스에 없는 말이면 덧붙여도 아무 효과가 없다 — 사전을 늘릴 때 가장 쉬운 실수라
+    파일 형식과 '치환 아님' 규칙만이라도 코드가 지킨다(어휘 대조는 build 시 수동)."""
+    import json
+    from pathlib import Path
+
+    from api.services.recommend_svc import _field_terms, expand_query
+
+    path = Path(__file__).resolve().parents[1] / "config" / "field_terms.json"
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    assert raw["terms"], "사전이 비면 구어 질의가 종전처럼 빗나간다"
+    for k, v in raw["terms"].items():
+        assert k.strip() and v.strip(), f"빈 항목: {k!r}"
+        assert k not in v.split(), f"{k}: 자기 자신을 확장어로 넣지 마라"
+    assert len(_field_terms()) == len(raw["terms"])
+    # 원문 보존 — 치환하면 잘 되던 전문용어 질의가 망가진다.
+    q = "액정에 잔상이 남아요"
+    assert q in expand_query(q) and "번인" in expand_query(q)
