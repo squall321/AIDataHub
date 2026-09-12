@@ -335,6 +335,7 @@ async def semantic_search(
     ``LIMIT top_k`` 동작을 그대로 유지해 성능 저하를 피한다.
     """
     from .embedding import get_embedder
+    from .rerank import maybe_rerank as _maybe_rerank, rerank_enabled as _rerank_enabled
 
     if not (query or "").strip():
         return []
@@ -347,7 +348,14 @@ async def semantic_search(
 
     # tag_boost / min_score 가 활성이면 재랭킹/필터를 위해 후보 풀을 넓게 가져온다.
     rerank = bool(tag_boost) or (min_score is not None)
+    # 크로스인코더(BGE reranker)가 켜져 있으면 **여기서도** 넓게 받는다 — e5 코사인은 무관한
+    # 문장끼리도 0.77~0.91 이라 상위 N 안의 순서가 흐리다(실측: 무관 레코드 0.9241). 문단을
+    # 직접 읽는 크로스인코더가 그 흐림을 걷어낸다. 꺼져 있으면 종전 그대로(회귀 0).
+    _ce = _rerank_enabled()
+    _ce_k = max(top_k * int(os.environ.get("AIDH_RERANK_OVERFETCH", "3")), top_k) if _ce else 0
     fetch_k = max(top_k * 3, top_k) if rerank else top_k
+    if _ce:
+        fetch_k = max(fetch_k, _ce_k)
 
     def _apply_rerank(results: list[dict]) -> list[dict]:
         """tag_boost 가산+재정렬 → min_score 필터 → top_k 자르기."""
@@ -423,6 +431,8 @@ async def semantic_search(
             results.append(entry)
         if rerank:
             results = _apply_rerank(results)
+        if _ce:
+            results = _maybe_rerank(query, results, top_k=top_k)
         return results
 
     # SQLite 폴백 — 전체 로드 후 numpy 로 코사인.
@@ -490,6 +500,8 @@ async def semantic_search(
         out.append(entry)
     if rerank:
         out = _apply_rerank(out)
+    if _ce:
+        out = _maybe_rerank(query, out, top_k=top_k)
     return out
 
 

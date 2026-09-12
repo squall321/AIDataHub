@@ -141,4 +141,10 @@ def maybe_rerank(
     return out
 
 
-__all__ = ["maybe_rerank"]
+def rerank_enabled() -> bool:
+    """크로스인코더가 켜져 있나 — 호출부가 **후보를 넉넉히 받을지** 정할 때 쓴다.
+    꺼져 있는데 3배로 받아 오면 DB 만 더 읽고 버리는 셈이 된다."""
+    return _is_enabled()
+
+
+__all__ = ["maybe_rerank", "rerank_enabled"]

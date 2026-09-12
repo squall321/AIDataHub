@@ -180,3 +180,13 @@ def test_hybrid_pushes_scope_into_fts(monkeypatch: pytest.MonkeyPatch) -> None:
     asyncio.run(run())
     assert seen["record_ids"] == ["r1", "r2"]
     assert seen["data_types"] == ["DOC"]
+
+
+def test_리랭커_스위치는_두_경로에_모두_걸린다():
+    """semantic_search 는 반환 지점이 둘이다(PG 경로 / SQLite 폴백). 한쪽에만 걸면 운영에서
+    아무 일도 안 일어난다 — 실측으로 그 함정을 밟았다(켰는데 순위가 그대로였다)."""
+    from pathlib import Path
+    src = Path(__file__).resolve().parents[1] / "src" / "api" / "services" / "search_svc.py"
+    body = src.read_text(encoding="utf-8")
+    assert body.count("_maybe_rerank(query,") == 2, "두 반환 경로 모두에 리랭크가 걸려야 한다"
+    assert "_rerank_enabled()" in body, "꺼져 있으면 후보를 넓게 받지 않아야 한다(DB 낭비 방지)"
