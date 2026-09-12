@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from collections import defaultdict
 from typing import Any
@@ -156,9 +157,23 @@ def _field_terms() -> dict[str, str]:
     return _TERMS_CACHE["data"]  # type: ignore[return-value]
 
 
+# 이미 전문용어로 물은 질의는 확장하지 않는다 — 정확한 질의에 단어를 더하면 희석된다.
+# 실측(라벨 1,000건, 각 전문가의 sample_queries): 확장을 무조건 걸면 top1 이 80.8% → 74.6% 로
+# 떨어졌고, 1글자 키('데')를 걷어낸 뒤에도 79.8% 로 1.0%p 가 남았다. 그 잔여가 이 비용이다.
+# 판정은 **규격번호(JESD22-A104·IPC-9701 꼴) 또는 ASCII 낱말 3개 이상** — 구어 질의는 걸리지
+# 않고(실측 5/5 통과) 기술 질의만 걸린다.
+_STD_RE = re.compile(r"[A-Za-z]{2,}[-/]?\d{2,}")
+_ASCII_RE = re.compile(r"[A-Za-z]{2,}")
+
+
+def already_technical(q: str) -> bool:
+    """질문자가 이미 현장 용어를 쓰고 있나 — 그렇다면 사전이 보탤 것이 없다."""
+    return bool(_STD_RE.search(q or "")) or len(_ASCII_RE.findall(q or "")) >= 3
+
+
 def expand_query(q: str) -> str:
-    """구어 질의에 현장 용어를 덧붙인다. 걸리는 게 없으면 원문 그대로."""
-    if not q:
+    """구어 질의에 현장 용어를 덧붙인다. 걸리는 게 없거나 이미 전문용어면 원문 그대로."""
+    if not q or already_technical(q):
         return q
     extra: list[str] = []
     for k, v in _field_terms().items():

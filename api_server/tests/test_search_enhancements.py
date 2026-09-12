@@ -239,3 +239,28 @@ def test_agent_search_도_현장표현을_넓힌다_단_tag_는_예외():
     assert "session, q," not in head and "\n                q,\n" not in head, (
         "agent_search 안의 검색 호출은 확장 질의(search_q)를 써야 한다"
     )
+
+
+def test_한글자_키는_사전에_들어가면_안_된다():
+    """부분일치라 흔한 음절에 걸린다 — '데'('발열') 하나가 라벨 1,000건 중 237건에서 발동해
+    오답 55건을 만들었다(top1 80.8%→74.6%). 20건 규모 검증으로는 보이지 않던 회귀다."""
+    import json
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "config" / "field_terms.json"
+    terms = json.loads(path.read_text(encoding="utf-8"))["terms"]
+    short = [k for k in terms if len(k.strip()) <= 1]
+    assert not short, f"1글자 키는 오탐을 만든다: {short}"
+
+
+def test_이미_전문용어로_물으면_확장하지_않는다():
+    """정확한 질의에 단어를 더하면 희석된다. 규격번호나 ASCII 낱말이 여럿이면 질문자가 이미
+    현장 용어를 쓰는 것이므로 사전이 보탤 것이 없다(구어 질의는 이 게이트에 걸리지 않는다)."""
+    from api.services.recommend_svc import already_technical, expand_query
+
+    assert already_technical("JESD22-A104 온도사이클 조건") is True
+    assert already_technical("PoP warpage coplanarity HIP 판정") is True
+    assert already_technical("배터리가 부풀어 올랐어요") is False
+    assert already_technical("PCB 휨 때문에 깨져요") is False
+    q = "IPC-9701 TC1 조건에서 솔더 크랙이 깨지는 문제"
+    assert expand_query(q) == q, "전문용어 질의는 원문 그대로 나가야 한다"
