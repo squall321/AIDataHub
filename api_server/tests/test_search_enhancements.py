@@ -190,3 +190,16 @@ def test_리랭커_스위치는_두_경로에_모두_걸린다():
     body = src.read_text(encoding="utf-8")
     assert body.count("_maybe_rerank(query,") == 2, "두 반환 경로 모두에 리랭크가 걸려야 한다"
     assert "_rerank_enabled()" in body, "꺼져 있으면 후보를 넓게 받지 않아야 한다(DB 낭비 방지)"
+
+
+def test_구어를_현장_용어로_넓힌다():
+    """'배터리가 부풀어 올랐어요' 는 pwr-swelling 을 못 찾는데 '배터리 스웰링' 은 1위로 찾는다
+    (실측). 인덱스가 아니라 어휘가 어긋난 것이라 후보 수·리랭커로는 안 고쳐진다."""
+    from api.services.recommend_svc import expand_query
+    out = expand_query("배터리가 부풀어 올랐어요")
+    assert "스웰링" in out and "배터리가 부풀어 올랐어요" in out, "원문은 남기고 용어만 덧붙인다"
+    assert "swelling" in out
+    assert expand_query("떨어뜨렸을 때 화면이 깨지는 문제").count("낙하") >= 1
+    # 걸리는 게 없으면 손대지 않는다 — 잘 되던 질의를 망가뜨리지 않는 것이 더 중요하다.
+    assert expand_query("ABD 행렬 계산") == "ABD 행렬 계산"
+    assert expand_query("") == ""

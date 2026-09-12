@@ -344,7 +344,12 @@ async def semantic_search(
     # E5 비대칭 모델: 질의는 query prefix — passage prefix 로 인코딩하면
     # ranking 이 모델 학습 의도와 어긋난다.
     qvec = embedder.encode_query(query)
-    top_k = max(1, min(int(top_k), 100))
+    # ⚠ 상한을 **조용히** 자르면 호출부는 300개를 달라고 하고 100개를 받는다(후보를 넓혀도
+    # recall 이 안 늘어나는 원인이 된다). 값을 env 로 열고, 잘릴 때는 로그를 남긴다.
+    _cap = int(os.environ.get("AIDH_SEARCH_TOP_K_MAX", "100"))
+    if int(top_k) > _cap:
+        log.info("semantic_search: top_k %s → %s 로 잘림(AIDH_SEARCH_TOP_K_MAX)", top_k, _cap)
+    top_k = max(1, min(int(top_k), _cap))
 
     # tag_boost / min_score 가 활성이면 재랭킹/필터를 위해 후보 풀을 넓게 가져온다.
     rerank = bool(tag_boost) or (min_score is not None)

@@ -32,6 +32,11 @@ from ..services import sample_embedding_svc, search_svc
 _SAMPLE_WEIGHT = float(os.environ.get("AGENT_SAMPLE_WEIGHT", "1.0"))
 _SAMPLE_TOP_K = int(os.environ.get("AGENT_SAMPLE_TOP_K", "20"))
 _SAMPLE_PER_AGENT_CAP = int(os.environ.get("AGENT_SAMPLE_PER_AGENT_CAP", "3"))
+# 후보 섹션 수 — 전문가 추천의 **recall** 을 정하는 값이다. 이 안에 정답 전문가의 카드가 한 장도
+# 없으면 리랭커도 못 살린다(실측: '배터리가 부풀어 올랐어요' 에 pwr-swelling 이 풀에 있는데도
+# 50 후보 안에 안 들어왔다). 큰 박스(cae00 B300)는 넉넉히 올린다 — 대신 semantic_search 의
+# AIDH_SEARCH_TOP_K_MAX 도 같이 올려야 한다(안 올리면 100 에서 잘린다).
+_CANDIDATE_SECTIONS = int(os.environ.get("AIDH_RECOMMEND_CANDIDATE_SECTIONS", "50"))
 # v0.15.0 — 역할/설명 어휘 매칭 항. record·sample 은 '데이터 양'에 좌우돼, 전문가가 많아지면
 # 데이터 얇은 적합 전문가가 top-N 후보 섹션에서 밀려 추천이 불발됐다(관측). 질의 토큰이 agent 의
 # description/name/tags/data_types 에 겹치면 데이터 없이도 '역할'로 라우팅한다(임베딩 인프라 불요).
@@ -110,12 +115,54 @@ def _query_terms(query: str) -> set[str]:
 # ---------------------------------------------------------------------------
 # 1) Agent 추천
 # ---------------------------------------------------------------------------
+
+# ── 구어 → 전문용어 다리 ──────────────────────────────────────────────────────
+# 실측으로 잡은 결함: "배터리가 부풀어 올랐어요" 는 pwr-swelling 을 못 찾는데 "배터리 스웰링"
+# 은 **1위**로 찾는다. 인덱스도 랭킹도 멀쩡하고 어휘만 어긋난 것이라, 후보를 300으로 늘리거나
+# 크로스인코더를 켜도 고쳐지지 않는다(둘 다 실측). 사람이 쓰는 말에 현장 용어를 **덧붙인다**
+# (치환이 아니다 — 원문도 그대로 두어 잘 되던 질의를 망가뜨리지 않는다).
+# LLM 없이 도는 결정적 표라 모델 상태와 무관하게 항상 작동한다.
+_JARGON: dict[str, str] = {
+    "부풀": "스웰링 swelling 팽창 가스발생",
+    "부었": "스웰링 swelling 팽창",
+    "깨지": "파손 크랙 fracture 낙하",
+    "깨짐": "파손 크랙 fracture",
+    "떨어뜨리": "낙하 drop impact 충격",
+    "떨어뜨렸": "낙하 drop impact 충격",
+    "떨어트": "낙하 drop impact 충격",
+    "뜨거": "발열 thermal 온도상승",
+    "발열": "thermal 온도상승",
+    "느려": "성능저하 throttling 지연",
+    "끊겨": "단선 접촉불량 통신두절",
+    "안 켜": "부팅실패 전원불량",
+    "안켜": "부팅실패 전원불량",
+    "금이": "크랙 균열 fracture",
+    "휘어": "휨 warpage bending",
+    "휨": "warpage",
+    "녹": "부식 corrosion",
+    "소리": "음향 acoustic 노이즈",
+    "잡음": "노이즈 noise EMI",
+    "배터리가 빨리": "배터리 소모 전류소비",
+}
+
+
+def expand_query(q: str) -> str:
+    """구어 질의에 현장 용어를 덧붙인다. 걸리는 게 없으면 원문 그대로."""
+    if not q:
+        return q
+    extra: list[str] = []
+    for k, v in _JARGON.items():
+        if k in q:
+            extra.extend(t for t in v.split() if t not in q)
+    return f"{q} {' '.join(dict.fromkeys(extra))}" if extra else q
+
+
 async def recommend_agents(
     session: AsyncSession,
     *,
     query: str,
     top_k: int = 5,
-    candidate_sections: int = 50,
+    candidate_sections: int | None = None,
 ) -> list[dict[str, Any]]:
     """자연어 쿼리 → ranked agents.
 
@@ -124,10 +171,13 @@ async def recommend_agents(
     """
     if not query or not query.strip():
         return []
+    candidate_sections = int(candidate_sections or _CANDIDATE_SECTIONS)
+    # 검색에는 확장 질의를 쓰고, 응답의 query 에는 사용자가 쓴 원문을 그대로 남긴다.
+    search_query = expand_query(query)
 
     # 1) 의미검색 top-N sections
     search_results = await search_svc.semantic_search(
-        session, query, top_k=candidate_sections
+        session, search_query, top_k=candidate_sections
     )
 
     # 2) record_id 모음 → records + agents 조회
@@ -166,7 +216,7 @@ async def recommend_agents(
     # 3b) v0.13.0 — agent_sample_embeddings 기여분. per-agent cap 적용으로 한
     # agent 가 sample 을 과적재해도 routing 점수를 독점하지 못하게 한다.
     sample_hits = await sample_embedding_svc.search_samples(
-        session, query, top_k=_SAMPLE_TOP_K
+        session, search_query, top_k=_SAMPLE_TOP_K
     )
     agent_sample_score: dict[str, float] = defaultdict(float)
     agent_sample_hits: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -200,7 +250,7 @@ async def recommend_agents(
     all_metas = (await session.execute(select(Agent))).scalars().all()
     meta_by_type = {a.agent_type: a for a in all_metas}
     agent_desc_match: dict[str, float] = {}
-    qtok = _query_terms(query)  # 조사·불용어 제거 후 distinctive 토큰만
+    qtok = _query_terms(search_query)  # 조사·불용어 제거 후 distinctive 토큰만(확장 질의)
     if qtok:
         for a in all_metas:
             profile = " ".join(
