@@ -223,3 +223,19 @@ def test_현장표현_사전은_코퍼스에_있는_말만_쓴다():
     # 원문 보존 — 치환하면 잘 되던 전문용어 질의가 망가진다.
     q = "액정에 잔상이 남아요"
     assert q in expand_query(q) and "번인" in expand_query(q)
+
+
+def test_agent_search_도_현장표현을_넓힌다_단_tag_는_예외():
+    """구어로 물으면 전문가가 **거절**했다(실측: pwr-swelling 에 '배터리가 부풀어 올랐어요' →
+    hits 0 · refused=true, 같은 사람에게 '배터리 스웰링' 은 히트가 난다). 자료가 없어서가 아니라
+    말이 안 맞아 점수가 임계 밑으로 떨어진 것이다. 단 tag 모드는 콤마 구분 **정확 태그**라
+    확장하면 매칭이 깨진다."""
+    from pathlib import Path
+    src = Path(__file__).resolve().parents[1] / "src" / "api" / "mcp_runtime.py"
+    body = src.read_text(encoding="utf-8")
+    assert 'search_q = q if mode == "tag" else expand_query(q)' in body
+    head = body[body.index("async def agent_search("):]
+    head = head[: head.index("\nasync def ", 10)]
+    assert "session, q," not in head and "\n                q,\n" not in head, (
+        "agent_search 안의 검색 호출은 확장 질의(search_q)를 써야 한다"
+    )

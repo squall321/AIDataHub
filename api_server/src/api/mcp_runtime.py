@@ -450,6 +450,13 @@ async def agent_search(
     from sqlalchemy import select
     from .db.models import Agent, Record
     from .services import search_svc
+    from .services.recommend_svc import expand_query
+
+    # 구어로 물으면 **전문가가 거절한다** — 자료는 있는데 말이 안 맞아 점수가 임계 밑으로 떨어진다
+    # (실측: pwr-swelling 에 '배터리가 부풀어 올랐어요' → hits 0 · refused=true, 같은 사람에게
+    # '배터리 스웰링 가스 발생' 은 히트가 나온다). 검색에만 현장 용어를 덧붙인다 — 응답의 query 는
+    # 사용자가 쓴 원문 그대로 둔다. tag 모드는 콤마 구분 **정확 태그**라 손대면 안 된다.
+    search_q = q if mode == "tag" else expand_query(q)
 
     async with SessionLocal() as session:
         agent = await session.get(Agent, agent_type)
@@ -516,7 +523,7 @@ async def agent_search(
             # 범위를 SQL 로 넘긴다. 전역으로 뽑고 나서 파이썬으로 거르면 상위 N 이 범위 밖에서
             # 정해져 좌석 결과가 거의 항상 0건이 된다(hybrid 에서 실제로 그랬다).
             raw, _ = await search_svc.fts_search(
-                session, q, limit=top_k * 3,
+                session, search_q, limit=top_k * 3,
                 record_ids=scope_record_ids,
                 data_types=data_type_filter or None)
             hits = raw[:top_k]
@@ -547,7 +554,7 @@ async def agent_search(
             # tag_boost / score_threshold 는 RRF 후 파이썬에서 적용.
             raw_hits = await search_svc.hybrid_search(
                 session,
-                q,
+                search_q,
                 top_k=max(top_k, top_k * 2),  # 후필터 위해 여유
                 data_types=data_type_filter or None,
                 record_ids=scope_record_ids,
@@ -576,7 +583,7 @@ async def agent_search(
             # 1급 파라미터로 위임 — 가산+재정렬+필터를 한 곳에서 일관 처리.
             hits = await search_svc.semantic_search(
                 session,
-                q,
+                search_q,
                 top_k=top_k,
                 data_types=data_type_filter or None,
                 record_ids=scope_record_ids,
@@ -620,7 +627,7 @@ async def agent_search(
             try:
                 nm = await search_svc.semantic_search(
                     session,
-                    q,
+                    search_q,
                     top_k=3,
                     data_types=data_type_filter or None,
                     record_ids=scope_record_ids,
