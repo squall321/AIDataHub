@@ -66,9 +66,27 @@ if [[ ! -f "$APPT_DIR/postgres.sif" ]]; then
   exit 1
 fi
 
-if instance_running "$INST_POSTGRES"; then
-  echo "✓ $INST_POSTGRES 이미 실행 중"
+# ⚠ **인스턴스가 살아 있다 ≠ postgres 가 살아 있다.** 인스턴스 껍데기(appinit+starter)만 남고 안의 postmaster 가 죽으면
+# 여기서 "이미 실행 중" 으로 기동 경로를 통째로 건너뛰고, 아래 pg_isready 가 60초를 센 뒤 [ERROR] 로 끝난다.
+# watchdog 은 그것을 매분 반복하므로 **영원히 복구되지 않는다** — dev 에서 2026-09-21 13:54(병렬 워커 SIGBUS 로 postmaster 사망)
+# 부터 2026-09-28 까지 일주일을 그렇게 돌았다(watchdog.log 에 'postgres recovery FAILED' 만 쌓였다).
+# 그래서 인스턴스가 있으면 **안의 postgres 에게 직접 물어보고**, 답하지 않으면 껍데기를 내리고 정상 기동 경로로 간다.
+_pg_alive() {
+  "$_AIDH_APPT" exec "instance://$INST_POSTGRES" \
+    pg_isready -h 127.0.0.1 -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1
+}
+if instance_running "$INST_POSTGRES" && _pg_alive; then
+  echo "✓ $INST_POSTGRES 이미 실행 중 (postgres 응답 확인)"
 else
+  if instance_running "$INST_POSTGRES"; then
+    echo "  ⚠ $INST_POSTGRES 인스턴스는 있는데 안의 postgres 가 답하지 않는다 — 껍데기를 내리고 다시 띄운다"
+    "$_AIDH_APPT" instance stop "$INST_POSTGRES" >/dev/null 2>&1 || true
+    for _i in $(seq 1 15); do instance_running "$INST_POSTGRES" || break; sleep 1; done
+    if instance_running "$INST_POSTGRES"; then
+      echo "[ERROR] $INST_POSTGRES 를 정지시키지 못했다 — 수동: $_AIDH_APPT instance stop $INST_POSTGRES" >&2
+      exit 1
+    fi
+  fi
   # ── Stale-lock cleanup (MXWhitePaper 패턴) ────────────────────────────
   # postgres 컨테이너가 정상 종료 못 했을 때 (host reboot / OOM / kill -9 /
   # apptainer stop while busy) socket lock + postmaster.pid 가 남는다.
