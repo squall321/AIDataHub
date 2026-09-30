@@ -290,6 +290,10 @@ _aidh_runtime_autotune() {
     [[ $need_linger -eq 1 ]] && \
       echo "         sudo loginctl enable-linger $uname && sudo systemctl start user@${uid}.service" >&2
   fi
+  # 안내만 하는 함수라 상태는 늘 0 이다. 마지막 문장이 `[[ … ]] && echo` 라 조건이 거짓이면(linger 는 이미 켜졌고 subuid·apparmor 만
+  # 필요할 때) 함수가 1 을 돌려줬고, 맨몸으로 부르는 require_apptainer → start_postgres.sh(set -e)가 안내 한 줄 뒤 **말없이** 끝났다
+  # (HWAXPortal docs/update-all-skip-unchanged D-14 — set -e 아래 '정상인 0 아닌 값' 전수 점검).
+  return 0
 }
 
 # instance start fast-fail 폴백 — dbus / cgroup / fakeroot 자동 재시도.
