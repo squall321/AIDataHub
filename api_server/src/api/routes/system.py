@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from datetime import datetime, timezone
@@ -38,6 +39,10 @@ async def system_health(
     endpoint 하나로 '데이터가 신선하고 검색 가능한가' 를 판정한다. DB 조회
     실패 시에도 health 자체는 ok (게이지만 null).
 
+    게이지 쿼리는 ``AIDH_HEALTH_GAUGE_TIMEOUT_S``(기본 2초) 안에 못 재면 버린다. 한도가 없을 때는
+    DB 가 느린 만큼, 풀이 찼으면 60초까지 매달려 이 응답으로 생사를 재던 watchdog 이 살아 있는
+    API 를 재기동했다. 프로세스의 생사는 DB 를 쓰지 않는 ``/health`` 로 본다.
+
     Response:
         ``{"status": "ok", "version": ..., "auth_required": ..., "build": ...,
            "sync_stale_sources": 0, "embed_backlog": 0}``
@@ -54,7 +59,8 @@ async def system_health(
         "sync_stale_sources": None,
         "embed_backlog": None,
     }
-    try:
+
+    async def _gauges() -> None:
         from ..db.models import RecordSection, SyncSource
         from ..services.sync_svc import interval_minutes_from_cron as _interval_minutes_from_cron
 
@@ -91,8 +97,22 @@ async def system_health(
             if (now - last).total_seconds() > interval_min * 60 * 4:
                 stale += 1
         out["sync_stale_sources"] = stale
+
+    limit_s = float(settings.aidh_health_gauge_timeout_s)
+    try:
+        # 풀 자리를 기다리는 시간까지 이 한도에 든다 — 세션은 첫 쿼리에서야 커넥션을 빌린다.
+        async with asyncio.timeout(limit_s if limit_s > 0 else None) as gauge_limit:
+            await _gauges()
     except Exception as exc:  # noqa: BLE001 — 게이지는 best-effort
-        log.debug("health gauges skipped: %s", exc)
+        # 이 한도가 끊은 것만 이 이름으로 적는다 — 안에서 난 다른 시간 초과(PG 연결 한도 등)는 제 문구를 갖고 온다.
+        if gauge_limit.expired():
+            log.warning(
+                "health gauges skipped: %g초 안에 재지 못했다(AIDH_HEALTH_GAUGE_TIMEOUT_S) — "
+                "DB 가 느리거나 커넥션 풀이 찼다. 게이지는 null 로 둔다",
+                limit_s,
+            )
+        else:
+            log.debug("health gauges skipped: %s", exc)
     return out
 
 

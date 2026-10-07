@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     # 풀 대기와 더한 값(60 + 90)이 부르는 쪽의 대기(심의 엔진 지식카드 조회 180초)보다 작아야 한다.
     # 어디에 어떻게 거는지는 ``services/search_svc.py`` 의 ``statement_limit`` 에 있다.
     aidh_search_statement_timeout_s: float = 90.0
+    # ``/api/system/health`` 가 게이지(미임베딩 건수·동기화 정체) 쿼리를 기다리는 시간(초) —
+    # ``AIDH_HEALTH_GAUGE_TIMEOUT_S``, 0 이면 끈다. 넘으면 게이지만 null 로 두고 곧바로 200 을 준다.
+    # 이 응답을 읽는 탐침의 한도(watchdog 5초)보다 작아야 한다.
+    aidh_health_gauge_timeout_s: float = 2.0
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000
