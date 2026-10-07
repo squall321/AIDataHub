@@ -24,10 +24,30 @@ from ..config import settings
 # ---------------------------------------------------------------------------
 # Engine & SessionMaker
 # ---------------------------------------------------------------------------
+# 풀 인자를 명시한다 — 안 주면 SQLAlchemy 기본값(5 + 10, 대기 30초)이 걸린다. 심의 한 건이
+# agent_search 를 17~20개 한꺼번에 쏘고(호출 하나가 검색이 끝날 때까지 세션 하나를 쥔다) 두 건이
+# 겹치면 34개가 필요한데, 15개에서 막혀 'QueuePool limit of size 5 overflow 10 reached' 로
+# 떨어졌다(S26U 심사 실사용 피드백, 2026-10-07). 층끼리도 어긋나 있었다 — 부르는 쪽(심의 엔진)은
+# 지식카드 조회를 120초 기다리는데 풀은 30초에 먼저 포기했다.
+# 합 20 이 34 를 한꺼번에 받지는 못한다 — 넘치는 호출은 60초까지 줄을 선다. 더 올리지 않은 것은
+# PG max_connections 가 기본 100 이고, EXTERNAL_POSTGRES=1 박스에서는 다른 앱과 한 인스턴스를
+# 나눠 쓰기 때문이다. 올릴 때는 그 인스턴스를 쓰는 앱들의 합을 같이 본다.
+# SQLite(스모크·시험)에는 주지 않는다 — :memory: 는 StaticPool 이라 이 인자를 TypeError 로 거절한다.
+_pool_kwargs = (
+    {}
+    if settings.database_url.startswith("sqlite")
+    else {
+        "pool_size": settings.db_pool_size,
+        "max_overflow": settings.db_max_overflow,
+        "pool_timeout": settings.db_pool_timeout,
+    }
+)
+
 engine = create_async_engine(
     settings.database_url,
     echo=False,
     pool_pre_ping=True,
+    **_pool_kwargs,
 )
 
 SessionLocal: async_sessionmaker[AsyncSession] = async_sessionmaker(

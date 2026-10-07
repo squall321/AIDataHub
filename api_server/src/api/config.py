@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     )
 
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/ai_data"
+    # 커넥션 풀 — ``DB_POOL_SIZE`` / ``DB_MAX_OVERFLOW`` / ``DB_POOL_TIMEOUT``(초) 로 오버라이드.
+    # 한 번에 쥘 수 있는 커넥션은 앞 둘의 합(20)이다. 왜 이 값인지는 ``db/base.py`` 의
+    # 엔진 생성 자리에 있다.
+    db_pool_size: int = 12
+    db_max_overflow: int = 8
+    db_pool_timeout: float = 60.0
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000
