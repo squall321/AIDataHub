@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     # 새 PG 연결을 맺는 한도(초) — ``AIDH_DB_CONNECT_TIMEOUT_S``. 죽은 PG 를 재는 값이라 짧게 두고,
     # 풀 대기(``DB_POOL_TIMEOUT``)보다 작아야 둘이 구별된다. 이유는 ``db/base.py`` 에 있다.
     aidh_db_connect_timeout_s: float = 10.0
+    # 검색 트랜잭션의 문장 하나가 돌 수 있는 시간(초) — ``AIDH_SEARCH_STATEMENT_TIMEOUT_S``, 0 이면 끈다.
+    # 풀 대기와 더한 값(60 + 90)이 부르는 쪽의 대기(심의 엔진 지식카드 조회 180초)보다 작아야 한다.
+    # 어디에 어떻게 거는지는 ``services/search_svc.py`` 의 ``statement_limit`` 에 있다.
+    aidh_search_statement_timeout_s: float = 90.0
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000

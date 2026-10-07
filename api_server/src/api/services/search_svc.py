@@ -13,11 +13,14 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
+from contextlib import asynccontextmanager
 
-from sqlalchemy import Float, func, or_, select
+from sqlalchemy import Float, func, or_, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.config import settings
 from api.db.models import AgentRecord, Record, RecordSection
 
 from .sql_compat import (
@@ -49,6 +52,64 @@ def array_overlap_compat(
     column, values: Sequence[str], session: AsyncSession
 ) -> ArrayPredicate:
     return array_overlap(column, values, session)
+
+
+# ---------------------------------------------------------------------------
+# Statement limit (검색 트랜잭션의 문장 한도)
+# ---------------------------------------------------------------------------
+_QUERY_CANCELED = "57014"  # PG sqlstate query_canceled
+
+
+def _was_canceled(exc: BaseException) -> bool:
+    """이 오류나 그 원인 사슬에 PG 의 문장 취소(57014)가 있는가.
+
+    사슬까지 보는 까닭 — MCP 도구의 좌석 id 조회는 오류를 ``except Exception`` 으로 받아 폴백 문장을
+    돌리는데, PG 에서는 그 폴백이 '트랜잭션이 중단됐다'(25P02)로 실패해 원래 사유를 덮는다. records 를
+    잠근 PG 에서 한도는 제때 걸렸는데 나간 문구는 'current transaction is aborted' 였다. 삼켜진 취소는
+    그 오류의 ``__context__`` 에 남아 있다.
+    """
+    seen: set[int] = set()
+    todo: list[BaseException | None] = [exc]
+    while todo:
+        cur = todo.pop()
+        if cur is None or id(cur) in seen:
+            continue
+        seen.add(id(cur))
+        if getattr(cur, "sqlstate", None) == _QUERY_CANCELED:
+            return True
+        todo += [cur.__cause__, cur.__context__, getattr(cur, "orig", None)]
+    return False
+
+
+@asynccontextmanager
+async def statement_limit(session: AsyncSession) -> AsyncIterator[None]:
+    """이 세션이 지금 여는 트랜잭션의 문장 하나하나를 ``AIDH_SEARCH_STATEMENT_TIMEOUT_S`` 로 묶는다.
+
+    한도가 없으면 멈춘 쿼리(락 대기·병리적 플랜)는 AIDataHub 안에서 끝없이 돌며 풀 자리를 쥔다 —
+    부른 쪽(게이트웨이)만 포기한다. FTS 병리 시절(2026-09)에는 한 문장이 250초를 돌았다.
+
+    - ``SET LOCAL`` 이다. 트랜잭션이 끝나면 풀리므로 그 연결을 다음에 빌리는 적재·동기화·임베딩
+      잡은 한도 없이 돈다. 같은 이유로 엔진의 connect_args 로 걸지 않는다(그러면 전부 끊는다).
+    - 문장 **하나**의 한도다. agent_search 한 번은 문장을 여럿 돌리므로 합은 이 값보다 클 수 있다.
+    - 0 이면 끈다. SQLite(스모크·시험)에는 걸지 않는다.
+    - 걸리면 PG 원문('canceling statement due to statement timeout') 대신 손잡이 이름을 말한다.
+      판정은 sqlstate 로 한다 — 원문은 서버 로케일에 따라 번역돼 나온다.
+    """
+    limit_s = float(settings.aidh_search_statement_timeout_s)
+    bounded = limit_s > 0 and is_postgres(session)
+    if bounded:
+        # SET 은 바인드 파라미터를 받지 않는다. 정수(ms)로 만들어 박는다.
+        await session.execute(
+            text(f"SET LOCAL statement_timeout = {max(1, int(limit_s * 1000))}")
+        )
+    try:
+        yield
+    except DBAPIError as exc:
+        if bounded and _was_canceled(exc):
+            raise TimeoutError(
+                f"검색이 {limit_s:g}초 안에 끝나지 않아 취소했다(AIDH_SEARCH_STATEMENT_TIMEOUT_S)"
+            ) from exc
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -742,5 +803,6 @@ __all__ = [
     "fts_search",
     "hybrid_search",
     "semantic_search",
+    "statement_limit",
     "tag_search",
 ]

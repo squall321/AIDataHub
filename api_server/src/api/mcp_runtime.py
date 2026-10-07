@@ -458,7 +458,7 @@ async def agent_search(
     # 사용자가 쓴 원문 그대로 둔다. tag 모드는 콤마 구분 **정확 태그**라 손대면 안 된다.
     search_q = q if mode == "tag" else expand_query(q)
 
-    async with SessionLocal() as session:
+    async with SessionLocal() as session, search_svc.statement_limit(session):
         agent = await session.get(Agent, agent_type)
         if agent is None:
             raise ValueError(f"agent not found: {agent_type}")
@@ -737,7 +737,7 @@ async def semantic_search(
     from .db.models import Record
     from .services import search_svc
 
-    async with SessionLocal() as session:
+    async with SessionLocal() as session, search_svc.statement_limit(session):
         record_ids: list[str] | None = None
         if agent_type:
             try:
@@ -783,7 +783,7 @@ async def hybrid_search(
     from .db.models import Record
     from .services import search_svc
 
-    async with SessionLocal() as session:
+    async with SessionLocal() as session, search_svc.statement_limit(session):
         record_ids: list[str] | None = None
         if agent_type:
             try:
@@ -826,7 +826,7 @@ async def fts_search(
     from .db.models import Record
     from .services import search_svc
 
-    async with SessionLocal() as session:
+    async with SessionLocal() as session, search_svc.statement_limit(session):
         # ⚠ 좌석 범위는 **SQL 로** 넘긴다. 전역 상위 N 을 뽑고 파이썬에서 거르면 그 좌석의
         #   문서가 전역 상위에 없을 때 결과가 통째로 0건이 된다 — agent_search 가 정확히
         #   그 이유로 0건이었다(bf57f06). agent_type 이 있는데 바인딩이 0건이면 []가 넘어가
