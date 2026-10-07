@@ -9,8 +9,10 @@
 """
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
     AsyncAttrs,
     AsyncSession,
@@ -43,12 +45,41 @@ _pool_kwargs = (
     }
 )
 
+# 새 연결을 맺는 한도 — 안 주면 asyncpg 기본값 60초가 걸린다. 풀 대기(DB_POOL_TIMEOUT 60초)와 같은
+# 시각에 터져 'PG 가 죽었다' 와 '풀이 찼다' 가 구별되지 않았다. 느린 일을 재는 값이 아니라 죽은 상대를
+# 재는 값이라 짧게 둔다 — 로컬 PG 는 정상이면 밀리초에 붙는다. 안쪽이 바깥보다 작아야 하므로
+# DB_POOL_TIMEOUT 보다 작게 유지한다.
+# SQLite 에는 주지 않는다 — aiosqlite 의 timeout 은 다른 뜻(잠금 대기)이다.
+_connect_kwargs = (
+    {}
+    if settings.database_url.startswith("sqlite")
+    else {"connect_args": {"timeout": settings.aidh_db_connect_timeout_s}}
+)
+
 engine = create_async_engine(
     settings.database_url,
     echo=False,
     pool_pre_ping=True,
     **_pool_kwargs,
+    **_connect_kwargs,
 )
+
+if _connect_kwargs:
+
+    @event.listens_for(engine.sync_engine, "do_connect")
+    def _name_connect_timeout(dialect, _conn_rec, cargs, cparams):
+        """연결 시간 초과에 손잡이 이름을 붙인다.
+
+        asyncpg 는 메시지가 빈 TimeoutError 를 던지고 SQLAlchemy 는 그것을 감싸지 않는다. 그대로
+        두면 도구 오류가 'Error executing tool agent_search: ' 로 끝나 무엇이 판정했는지 알 수 없다.
+        """
+        try:
+            return dialect.connect(*cargs, **cparams)
+        except asyncio.TimeoutError as exc:
+            raise TimeoutError(
+                f"PG 에 {settings.aidh_db_connect_timeout_s:g}초 안에 연결하지 못했다"
+                "(AIDH_DB_CONNECT_TIMEOUT_S)"
+            ) from exc
 
 SessionLocal: async_sessionmaker[AsyncSession] = async_sessionmaker(
     engine,

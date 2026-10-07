@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     db_pool_size: int = 12
     db_max_overflow: int = 8
     db_pool_timeout: float = 60.0
+    # 새 PG 연결을 맺는 한도(초) — ``AIDH_DB_CONNECT_TIMEOUT_S``. 죽은 PG 를 재는 값이라 짧게 두고,
+    # 풀 대기(``DB_POOL_TIMEOUT``)보다 작아야 둘이 구별된다. 이유는 ``db/base.py`` 에 있다.
+    aidh_db_connect_timeout_s: float = 10.0
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000
