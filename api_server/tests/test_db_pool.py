@@ -49,13 +49,13 @@ def test_pool_defaults_are_not_sqlalchemy_defaults(tmp_path):
     'QueuePool limit of size 5 overflow 10 reached' 가 그 기본값 그대로다
     (S26U 심사 실사용 피드백, 2026-10-07).
     """
-    assert _probe(tmp_path) == "AsyncAdaptedQueuePool 12 8 60.0"
+    assert _probe(tmp_path) == "KnobNamingQueuePool 12 8 60.0"
 
 
 def test_pool_follows_env(tmp_path):
     """박스마다 PG 여유가 달라 손잡이가 실제로 먹어야 한다 — 이름만 있고 안 실리면 없는 것이다."""
     out = _probe(tmp_path, DB_POOL_SIZE="3", DB_MAX_OVERFLOW="1", DB_POOL_TIMEOUT="7.5")
-    assert out == "AsyncAdaptedQueuePool 3 1 7.5"
+    assert out == "KnobNamingQueuePool 3 1 7.5"
 
 
 def test_sqlite_memory_engine_still_builds(tmp_path):
@@ -63,6 +63,49 @@ def test_sqlite_memory_engine_still_builds(tmp_path):
     pytest.importorskip("aiosqlite")
     out = _probe(tmp_path, _PROBE_KIND, DATABASE_URL="sqlite+aiosqlite:///:memory:")
     assert out == "StaticPool"
+
+
+# ---------------------------------------------------------------------------
+# 풀 대기 만료 문구
+# ---------------------------------------------------------------------------
+class _FakeDbapiConn:
+    """풀이 반납·정리 때 부르는 것만 가진 가짜 연결. PG 없이 풀의 대기 만료를 실제로 낸다."""
+
+    def rollback(self) -> None: ...
+
+    def close(self) -> None: ...
+
+
+async def test_pool_wait_expiry_names_the_knobs():
+    """풀이 찬 채 대기 한도를 넘기면 문구가 무엇을 올려야 하는지 말한다.
+
+    SQLAlchemy 의 원문('QueuePool limit of size … reached, connection timed out')은 내부 표현이라
+    부른 쪽(심의 엔진·게이트웨이)이 어느 설정을 봐야 하는지 알 수 없었다. 원문은 뒤에 그대로 남긴다 —
+    로그 검색이 그 문자열로 이뤄진다.
+    """
+    from sqlalchemy import exc as sa_exc
+    from sqlalchemy.pool import QueuePool
+    from sqlalchemy.util import greenlet_spawn
+
+    from api.db.base import engine
+
+    pool_cls = type(engine.sync_engine.pool)
+    if not issubclass(pool_cls, QueuePool):
+        pytest.skip("이 환경의 엔진은 QueuePool 이 아니다(SQLite)")
+
+    pool = pool_cls(_FakeDbapiConn, pool_size=1, max_overflow=0, timeout=0.05)
+    held = await greenlet_spawn(pool.connect)          # 하나뿐인 자리를 쥔다
+    try:
+        with pytest.raises(sa_exc.TimeoutError) as err:
+            await greenlet_spawn(pool.connect)
+    finally:
+        await greenlet_spawn(held.close)
+    msg = str(err.value)
+    assert "커넥션 풀이 0.05초 동안 차 있었다(DB_POOL_TIMEOUT, DB_POOL_SIZE)" in msg
+    assert "QueuePool limit of size 1 overflow 0 reached" in msg
+    # 자리가 나면 다시 빌려 준다 — 문구만 바꿨지 풀의 동작은 그대로다.
+    again = await greenlet_spawn(pool.connect)
+    await greenlet_spawn(again.close)
 
 
 # ---------------------------------------------------------------------------

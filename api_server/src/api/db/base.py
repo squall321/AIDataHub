@@ -13,6 +13,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 
 from sqlalchemy import event
+from sqlalchemy import exc as sa_exc
 from sqlalchemy.ext.asyncio import (
     AsyncAttrs,
     AsyncSession,
@@ -20,12 +21,32 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import AsyncAdaptedQueuePool
 
 from ..config import settings
 
 # ---------------------------------------------------------------------------
 # Engine & SessionMaker
 # ---------------------------------------------------------------------------
+class KnobNamingQueuePool(AsyncAdaptedQueuePool):
+    """풀 대기 만료 문구에 손잡이 이름을 붙인다. 풀의 동작은 그대로다.
+
+    SQLAlchemy 의 원문('QueuePool limit of size 12 overflow 8 reached, connection timed out,
+    timeout 60.00')은 내부 표현이라, 그 문구를 도구 오류로 받는 쪽(심의 엔진·게이트웨이)이 어느
+    설정을 봐야 하는지 알 수 없었다. 원문은 뒤에 그대로 남긴다 — 로그 검색이 그 문자열로 이뤄진다.
+    """
+
+    def connect(self):
+        try:
+            return super().connect()
+        except sa_exc.TimeoutError as err:
+            raise sa_exc.TimeoutError(
+                f"커넥션 풀이 {self.timeout():g}초 동안 차 있었다(DB_POOL_TIMEOUT, DB_POOL_SIZE)"
+                f" — {err.args[0]}",
+                code=err.code,
+            ) from None
+
+
 # 풀 인자를 명시한다 — 안 주면 SQLAlchemy 기본값(5 + 10, 대기 30초)이 걸린다. 심의 한 건이
 # agent_search 를 17~20개 한꺼번에 쏘고(호출 하나가 검색이 끝날 때까지 세션 하나를 쥔다) 두 건이
 # 겹치면 34개가 필요한데, 15개에서 막혀 'QueuePool limit of size 5 overflow 10 reached' 로
@@ -39,6 +60,7 @@ _pool_kwargs = (
     {}
     if settings.database_url.startswith("sqlite")
     else {
+        "poolclass": KnobNamingQueuePool,
         "pool_size": settings.db_pool_size,
         "max_overflow": settings.db_max_overflow,
         "pool_timeout": settings.db_pool_timeout,
