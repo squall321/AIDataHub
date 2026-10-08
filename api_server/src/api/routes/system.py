@@ -41,7 +41,9 @@ async def system_health(
 
     게이지 쿼리는 ``AIDH_HEALTH_GAUGE_TIMEOUT_S``(기본 2초) 안에 못 재면 버린다. 한도가 없을 때는
     DB 가 느린 만큼, 풀이 찼으면 60초까지 매달려 이 응답으로 생사를 재던 watchdog 이 살아 있는
-    API 를 재기동했다. 프로세스의 생사는 DB 를 쓰지 않는 ``/health`` 로 본다.
+    API 를 재기동했다. DB 를 쓰지 않는 생사 응답은 ``/health`` 다. 다만 watchdog 이 실제로 어느
+    쪽으로 재기동을 정하는지는 ``deploy/apptainer/watchdog.sh`` 가 정본이다 — 이 응답을 읽는
+    동안에는 이 한도가 그 탐침의 한도보다 작아야 하고, ``tests/test_system_route.py`` 가 대조한다.
 
     Response:
         ``{"status": "ok", "version": ..., "auth_required": ..., "build": ...,

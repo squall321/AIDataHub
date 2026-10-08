@@ -3,9 +3,39 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
+from pathlib import Path
 
 import pytest
+
+# 배포 스크립트와 그 설정 안내 — 아래 층 계약 시험들이 경로·한도를 여기서 꺼낸다.
+# 리포 루트는 이 파일 위치에서 유도한다.
+_APPT_DIR = Path(__file__).resolve().parents[2] / "deploy" / "apptainer"
+_CURL_READ = re.compile(
+    r'--max-time\s+(\S+)[\s\\]+"http://127\.0\.0\.1:\$\{API_PORT\}(/[\w/]+)"'
+)
+
+
+def _watchdog_script() -> str:
+    path = _APPT_DIR / "watchdog.sh"
+    if not path.is_file():
+        # api_server 만 떼어 낸 배포본에는 이 스크립트가 없다 — 대조할 탐침이 없다.
+        pytest.skip("deploy/apptainer/watchdog.sh 가 없다")
+    return path.read_text(encoding="utf-8")
+
+
+def _watchdog_reads(part: str, script: str) -> list[tuple[str, float]]:
+    """``part`` 에서 API 를 읽는 curl 마다 (경로, ``--max-time`` 기본값)을 순서대로 꺼낸다."""
+    reads = []
+    for limit, path in _CURL_READ.findall(part):
+        limit = limit.strip('"')
+        if limit.startswith("$"):
+            # 한도가 손잡이면 그 기본값을 따라간다 — --max-time "$X" ← X="${AIDH_…:-5}"
+            name = re.escape(limit.strip("${}"))
+            limit = re.search(rf'^{name}="\$\{{\w+:-([\d.]+)\}}"', script, re.M).group(1)
+        reads.append((path, float(limit)))
+    return reads
 
 
 @pytest.mark.asyncio
@@ -142,8 +172,40 @@ async def test_system_health_gauge_limit_zero_means_wait(test_client, monkeypatc
 
 
 def test_health_gauge_limit_default_sits_inside_the_probe() -> None:
-    """층 계약 — 게이지 한도(2초)는 이 응답을 읽는 탐침의 한도(watchdog 5초)보다 작아야 한다."""
+    """층 계약 — 게이지 한도(2초)는 이 응답을 읽는 탐침의 한도(watchdog 5초)보다 작아야 한다.
+
+    탐침 한도는 watchdog.sh 에서 꺼낸다 — 5 를 여기에 적어 두면 스크립트가 바뀌어도 초록이다.
+    """
     from api.config import settings
 
     fresh = type(settings)(_env_file=None)               # 박스 .env 가 아니라 코드 기본값
-    assert fresh.aidh_health_gauge_timeout_s == 2.0 < 5
+    assert fresh.aidh_health_gauge_timeout_s == 2.0
+    script = _watchdog_script()
+    reads = _watchdog_reads(script, script)
+    limits = [limit for path, limit in reads if path == "/api/system/health"]
+    assert limits and fresh.aidh_health_gauge_timeout_s < min(limits)
+
+
+def test_deploy_env_example_names_the_endpoint_the_watchdog_restarts_on() -> None:
+    """⚠ 회귀 방지 — 안내는 'watchdog 도 /health 를 찌른다' 였는데 스크립트는 이 응답을 쟀다.
+
+    그 문장을 믿고 게이지 한도를 0 이나 5 이상으로 두면, DB 가 느릴 때 살아 있는 API 가 매분
+    재기동되고 진행 중이던 검색이 전부 끊긴다(2026-10-08 검토에서 재현). 안내가 말하는 경로를
+    스크립트의 재기동 판정('2. API' 절)에서 꺼낸 경로와 맞춘다 — 스크립트가 탐침을 옮기면
+    안내도 같이 옮겨야 초록이다.
+    """
+    script = _watchdog_script()
+    liveness = script.partition("# ── 2. API")[2].partition("# ── 3. ")[0]
+    probed = {path for path, _ in _watchdog_reads(liveness, script)}
+    assert len(probed) == 1, f"'2. API' 절의 탐침 경로를 하나로 읽지 못했다 — {probed}"
+
+    example = (_APPT_DIR / ".env.example").read_text(encoding="utf-8")
+    block = example.partition("health 게이지 한도")[2]
+    block = block.partition("AIDH_HEALTH_GAUGE_TIMEOUT_S=")[0]
+    named = {
+        path
+        for line in block.splitlines()
+        if "watchdog" in line
+        for path in re.findall(r"/api/system/health|/health", line)
+    }
+    assert named == probed
