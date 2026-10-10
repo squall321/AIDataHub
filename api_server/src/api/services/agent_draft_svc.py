@@ -375,11 +375,20 @@ async def bind_matching_records(
     if bound:
         await session.commit()
 
+    # 훑기 상한(limit)은 태그 후필터 **앞**에 정렬 없이 걸린다 — 후보가 더 많으면 뒤쪽은 이 좌석
+    # 것이 못 된다. 상한은 쓰기 범위라 두고, 걸렸다는 사실을 응답과 로그에 남긴다(예전엔 말이 없었다).
+    scan_truncated = len(recs) >= limit
+    if scan_truncated:
+        log.warning("bind_matching_records(%s): 훑기 상한 %d건에 걸렸다 — 뒤쪽 후보는 보지 않았다",
+                    agent_type, limit)
     return {
         "agent_type": agent_type,
         "scanned": len(recs),
+        "scan_limit": limit,
+        "scan_truncated": scan_truncated,
         "bound_count": len(bound),
         "bound_record_ids": bound[:50],
+        "bound_ids_omitted": max(0, len(bound) - 50),
     }
 
 
