@@ -275,6 +275,10 @@ class SentenceTransformerEmbedder(Embedder):
             # **서비스를 살리려고 만든 CPU 폴백 경로가 진입하는 순간 죽었다** — GPU OOM 때
             # 정확히 이 줄에 도달한다.
             logger.warning("embedding: GPU 실패 → CPU 로 전환 (%s)", str(exc)[:120])
+            # ⚠ 여기서 다시 가져온다. SentenceTransformer 는 __init__ 의 지역 import 라 이 메서드에서는
+            # 이름이 없다 — 예전엔 GPU 가 점유된 박스에서 의미검색이 전부 NameError 로 죽었다(2026-10-10).
+            from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
+
             self._model = SentenceTransformer(self._name, device="cpu")
             return fn(*a, **kw)
     def _wrap(self, text: str, *, is_query: bool) -> str:

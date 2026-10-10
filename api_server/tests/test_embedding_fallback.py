@@ -25,7 +25,11 @@ def test_cpu_fallback_logs_and_retries_without_nameerror(monkeypatch):
 
     monkeypatch.setitem(sys.modules, "sentence_transformers",
                         types.SimpleNamespace(SentenceTransformer=_FakeST))
-    monkeypatch.setattr("api.services.embedding.SentenceTransformer", _FakeST, raising=False)
+    # ⚠ 모듈 전역에 SentenceTransformer 를 꽂아 넣으면 안 된다. 예전 시험이 그렇게 해서
+    #   통과했는데, 실제 모듈에는 그 이름이 __init__ 안의 지역 import 뿐이라 운영 경로는
+    #   `name 'SentenceTransformer' is not defined` 로 죽었다(2026-10-10 dev 의미검색 전부 실패).
+    #   폴백은 sys.modules 의 패키지에서 스스로 가져와야 한다.
+    assert not hasattr(__import__("api.services.embedding", fromlist=["x"]), "SentenceTransformer")
 
     calls = {"n": 0}
 
