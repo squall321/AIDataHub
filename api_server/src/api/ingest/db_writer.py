@@ -71,8 +71,13 @@ def _flatten_sections(
     *,
     max_level: int = 3,
     tables: dict[str, dict[str, Any]] | None = None,
+    dropped: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
     """중첩된 sections (children 트리) 를 평탄 리스트로 펼친다.
+
+    ``dropped`` 를 주면 색인에서 빠진 본문 있는 절을 센다 — ``deep``(``max_level`` 보다 깊다)·
+    ``dup``(같은 section_id 의 두 번째 등장)·``noid``(식별자 없음)와 각 ``*_chars``. 그 본문은
+    record_sections 에 없어 의미검색·FTS·get_record_sections 로는 안 보이고 get_record 에만 남는다.
 
     각 항목 키: ``section_id``/``level``/``title``/``content_text``/
     ``figure_refs``/``table_refs``/``section_path``. 동일 ``section_id`` 가
@@ -99,6 +104,9 @@ def _flatten_sections(
 
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
+    if dropped is not None:
+        for k in ("deep", "deep_chars", "dup", "dup_chars", "noid", "noid_chars"):
+            dropped.setdefault(k, 0)
 
     def _split(text: str) -> list[str]:
         """단순 char-window 분할. 토큰화 의존성 없이 안정 동작.
@@ -137,6 +145,13 @@ def _flatten_sections(
             sid = "~" + sid[-18:]
         title = str(node.get("title", ""))
         next_path = path + [title] if title else path
+        if dropped is not None and not (level <= max_level and sid and sid not in seen):
+            body = _blocks_to_text(node.get("blocks") or [], tables) or str(
+                node.get("content_text") or "")
+            if body:
+                why = "deep" if level > max_level else ("noid" if not sid else "dup")
+                dropped[why] += 1
+                dropped[f"{why}_chars"] += len(body)
         if level <= max_level and sid and sid not in seen:
             seen.add(sid)
             # blocks 가 없는 섹션 (sync_svc 가 만드는 {content_text: body} 형태 등) 은
@@ -614,7 +629,17 @@ async def _resync_sections(
                 if kv:
                     tables_index.setdefault(kv, tab)
 
-    flattened = _flatten_sections(sections, max_level=3, tables=tables_index)
+    dropped: dict[str, int] = {}
+    flattened = _flatten_sections(sections, max_level=3, tables=tables_index, dropped=dropped)
+    if dropped.get("deep") or dropped.get("dup") or dropped.get("noid"):
+        # 색인 단위(3단계까지·section_id 하나에 본문 하나)는 재색인이 걸린 결정이라 두고, 빠진
+        # 본문을 말없이 두지 않는다 — 이 절들은 검색과 get_record_sections 로는 안 보인다.
+        logger.warning(
+            "record_sections(%s): 색인에서 빠진 절 — 4단계 이하 %d개(%d자)·중복 section_id %d개(%d자)·"
+            "식별자 없음 %d개(%d자). 본문은 get_record 의 content 에만 있다",
+            record.id, dropped["deep"], dropped["deep_chars"], dropped["dup"], dropped["dup_chars"],
+            dropped["noid"], dropped["noid_chars"],
+        )
     for row in flattened:
         session.add(
             RecordSection(
