@@ -24,6 +24,7 @@ from api.config import settings
 from api.db.models import AgentRecord, Record, RecordSection
 
 from .sql_compat import (
+    FTS_OR_MAX_TOKENS,
     ArrayPredicate,
     array_contains,
     array_overlap,
@@ -283,6 +284,10 @@ async def fts_search(
 
     section_rows, record_rows, match_total = await _run(False)
     if not section_rows and not record_rows and len(q.split()) >= 2:
+        _ntok = len([t for t in q.split() if t.strip()])
+        if _ntok > FTS_OR_MAX_TOKENS:
+            log.warning("fts_search: OR 폴백은 질의 앞 %d토큰만 쓴다 — 뒤 %d토큰은 빠졌다(질의 %d토큰)",
+                        FTS_OR_MAX_TOKENS, _ntok - FTS_OR_MAX_TOKENS, _ntok)
         section_rows, record_rows, match_total = await _run(True)
 
     seen: set[tuple[str, str | None]] = set()

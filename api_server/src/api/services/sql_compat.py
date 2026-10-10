@@ -53,6 +53,12 @@ def dialect_name(session: AsyncSession) -> str:
         return ""
 
 
+# 토큰 OR 폴백(any_token)이 쓰는 질의 토큰 수. OR 항마다 tsquery 평가가 늘어 FTS 비용이 오르므로
+# 두되, 넘친 뒤 토큰(agent_search 가 질의 뒤에 붙이는 현장 용어 포함)이 빠진다는 사실은 호출부
+# (search_svc.fts_search)가 경고로 남긴다.
+FTS_OR_MAX_TOKENS = 12
+
+
 def is_postgres(session: AsyncSession) -> bool:
     return dialect_name(session) == "postgresql"
 
@@ -271,7 +277,7 @@ def fts_match(
         tsvector = func.to_tsvector(cfg, column)
         if any_token:
             # 토큰별 plainto_tsquery 를 OR — tsquery 특수문법 주입 걱정 없음.
-            tokens = [t for t in q.split() if t.strip()][:12]
+            tokens = [t for t in q.split() if t.strip()][:FTS_OR_MAX_TOKENS]
             if not tokens:
                 return literal(False)
             preds = [
@@ -284,7 +290,7 @@ def fts_match(
         tsquery = func.websearch_to_tsquery(cfg, literal(q))
         return tsvector.op("@@")(tsquery)
     if any_token:
-        tokens = [t for t in q.split() if t.strip()][:12]
+        tokens = [t for t in q.split() if t.strip()][:FTS_OR_MAX_TOKENS]
         if not tokens:
             return literal(False)
         return or_(*[summary_ilike(column, t) for t in tokens])
@@ -307,7 +313,7 @@ def fts_rank(column: Any, q: str, session: AsyncSession, *, any_token: bool = Fa
     cfg = literal_column("'simple'::regconfig")
     tsvector = func.to_tsvector(cfg, column)
     if any_token:
-        tokens = [t for t in q.split() if t.strip()][:12]
+        tokens = [t for t in q.split() if t.strip()][:FTS_OR_MAX_TOKENS]
         if not tokens:
             return None
         # 토큰별 순위의 합 — any_token 매칭(OR)과 같은 기준으로 점수를 매긴다.
