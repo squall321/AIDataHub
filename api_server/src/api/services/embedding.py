@@ -97,6 +97,36 @@ class Embedder(ABC):
     def encode_many(self, texts: Sequence[str]) -> list[list[float]]:
         return [self.encode(t) for t in texts]
 
+    # 모델 입력 한도 — 넘친 뒤쪽은 벡터에 들어가지 않는다. 이 한도는 **모델의 것**이라
+    # 우리가 늘릴 수 없고, 대신 넘쳤다는 사실을 조용히 두지 않는다(input_overflow 참조).
+    def input_limit(self) -> int | None:
+        """모델이 한 번에 읽는 최대 입력 토큰. 한도가 없거나 모르면 None."""
+        return None
+
+    def input_tokens(self, text: str, *, is_query: bool = False) -> int | None:
+        """이 텍스트가 모델 입력(접두 포함)으로 몇 토큰인가. 셀 수 없으면 None."""
+        return None
+
+
+def input_overflow(embedder: Embedder, text: str, *, is_query: bool = False) -> dict | None:
+    """모델 입력 한도를 넘으면 ``{tokens, max_tokens, chars, model}``, 아니면 None.
+
+    e5 계열은 512 토큰(한글 대략 600~900자)까지만 읽고 나머지를 **말없이** 버린다. 적재(passage)
+    에서는 긴 절의 뒤쪽 내용으로는 영영 안 찾히고, 질의(query)에서는 긴 질문·브리프의 앞부분만
+    검색에 쓰인다. 호출부는 이 값으로 그 사실을 응답·잡 결과·로그에 남긴다.
+    """
+    try:
+        limit = embedder.input_limit()
+        if not limit:
+            return None
+        n = embedder.input_tokens(text or "", is_query=is_query)
+    except Exception:  # noqa: BLE001 — 세기 실패가 검색·적재를 막아선 안 된다
+        return None
+    if n is None or n <= limit:
+        return None
+    return {"tokens": int(n), "max_tokens": int(limit), "chars": len(text or ""),
+            "model": getattr(embedder, "name", "")}
+
 
 # ---------------------------------------------------------------------------
 # HashEmbedder (default, dependency-light)
@@ -281,7 +311,22 @@ class SentenceTransformerEmbedder(Embedder):
 
             self._model = SentenceTransformer(self._name, device="cpu")
             return fn(*a, **kw)
+
+    def input_limit(self) -> int | None:
+        n = getattr(getattr(self, "_model", None), "max_seq_length", None)
+        return int(n) if n else None
+
+    def input_tokens(self, text: str, *, is_query: bool = False) -> int | None:
+        tok = getattr(getattr(self, "_model", None), "tokenizer", None)
+        if tok is None:
+            return None
+        ids = tok(self._wrap(text, is_query=is_query), add_special_tokens=True,
+                  truncation=False, verbose=False)["input_ids"]
+        return len(ids)
+
     def _wrap(self, text: str, *, is_query: bool) -> str:
+        # 8,000자 선절단은 토크나이저 비용 보호일 뿐이다 — 모델은 그 전에 max_seq_length(e5 512 토큰
+        # ≒ 한글 600~900자)에서 자른다. 실효 한도는 모델 쪽이고 넘친 사실은 input_overflow 가 낸다.
         text = (text or "")[:8000]
         if not self._uses_e5_prefix:
             return text
@@ -394,4 +439,5 @@ __all__ = [
     "OpenAIEmbedder",
     "SentenceTransformerEmbedder",
     "get_embedder",
+    "input_overflow",
 ]

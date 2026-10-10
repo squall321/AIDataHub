@@ -337,6 +337,8 @@ async def recommend_agents(
                 # top_k 로 자르기 전 후보 수 — 더 받으려면 top_k 를 올린다.
                 "ranked_total": ranked_total,
                 "more_available": ranked_total > len(agents),
+                # 질의가 임베딩 모델 입력 한도를 넘었으면 {tokens, max_tokens, chars} — 앞부분만 썼다.
+                "query_over_model_limit": rank_stats.get("query_over_model_limit"),
                 "relevant_tools": relevant_tools,
                 "coverage": coverage,
                 "fallback": False,
@@ -361,6 +363,7 @@ async def recommend_agents(
             "query": q,
             "agents": [],
             "relevant_tools": relevant_tools,
+            "query_over_model_limit": rank_stats.get("query_over_model_limit"),
             "fallback": True,
             "hint": (
                 "No matching agents for the query. Ask the user to clarify "
@@ -640,6 +643,14 @@ async def agent_search(
                     "validated",
                 )
 
+        # 질의가 임베딩 모델 입력 한도(e5 512 토큰)를 넘으면 앞부분만 의미검색에 쓰였다 — 모델
+        # 한도라 늘릴 수 없으니 응답에 싣는다(fts·tag 는 임베딩을 쓰지 않는다).
+        query_over_model_limit = None
+        if mode in ("semantic", "hybrid"):
+            from .services.embedding import get_embedder, input_overflow
+
+            query_over_model_limit = input_overflow(get_embedder(), search_q, is_query=True)
+
         # --- refuse_below_score 판단 ---
         refused = False
         if not hits:
@@ -685,6 +696,7 @@ async def agent_search(
             "refusal_message": refusal_message if refused else None,
             "near_miss": near_miss,
             "more_available": more_available,
+            "query_over_model_limit": query_over_model_limit,
             "applied_config": {
                 "top_k": top_k,
                 "top_k_source": top_k_source,

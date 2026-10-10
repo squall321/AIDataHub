@@ -213,7 +213,7 @@ async def embed_handler(job: Job) -> dict:
 
     from ..db.base import engine
     from ..db.models import RecordSection
-    from .embedding import get_embedder
+    from .embedding import get_embedder, input_overflow
 
     target_ids = job.payload.get("record_ids")
     single_id = job.payload.get("record_id")
@@ -232,6 +232,9 @@ async def embed_handler(job: Job) -> dict:
     processed = 0
     skipped = 0
     failed = 0
+    # 모델 입력 한도(e5 512 토큰)를 넘은 절 — 앞부분만 벡터에 들어간다. 모델 한도라 늘릴 수 없지만
+    # 말없이 두지 않는다: 잡 결과와 경고 로그에 수를 남긴다(뒤쪽 내용으로는 의미검색에 안 걸린다).
+    over_limit = 0
 
     async with sessionmaker() as session:
         stmt = select(RecordSection).where(RecordSection.embedding.is_(None))
@@ -273,6 +276,8 @@ async def embed_handler(job: Job) -> dict:
                     sec.embedded_at = now
                     sec.embedding_model = embedder.name
                     processed += 1
+                    if input_overflow(embedder, sec.content_text or ""):
+                        over_limit += 1
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "embed_handler: encode_many failed for batch @%d: %s",
@@ -282,11 +287,19 @@ async def embed_handler(job: Job) -> dict:
             job.progress = min((skipped + processed + failed) / total, 1.0)
         await session.commit()
 
+    max_tokens = embedder.input_limit()
+    if over_limit:
+        logger.warning(
+            "embed_handler: %d sections exceed the model input limit (%s tokens) — only the head "
+            "of each is embedded (model %s)", over_limit, max_tokens, embedder.name,
+        )
     return {
         "sections_processed": processed,
         "skipped": skipped,
         "failed": failed,
         "model": embedder.name,
+        "over_model_limit": over_limit,
+        "model_max_tokens": max_tokens,
     }
 
 

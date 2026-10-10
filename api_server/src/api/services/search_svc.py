@@ -378,7 +378,7 @@ async def semantic_search(
     가산→필터→``[:top_k]`` 순으로 처리한다. 둘 다 비활성이면 기존의 SQL
     ``LIMIT top_k`` 동작을 그대로 유지해 성능 저하를 피한다.
     """
-    from .embedding import get_embedder
+    from .embedding import get_embedder, input_overflow
     from .rerank import maybe_rerank as _maybe_rerank, rerank_enabled as _rerank_enabled
 
     if not (query or "").strip():
@@ -393,6 +393,12 @@ async def semantic_search(
     # E5 비대칭 모델: 질의는 query prefix — passage prefix 로 인코딩하면
     # ranking 이 모델 학습 의도와 어긋난다.
     qvec = embedder.encode_query(query)
+    _qov = input_overflow(embedder, query, is_query=True)
+    if _qov:
+        # 모델 한도라 늘릴 수 없다 — 질의의 앞 max_tokens 만 검색에 쓰였다는 사실을 남긴다.
+        # dict 를 돌려주는 도구(agent_search·recommend_agents)는 응답에도 싣는다.
+        log.warning("semantic_search: 질의 %s토큰(%s자)이 모델 입력 한도 %s토큰을 넘어 앞부분만 썼다",
+                    _qov["tokens"], _qov["chars"], _qov["max_tokens"])
     # ⚠ 건수를 정하는 것은 호출자다 — 기본 천장은 없다. 예전 기본 100 은 호출자 몰래 걸려
     #   hybrid(top_k × 3 을 후보로 받는다)는 top_k 34 부터, 추천은 후보 300 을 달라 해도 100 에서
     #   잘렸다. AIDH_SEARCH_TOP_K_MAX 는 운영자가 **낮출 때만** 쓰는 천장이고, 걸리면 WARNING 이다.

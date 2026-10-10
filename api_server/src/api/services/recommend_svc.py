@@ -206,6 +206,12 @@ async def recommend_agents(
     # 검색에는 확장 질의를 쓰고, 응답의 query 에는 사용자가 쓴 원문을 그대로 남긴다.
     search_query = expand_query(query)
 
+    if stats is not None:
+        from .embedding import get_embedder, input_overflow
+
+        # 긴 질의는 모델 입력 한도(e5 512 토큰)에서 앞부분만 임베딩된다 — 응답에 그 사실을 싣는다.
+        stats["query_over_model_limit"] = input_overflow(get_embedder(), search_query, is_query=True)
+
     # 1) 의미검색 top-N sections
     search_results = await search_svc.semantic_search(
         session, search_query, top_k=candidate_sections

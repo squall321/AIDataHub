@@ -11,7 +11,6 @@ from pydantic import BaseModel, Field
 router = APIRouter(prefix="/api/embed", tags=["embed"])
 
 MAX_TEXTS = 512
-MAX_CHARS = 2000
 
 
 class EmbedRequest(BaseModel):
@@ -25,16 +24,25 @@ async def post_embed(req: EmbedRequest) -> dict:
     if not req.texts:
         return {"vectors": [], "dim": 0}
     try:
-        from ..services.embedding import get_embedder
+        from ..services.embedding import get_embedder, input_overflow
         emb = get_embedder()
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=503, detail=f"embedder unavailable: {e}") from e
-    texts = [str(t)[:MAX_CHARS] for t in req.texts]
+    # 글자로 먼저 자르지 않는다 — 예전 2,000자 선절단은 말없이 걸렸다. 실효 한도는 모델 입력
+    # 토큰(e5 512)이고, 넘친 텍스트의 순번을 over_limit 로 돌려준다(뒤쪽은 벡터에 안 들어간다).
+    texts = [str(t) for t in req.texts]
+    is_query = req.kind == "query"
     try:
-        if req.kind == "query":
+        if is_query:
             vecs = [emb.encode_query(t) for t in texts]
         else:
             vecs = emb.encode_many(texts) if hasattr(emb, "encode_many") else [emb.encode(t) for t in texts]
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"encode failed: {e}") from e
-    return {"vectors": [list(map(float, v)) for v in vecs], "dim": len(vecs[0]) if vecs else 0}
+    over = [i for i, t in enumerate(texts) if input_overflow(emb, t, is_query=is_query)]
+    return {
+        "vectors": [list(map(float, v)) for v in vecs],
+        "dim": len(vecs[0]) if vecs else 0,
+        "max_tokens": emb.input_limit(),
+        "over_limit": over,
+    }
