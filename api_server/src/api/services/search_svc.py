@@ -393,12 +393,17 @@ async def semantic_search(
     # E5 비대칭 모델: 질의는 query prefix — passage prefix 로 인코딩하면
     # ranking 이 모델 학습 의도와 어긋난다.
     qvec = embedder.encode_query(query)
-    # ⚠ 상한을 **조용히** 자르면 호출부는 300개를 달라고 하고 100개를 받는다(후보를 넓혀도
-    # recall 이 안 늘어나는 원인이 된다). 값을 env 로 열고, 잘릴 때는 로그를 남긴다.
-    _cap = int(os.environ.get("AIDH_SEARCH_TOP_K_MAX", "100"))
-    if int(top_k) > _cap:
-        log.info("semantic_search: top_k %s → %s 로 잘림(AIDH_SEARCH_TOP_K_MAX)", top_k, _cap)
-    top_k = max(1, min(int(top_k), _cap))
+    # ⚠ 건수를 정하는 것은 호출자다 — 기본 천장은 없다. 예전 기본 100 은 호출자 몰래 걸려
+    #   hybrid(top_k × 3 을 후보로 받는다)는 top_k 34 부터, 추천은 후보 300 을 달라 해도 100 에서
+    #   잘렸다. AIDH_SEARCH_TOP_K_MAX 는 운영자가 **낮출 때만** 쓰는 천장이고, 걸리면 WARNING 이다.
+    top_k = max(1, int(top_k))
+    _cap_env = (os.environ.get("AIDH_SEARCH_TOP_K_MAX") or "").strip()
+    if _cap_env:
+        _cap = max(1, int(_cap_env))
+        if top_k > _cap:
+            log.warning("semantic_search: top_k %s → %s 로 잘림(운영자 천장 AIDH_SEARCH_TOP_K_MAX)",
+                        top_k, _cap)
+            top_k = _cap
 
     # tag_boost / min_score 가 활성이면 재랭킹/필터를 위해 후보 풀을 넓게 가져온다.
     rerank = bool(tag_boost) or (min_score is not None)

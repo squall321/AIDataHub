@@ -40,8 +40,8 @@ _SAMPLE_TOP_K = int(os.environ.get("AGENT_SAMPLE_TOP_K", "20"))
 _SAMPLE_PER_AGENT_CAP = int(os.environ.get("AGENT_SAMPLE_PER_AGENT_CAP", "3"))
 # 후보 섹션 수 — 전문가 추천의 **recall** 을 정하는 값이다. 이 안에 정답 전문가의 카드가 한 장도
 # 없으면 리랭커도 못 살린다(실측: '배터리가 부풀어 올랐어요' 에 pwr-swelling 이 풀에 있는데도
-# 50 후보 안에 안 들어왔다). 큰 박스(cae00 B300)는 넉넉히 올린다 — 대신 semantic_search 의
-# AIDH_SEARCH_TOP_K_MAX 도 같이 올려야 한다(안 올리면 100 에서 잘린다).
+# 50 후보 안에 안 들어왔다). 큰 박스(cae00 B300)는 넉넉히 올린다. semantic_search 에는 기본 천장이
+# 없다 — 운영자가 AIDH_SEARCH_TOP_K_MAX 로 낮춰 두었다면 이 값이 그 천장에서 잘린다(WARNING 이 찍힌다).
 _CANDIDATE_SECTIONS = int(os.environ.get("AIDH_RECOMMEND_CANDIDATE_SECTIONS", "50"))
 # v0.15.0 — 역할/설명 어휘 매칭 항. record·sample 은 '데이터 양'에 좌우돼, 전문가가 많아지면
 # 데이터 얇은 적합 전문가가 top-N 후보 섹션에서 밀려 추천이 불발됐다(관측). 질의 토큰이 agent 의
