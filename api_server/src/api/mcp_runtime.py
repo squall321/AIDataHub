@@ -429,13 +429,18 @@ async def get_agent_session(agent_type: str) -> dict[str, Any]:
         "Returns hits with a 'refused' flag when scores are below refuse_below_score. "
         "mode: 'semantic' (default, vector cosine) | 'fts' (keyword tsvector) | "
         "'hybrid' (semantic + fts via Reciprocal Rank Fusion — most robust) | "
-        "'tag' (exact tags, q=comma-separated tags)"
+        "'tag' (exact tags, q=comma-separated tags). "
+        "top_k (optional): how many hits — default is the seat's retrieval_config.top_k (10 if "
+        "unset). Raise it to read more of the seat's cards; `more_available` says whether more "
+        "matched than were returned, `applied_config.agent_record_scope` is how many records "
+        "the seat owns. Each hit's `snippet` is the whole section body."
     ),
 )
 async def agent_search(
     agent_type: str,
     q: str,
     mode: SearchMode = "semantic",
+    top_k: int | None = None,
 ) -> dict[str, Any]:
     """Agent retrieval_config 를 자동 적용하는 agent-scoped 검색.
 
@@ -466,7 +471,12 @@ async def agent_search(
         rc = dict(agent.retrieval_config or {})
         rsp = dict(agent.response_config or {})
 
-        top_k: int = int(rc.get("top_k") or 10)
+        # 건수 — 호출자가 주면 그것, 아니면 좌석 설정(없으면 10). 예전엔 호출자가 올릴 길이 없어
+        # 카드 수천 장 좌석도 질의 한 번에 10건이었다. 1백만 토큰 창에서 건수는 호출자가 정한다.
+        top_k_source = "caller" if top_k is not None else "seat"
+        top_k = max(1, int(top_k)) if top_k is not None else int(rc.get("top_k") or 10)
+        # 자른 뒤에도 맞은 것이 더 남았나 — 모드마다 아래에서 정한다(hit_count 는 자른 뒤의 수다).
+        more_available = False
         score_threshold: float | None = rc.get("score_threshold")
         data_type_filter: list[str] | None = rc.get("data_type_filter") or None
         tag_boost: dict[str, float] = rc.get("tag_boost") or {}
@@ -527,6 +537,7 @@ async def agent_search(
                 record_ids=scope_record_ids,
                 data_types=data_type_filter or None)
             hits = raw[:top_k]
+            more_available = len(raw) > top_k
 
         elif mode == "tag":
             # q = 콤마 구분 태그
@@ -535,9 +546,10 @@ async def agent_search(
                 return _refused_result(agent_type, q, mode, refusal_message, "태그 없음")
             # 범위를 SQL 로 넘긴다 — fts·hybrid 와 같은 규율. 전역으로 뽑고 파이썬에서
             # 거르면 상위 N 이 범위 밖에서 정해져 좌석 결과가 거의 항상 0건이 된다.
-            rows, _ = await search_svc.tag_search(
+            rows, tag_total = await search_svc.tag_search(
                 session, tags_list, limit=top_k * 3, record_ids=scope_record_ids
             )
+            more_available = int(tag_total or 0) > top_k
             hits = [
                 {
                     "record_id": r.id,
@@ -577,19 +589,23 @@ async def agent_search(
                     or float(h.get("score_semantic") or 0.0) >= score_threshold
                 ]
             hits = raw_hits[:top_k]
+            more_available = len(raw_hits) > top_k
 
         else:  # semantic (default)
             # tag_boost / score_threshold 는 search_svc.semantic_search 의
             # 1급 파라미터로 위임 — 가산+재정렬+필터를 한 곳에서 일관 처리.
-            hits = await search_svc.semantic_search(
+            # 한 건 더 받아 '더 있다' 를 정확히 안다(순서가 같으므로 앞 top_k 는 종전 그대로다).
+            sem = await search_svc.semantic_search(
                 session,
                 search_q,
-                top_k=top_k,
+                top_k=top_k + 1,
                 data_types=data_type_filter or None,
                 record_ids=scope_record_ids,
                 tag_boost=tag_boost or None,
                 min_score=score_threshold,
             )
+            hits = list(sem or [])[:top_k]
+            more_available = len(sem or []) > top_k
 
         # --- required_tags / excluded_tags 후필터 ---
         if required_tags:
@@ -655,8 +671,10 @@ async def agent_search(
             "refused": refused,
             "refusal_message": refusal_message if refused else None,
             "near_miss": near_miss,
+            "more_available": more_available,
             "applied_config": {
                 "top_k": top_k,
+                "top_k_source": top_k_source,
                 "score_threshold": score_threshold,
                 "threshold_basis": "semantic" if mode in ("semantic", "hybrid") else None,
                 "data_type_filter": data_type_filter,
