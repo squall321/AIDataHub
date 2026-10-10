@@ -1028,21 +1028,27 @@ async def get_record(record_id: str) -> dict[str, Any]:
         "Returns sectioned (chunked) body of an **AIDataHub record** (record_id), "
         "suitable for RAG. This is the tool to use when you hold a record_id — "
         "`get_section` belongs to the document-editing app and takes a document `slug`. "
-        "PREFER passing `sections` (list of section_ids from a search hit) to "
-        "fetch only what you cite — keeps token cost low. Omit `sections` to "
-        "get the first `limit` sections (default 10). Each section returns "
+        "Pass `sections` (list of section_ids from a search hit) to fetch just those. "
+        "Omit `sections` to get EVERY section of the record in order (the whole body); "
+        "`limit`/`offset` page a long record when you want it in parts — fewer than `limit` "
+        "back means you reached the end. Each section returns "
         "section_id, level, title, content_text."
     ),
 )
 async def get_record_sections(
     record_id: str,
     sections: list[str] | None = None,
-    limit: int = 10,
+    limit: int | None = None,
+    offset: int = 0,
 ) -> list[dict[str, Any]]:
     """선택적 부분 조회.
 
     - ``sections`` 지정 → 해당 section_id 만 반환 (순서는 입력 순서 유지).
-    - ``sections`` 미지정 → 처음 ``limit`` 섹션 (id 오름차순).
+    - ``sections`` 미지정 → 전부(id 오름차순). ``limit``·``offset`` 을 주면 그만큼 나눠 준다.
+
+    ⚠ 예전 기본은 앞 10절·최대 50절이었고 offset 도 total 도 없어서, 50절 넘는 문서의 뒤는
+    sections 를 알지 못하는 한 읽을 길이 없었다(말도 없이 끊겼다). 운영 창은 1,048,576 토큰이라
+    특허 한 건(평균 101,242자)도 들어간다 — 나눠 읽을지는 호출자가 정한다.
     """
     from sqlalchemy import select
     from .db.models import RecordSection
@@ -1068,16 +1074,17 @@ async def get_record_sections(
                 for s in ordered
             ]
 
-        # 부분 미지정 — 처음 limit 섹션
-        limit_safe = max(1, min(int(limit), 50))
-        secs = (
-            await session.execute(
-                select(RecordSection)
-                .where(RecordSection.record_id == record_id)
-                .order_by(RecordSection.id.asc())
-                .limit(limit_safe)
-            )
-        ).scalars().all()
+        # 부분 미지정 — 전부, 또는 호출자가 준 쪽(offset·limit)
+        stmt = (
+            select(RecordSection)
+            .where(RecordSection.record_id == record_id)
+            .order_by(RecordSection.id.asc())
+        )
+        if offset and int(offset) > 0:
+            stmt = stmt.offset(int(offset))
+        if limit is not None:
+            stmt = stmt.limit(max(1, int(limit)))
+        secs = (await session.execute(stmt)).scalars().all()
         return [
             {
                 "section_id": s.section_id,
