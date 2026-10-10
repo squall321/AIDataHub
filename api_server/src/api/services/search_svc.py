@@ -298,7 +298,8 @@ async def fts_search(
             "data_type": row.data_type,
             "section_id": row.section_id,
             "section_title": row.section_title,
-            "snippet": _make_snippet(row.content_text or "", q),
+            # 절 본문 전문 — 좌석이 이것으로 카드를 읽는다(semantic_search 의 주석 참조).
+            "snippet": row.content_text or "",
             "tags": list(row.tags or []),
         }
         sp = getattr(row, "section_path", None)
@@ -327,31 +328,13 @@ async def fts_search(
                 "data_type": rec.data_type,
                 "section_id": None,
                 "section_title": None,
-                "snippet": _make_snippet(rec.summary or "", q),
+                "snippet": rec.summary or "",
                 "tags": list(rec.tags or []),
             }
         )
 
     # total 은 **매칭 수**다(중복 제거 전). len(items) 는 상한에 갇힌 값이라 늘 거짓이었다.
     return items[offset : offset + limit], match_total
-
-
-def _make_snippet(text: str, q: str, *, length: int = 300) -> str:
-    if not text:
-        return ""
-    lower = text.lower()
-    needle = q.lower()
-    idx = lower.find(needle)
-    if idx < 0:
-        return text[:length]
-    start = max(0, idx - 60)
-    end = min(len(text), start + length)
-    snippet = text[start:end]
-    if start > 0:
-        snippet = "…" + snippet
-    if end < len(text):
-        snippet = snippet + "…"
-    return snippet
 
 
 # ---------------------------------------------------------------------------
@@ -376,8 +359,8 @@ async def semantic_search(
         3. SQLite (테스트): 모든 미- ``NULL`` 임베딩 행을 가져와 numpy 로
            코사인 유사도 계산 (작은 데이터셋 가정).
         4. 응답: ``[{section_id, record_id, title, section_title,
-           content_text[:200], score, data_type, tags}]`` (score 는 0..1
-           코사인 유사도, 1 이 최고).
+           snippet, score, data_type, tags}]`` (score 는 0..1 코사인 유사도, 1 이 최고).
+           ``snippet`` 은 절 본문 **전문**이다(아래 ⚠ 참조).
 
     ``data_types`` / ``record_ids`` 필터는 양쪽 백엔드에서 동일하게 적용.
 
@@ -401,6 +384,11 @@ async def semantic_search(
     if not (query or "").strip():
         return []
 
+    # ⚠ 히트의 ``snippet`` 은 절 본문을 **자르지 않는다.** 예전엔 앞 200자(FTS 는 300자 창)였고
+    #   '…' 도 길이도 없었다. 심의 엔진은 지식카드 한 줄을 이 snippet 으로 만들어서, 엔진 예산을
+    #   아무리 올려도 좌석은 카드 절(평균 230~450자)의 앞 200자밖에 못 봤다. 운영 모델 창은
+    #   1,048,576 토큰이고 본문은 이미 쿼리가 끌어온 열이라 싣는 값도 0 이다. 화면에서 줄이는
+    #   것은 화면 몫이다(dashboard.js 의 slice(0, 200)·cluster_svc 의 군집 보기).
     embedder = get_embedder()
     # E5 비대칭 모델: 질의는 query prefix — passage prefix 로 인코딩하면
     # ranking 이 모델 학습 의도와 어긋난다.
@@ -480,7 +468,7 @@ async def semantic_search(
                 "title": row.title,
                 "section_title": row.section_title,
                 "data_type": row.data_type,
-                "snippet": (row.content_text or "")[:200],
+                "snippet": row.content_text or "",
                 "score": round(sim, 4),
                 "tags": list(row.tags or []),
             }
@@ -550,7 +538,7 @@ async def semantic_search(
             "title": rec.title,
             "section_title": sec.title,
             "data_type": rec.data_type,
-            "snippet": (sec.content_text or "")[:200],
+            "snippet": sec.content_text or "",
             "score": round(score, 4),
             "tags": list(rec.tags or []),
         }
@@ -640,7 +628,7 @@ async def data_for_agent(
                         "data_type": rec.data_type,
                         "section_id": None,
                         "section_title": None,
-                        "snippet": _make_snippet(rec.summary or "", q),
+                        "snippet": rec.summary or "",
                         "relevance": _score(priority, 0),
                         "tags": list(rec.tags or []),
                     }
@@ -655,7 +643,7 @@ async def data_for_agent(
                         "data_type": rec.data_type,
                         "section_id": sec.section_id,
                         "section_title": sec.title,
-                        "snippet": _make_snippet(sec.content_text or "", q),
+                        "snippet": sec.content_text or "",
                         "relevance": _score(priority, hits),
                         "tags": list(rec.tags or []),
                     }
@@ -673,7 +661,7 @@ async def data_for_agent(
                     "data_type": rec.data_type,
                     "section_id": None,
                     "section_title": None,
-                    "snippet": _make_snippet(rec.summary or rec.title or "", q),
+                    "snippet": rec.summary or rec.title or "",
                     "relevance": _score(priority, hits),
                     "tags": list(rec.tags or []),
                 }

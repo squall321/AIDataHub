@@ -868,7 +868,7 @@ async def tag_search(
                 "title": r.title,
                 "data_type": r.data_type,
                 "tags": list(r.tags or []),
-                "summary": (r.summary or "")[:200],
+                "summary": r.summary or "",      # 요약 전문 — 자르지 않는다(list_records 와 같다)
             }
             for r in rows
         ][:top_k]
