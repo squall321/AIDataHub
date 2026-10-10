@@ -81,7 +81,11 @@ async def query_records(
 
 
 def to_summary(rec: Record) -> dict[str, Any]:
-    """MCP 응답용 경량 요약 (content 본문 제외 — 토큰 절약)."""
+    """MCP 응답용 경량 요약 (content 본문 제외 — 토큰 절약).
+
+    요약(summary)은 자르지 않는다. 예전엔 앞 200자였고 '…' 도 길이도 없었다 — 본문을 빼는
+    것으로 충분하고, 요약을 깎을 까닭은 1백만 토큰 창에 없다.
+    """
     return {
         "id": rec.id,
         "title": rec.title,
@@ -92,7 +96,7 @@ def to_summary(rec: Record) -> dict[str, Any]:
         "doc_type": rec.doc_type,
         "tags": list(rec.tags or []),
         "agents": list(rec.agents or []),
-        "summary": (rec.summary or "")[:200],
+        "summary": rec.summary or "",
     }
 
 

@@ -186,7 +186,8 @@ async def list_agent_domains() -> list[dict[str, Any]]:
         "Lists existing tags with usage count, data_type distribution and related "
         "agents. Use BEFORE tag_search / list_records(tags=...) — tag_search is "
         "exact-match AND, so discovering the exact vocabulary first avoids empty "
-        "results. q filters by tag prefix."
+        "results. q filters by tag prefix. `total` is how many tags matched before `limit`, "
+        "`count` how many came back."
     ),
 )
 async def list_tags(
@@ -214,9 +215,13 @@ async def list_tags(
             }
         )
     items.sort(key=lambda x: (-x["count"], x["tag"]))
-    items = items[: max(1, min(int(limit), 500))]
+    # total 은 자르기 **전** 수다 — 예전엔 자른 뒤 len(items) 라 더 있는지 알 수 없었다.
+    # 건수는 호출자가 정한다(예전 최대 500 은 걷었다).
+    total = len(items)
+    items = items[: max(1, int(limit))]
     return {
-        "total": len(items),
+        "total": total,
+        "count": len(items),
         "items": items,
         "filters": {"q": q or None, "min_count": min_count, "limit": limit},
     }
