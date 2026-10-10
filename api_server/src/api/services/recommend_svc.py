@@ -188,12 +188,18 @@ async def recommend_agents(
     query: str,
     top_k: int = 5,
     candidate_sections: int | None = None,
+    stats: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """자연어 쿼리 → ranked agents.
 
     의미검색 top-N sections 가져와서 각 section 의 record 에 등록된 agents
     별로 score 합산. agent 의 record_count / matched_sections / why 도 함께.
+
+    ``stats`` 를 주면 ``ranked_total``(top_k 로 자르기 전 후보 수)을 채운다 — 호출자가
+    '더 있다' 를 알 수 있게(예전엔 자른 뒤 목록뿐이었다).
     """
+    if stats is not None:
+        stats["ranked_total"] = 0
     if not query or not query.strip():
         return []
     candidate_sections = int(candidate_sections or _CANDIDATE_SECTIONS)
@@ -343,6 +349,8 @@ async def recommend_agents(
     # 역할/설명 어휘 일치는 다르다 — 실측으로 갈린다.
     #   덮이는 질의 50/86/78/75%  vs  안 덮이는 질의 30/0/33%
     best_match = max((r.get('desc_match') or 0.0) for r in ranked) if ranked else 0.0
+    if stats is not None:
+        stats["ranked_total"] = len(ranked)
     for r in ranked[:top_k]:
         r['low_confidence'] = best_match < _LOW_CONF_DESC
     return ranked[:top_k]

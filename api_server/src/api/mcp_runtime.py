@@ -233,8 +233,10 @@ async def list_tags(
         "Given a natural-language query, returns ranked agents based on semantic "
         "search aggregation + sample query matching. Use this when the user describes "
         "an intent and you need to pick the right agent. "
-        "RETURNS {query, agents:[{agent_type, name, description, score, ...}]} — the list "
-        "key is `agents` (not `recommendations`/`results`); `agent_type` is the seat key. "
+        "RETURNS {query, agents:[{agent_type, name, description, score, ...}], ranked_total, "
+        "more_available} — the list key is `agents` (not `recommendations`/`results`); "
+        "`agent_type` is the seat key; `ranked_total` counts candidates before `top_k` "
+        "(raise top_k to get more). "
         "TIP: a long query embeds to a mush centroid and returns the same neighbours as any "
         "other long query — split the topic into short domain phrases and call once per phrase."
     ),
@@ -262,7 +264,10 @@ async def recommend_agents(
     from .services import recommend_svc, tool_embedding_svc, tool_visibility_svc
 
     async with SessionLocal() as session:
-        agents = await recommend_svc.recommend_agents(session, query=q, top_k=top_k)
+        rank_stats: dict[str, Any] = {}
+        agents = await recommend_svc.recommend_agents(
+            session, query=q, top_k=top_k, stats=rank_stats)
+        ranked_total = int(rank_stats.get("ranked_total") or len(agents))
         # Wave-7 P1+P2 — 도구 검색 + 정책 필터 (별도 실패해도 agent 추천은 유지)
         relevant_tools: list[dict[str, Any]] = []
         try:
@@ -329,6 +334,9 @@ async def recommend_agents(
             return {
                 "query": q,
                 "agents": agents,
+                # top_k 로 자르기 전 후보 수 — 더 받으려면 top_k 를 올린다.
+                "ranked_total": ranked_total,
+                "more_available": ranked_total > len(agents),
                 "relevant_tools": relevant_tools,
                 "coverage": coverage,
                 "fallback": False,
@@ -342,7 +350,7 @@ async def recommend_agents(
             {
                 "agent_type": a.agent_type,
                 "name": a.name,
-                "description": (a.description or "")[:200],
+                "description": a.description or "",      # 전문 — 고를 근거라 자르지 않는다
                 "common_tags": list(a.common_tags or []),
                 "data_types": list(a.data_types or []),
                 "sample_queries": list((a.sample_queries or []))[:3],

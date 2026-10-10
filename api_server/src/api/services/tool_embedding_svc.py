@@ -141,6 +141,8 @@ async def search_tools(
     embedder = get_embedder()
     qvec = embedder.encode_query(query)
     top_k = max(1, min(int(top_k), 20))
+    # 설명은 자르지 않는다 — 예전엔 300자였고 '…' 도 길이도 없었다. recommend_agents 의
+    # relevant_tools 로 그대로 실려 호출자가 도구를 고르는 근거가 된다.
 
     if is_postgres(session):
         distance = MCPUpload.description_embedding.op("<=>", return_type=Float())(qvec).label(
@@ -167,7 +169,7 @@ async def search_tools(
             out.append(
                 {
                     "name": row.name,
-                    "description": (manifest.get("description") or row.description_text or "")[:300],
+                    "description": manifest.get("description") or row.description_text or "",
                     "title": manifest.get("title") or "",
                     "score": round(sim, 4),
                     "compatible_agents": list(manifest.get("restrict_agents") or []) or None,
@@ -216,7 +218,7 @@ async def search_tools(
         out2.append(
             {
                 "name": r.name,
-                "description": (manifest.get("description") or r.description_text or "")[:300],
+                "description": manifest.get("description") or r.description_text or "",
                 "title": manifest.get("title") or "",
                 "score": round(s, 4),
                 "compatible_agents": list(manifest.get("restrict_agents") or []) or None,
