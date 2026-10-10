@@ -11,6 +11,7 @@ ARRAY/JSONB 등 방언 의존 표현은 모두 :mod:`api.services.sql_compat` �
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from collections.abc import AsyncIterator, Sequence
@@ -502,7 +503,8 @@ async def semantic_search(
         if rerank:
             results = _apply_rerank(results)
         if _ce:
-            results = _maybe_rerank(query, results, top_k=top_k)
+            # 스레드로 — predict 는 수 초짜리 동기 호출이라 루프에서 부르면 그동안 다른 요청이 전부 선다.
+            results = await asyncio.to_thread(_maybe_rerank, query, results, top_k=top_k)
         return results
 
     # SQLite 폴백 — 전체 로드 후 numpy 로 코사인.
@@ -571,7 +573,7 @@ async def semantic_search(
     if rerank:
         out = _apply_rerank(out)
     if _ce:
-        out = _maybe_rerank(query, out, top_k=top_k)
+        out = await asyncio.to_thread(_maybe_rerank, query, out, top_k=top_k)  # PG 경로와 같은 까닭
     return out
 
 
@@ -788,10 +790,13 @@ async def hybrid_search(
         item["score"] = rrf  # 통일된 score 필드 (semantic 응답과 호환)
         out.append(item)
 
-    # 5) 선택적 cross-encoder rerank — env AIDH_RERANK_PROVIDER 활성 시만.
+    # 5) 선택적 cross-encoder rerank — env AIDH_RERANK_PROVIDER 활성 시만. 스레드로 부른다(semantic_search
+    #    참조). semantic 단계가 같은 질의로 이미 매긴 히트는 다시 매기지 않는다(reuse_scored) — FTS 에서만
+    #    온 히트만 매기면 결과 순서는 전부 다시 매긴 것과 같고 연산은 그만큼 준다.
     try:
-        from .rerank import maybe_rerank
-        out = maybe_rerank(q, out, top_k=top_k)
+        from .rerank import maybe_rerank, rerank_enabled
+        if rerank_enabled():
+            out = await asyncio.to_thread(maybe_rerank, q, out, top_k=top_k, reuse_scored=True)
     except Exception:  # pragma: no cover — rerank 실패가 검색을 막아선 안 됨
         out = out[:top_k]
     else:

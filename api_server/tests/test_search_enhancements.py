@@ -188,7 +188,8 @@ def test_리랭커_스위치는_두_경로에_모두_걸린다():
     from pathlib import Path
     src = Path(__file__).resolve().parents[1] / "src" / "api" / "services" / "search_svc.py"
     body = src.read_text(encoding="utf-8")
-    assert body.count("_maybe_rerank(query,") == 2, "두 반환 경로 모두에 리랭크가 걸려야 한다"
+    # 스레드로 부른다 — 루프에서 부르면 predict 동안 다른 요청이 선다(test_rerank_input_limit 가 동작으로 본다).
+    assert body.count("asyncio.to_thread(_maybe_rerank, query,") == 2, "두 반환 경로 모두에 리랭크가 걸려야 한다"
     assert "_rerank_enabled()" in body, "꺼져 있으면 후보를 넓게 받지 않아야 한다(DB 낭비 방지)"
 
 
