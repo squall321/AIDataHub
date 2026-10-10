@@ -18,7 +18,7 @@ from pathlib import Path
 from collections import defaultdict
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.models import Agent, Record, RecordSection
@@ -368,6 +368,10 @@ async def build_context_bundle(
 ) -> dict[str, Any] | None:
     """agent 의 records + 핵심 sections 를 LLM 친화 JSON 으로 묶는다.
 
+    절 본문(``excerpt``)은 자르지 않는다 — 예전엔 앞 500자(markdown 은 다시 200자 + '...')였고
+    표지가 없었다. 건수(``max_records``·``max_sections_per_record``)는 호출자가 정하고, 넘친 것은
+    ``totals.records_bound``(좌석의 레코드 총수)·레코드마다 ``sections_total`` 로 알린다.
+
     Returns:
         ``None`` if agent 미존재.
     """
@@ -501,6 +505,17 @@ async def build_context_bundle(
                     if len(rec_rows) >= max_records:
                         break
 
+    # 레코드마다 절 총수 — key_sections 가 max_sections_per_record 에서 잘렸는지 호출자가 안다.
+    sections_total: dict[str, int] = {}
+    if rec_rows and not do_filter:
+        sections_total = {
+            rid: int(n) for rid, n in (await session.execute(
+                select(RecordSection.record_id, func.count())
+                .where(RecordSection.record_id.in_([r.id for r in rec_rows]))
+                .group_by(RecordSection.record_id)
+            )).all()
+        }
+
     # (record 최고 relevance, payload) — do_filter 일 때 이 값으로 재정렬해 자른다.
     scored_records: list[tuple[float, dict[str, Any]]] = []
     for r in rec_rows:
@@ -529,12 +544,13 @@ async def build_context_bundle(
                 key=lambda t: (t[0] is not None, t[0] or 0.0), reverse=True
             )
             key_sections: list[dict[str, Any]] = []
+            sections_total[r.id] = len(sec_rows)
             for rel, s in scored_secs[:max_sections_per_record]:
                 item: dict[str, Any] = {
                     "section_id": s.section_id,
                     "level": s.level,
                     "title": s.title,
-                    "excerpt": (s.content_text or "")[:500],
+                    "excerpt": s.content_text or "",
                 }
                 if rel is not None:
                     item["relevance"] = round(rel, 4)
@@ -554,7 +570,7 @@ async def build_context_bundle(
                     "section_id": s.section_id,
                     "level": s.level,
                     "title": s.title,
-                    "excerpt": (s.content_text or "")[:500],
+                    "excerpt": s.content_text or "",
                 }
                 for s in secs
             ]
@@ -576,6 +592,7 @@ async def build_context_bundle(
                 "tags": list(r.tags or []),
                 "doc_type": r.doc_type,
                 "key_sections": key_sections,
+                "sections_total": sections_total.get(r.id, len(key_sections)),
                 **({"relevance": round(_best, 4)} if _best >= 0 else {}),
             },
         ))
@@ -583,6 +600,7 @@ async def build_context_bundle(
     # 순서는 이미 rank_by_id(또는 recency)가 정했다. 섹션 최고값으로 다시 흔들지 않는다 —
     # 레코드 간 비교는 인덱스 검색 점수가, 레코드 안 섹션 정렬은 relevance 가 맡는다.
     records_payload = [p for _, p in scored_records[:max_records]]
+    records_bound = await _count_bound_records(session, agent_type)
 
     return {
         "agent": {
@@ -614,6 +632,8 @@ async def build_context_bundle(
         },
         "totals": {
             "records_returned": len(records_payload),
+            # 좌석이 가진 레코드 전부의 수 — records_returned 보다 크면 max_records 에서 잘렸다.
+            "records_bound": records_bound,
             "max_records": max_records,
             "max_sections_per_record": max_sections_per_record,
         },
@@ -626,6 +646,19 @@ async def build_context_bundle(
             "natural_language": f'MCP tool: agent_search("{agent_type}", q)',
         },
     }
+
+
+async def _count_bound_records(session: AsyncSession, agent_type: str) -> int:
+    """좌석에 묶인 레코드 수(GIN 인덱스를 타는 ``@>``). 비-PG(SQLite 시험)는 파이썬으로 센다."""
+    from .sql_compat import is_postgres
+
+    if is_postgres(session):
+        return int((await session.execute(
+            select(func.count()).select_from(Record)
+            .where(Record.agents.op("@>")([agent_type]))  # type: ignore[attr-defined]
+        )).scalar() or 0)
+    rows = (await session.execute(select(Record.agents))).scalars().all()
+    return sum(1 for a in rows if agent_type in (a or []))
 
 
 def render_context_bundle_markdown(bundle: dict[str, Any]) -> str:
@@ -667,7 +700,7 @@ def render_context_bundle_markdown(bundle: dict[str, Any]) -> str:
         if bits:
             out.append(f"- response_config: {', '.join(bits)}")
     if samples:
-        out.append(f"- sample_queries ({len(samples)}): " + "; ".join(f"\"{s}\"" for s in samples[:5]))
+        out.append(f"- sample_queries ({len(samples)}): " + "; ".join(f"\"{s}\"" for s in samples))
     out.append("")
     if sys_p:
         out.append("## System prompt (admin-defined)")
@@ -677,7 +710,9 @@ def render_context_bundle_markdown(bundle: dict[str, Any]) -> str:
         out.append("")
 
     records = bundle.get("records", [])
-    out.append(f"## Records ({len(records)})")
+    _tot = bundle.get("totals") or {}
+    _bound = _tot.get("records_bound")
+    out.append(f"## Records ({len(records)}" + (f" of {_bound}" if _bound and _bound > len(records) else "") + ")")
     out.append("")
     for r in records:
         out.append(f"### `{r['id']}` — {r['title']}")
@@ -692,7 +727,11 @@ def render_context_bundle_markdown(bundle: dict[str, Any]) -> str:
             for s in r["key_sections"]:
                 t = s.get("title") or s.get("section_id")
                 excerpt = (s.get("excerpt") or "").replace("\n", " ").strip()
-                out.append(f"- `§{s.get('section_id')}` _{t}_ — {excerpt[:200]}...")
+                out.append(f"- `§{s.get('section_id')}` _{t}_ — {excerpt}")
+            n_tot = r.get("sections_total")
+            if isinstance(n_tot, int) and n_tot > len(r["key_sections"]):
+                out.append(f"- (절 {len(r['key_sections'])}/{n_tot} — 나머지는 "
+                           f"get_record_sections(\"{r['id']}\"))")
             out.append("")
 
     eps = bundle.get("next_steps", {})
