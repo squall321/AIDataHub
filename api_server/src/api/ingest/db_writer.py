@@ -420,7 +420,10 @@ async def write_record(
     pre_snapshot: dict[str, Any] | None = None
 
     if existing is not None:
-        if existing.content_hash == content_hash:
+        # 본문 해시만 보면 제목·요약만 바뀐 원본(동기화 요약 폴백 포함)이 영영 반영되지 않는다.
+        if (existing.content_hash == content_hash
+                and existing.title == record_in.title
+                and existing.summary == record_in.summary):
             logger.info("Record %s unchanged — skipping", record_in.id)
             return WriteResult(existing, action="skipped")
 

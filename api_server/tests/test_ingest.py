@@ -288,16 +288,17 @@ async def test_db_write_idempotent(db_session) -> None:
     await session.commit()
     assert r2.action == "skipped"
 
-    # 명시적 caption 을 그대로 두고 무관 필드(top-level summary)를 바꿔도 content
-    # 해시가 동일하므로 skipped 유지. (DATA 변종에서 caption 은 raw.title 로부터
-    # 유도되므로, top-level title 변경은 caption 변경으로 이어져 content 가 달라진다.)
+    # 명시적 caption 을 그대로 두고 top-level summary 만 바꾸면 content 해시는 같지만
+    # 요약이 달라졌으므로 updated 다 — 예전에는 해시만 보고 skipped 로 끝내 요약 갱신
+    # (동기화 요약 폴백 포함)이 영영 반영되지 않았다. (DATA 변종에서 caption 은 raw.title
+    # 로부터 유도되므로, top-level title 변경은 caption 변경으로 이어져 content 가 달라진다.)
     raw2 = dict(raw)
     raw2["caption"] = "v1"  # 명시 caption 으로 고정
     raw2["summary"] = "summary-only-change"  # 공통 메타만 변경
     rec2 = normalize(raw2)
     r3 = await write_record(session, rec2)
     await session.commit()
-    assert r3.action == "skipped"
+    assert r3.action == "updated"
 
     # content 변경 → updated
     raw3 = dict(raw)
