@@ -809,6 +809,7 @@ async def run_sync(
 
                     # detail fetch (필요 시) — MXWP envelope (data 키) 자동 unwrap.
                     if use_detail:
+                        detail_err: str | None = None
                         try:
                             await throttle.wait()
                             detail_url = src_base_url.rstrip("/") + (
@@ -839,12 +840,22 @@ async def run_sync(
                                 else:
                                     raw = {**raw, **(d_body if isinstance(d_body, dict) else {})}
                             else:
+                                detail_err = f"detail fetch → {d_resp.status_code}"
                                 logger.warning(
-                                    "detail fetch %s → %s — skipping enrichment",
+                                    "detail fetch %s → %s — skipping record",
                                     detail_url, d_resp.status_code,
                                 )
                         except Exception as exc:  # noqa: BLE001
-                            logger.warning("detail fetch failed: %s — using list-only", exc)
+                            detail_err = f"detail fetch failed: {exc}"
+                            logger.warning("detail fetch failed: %s — skipping record", exc)
+                        if detail_err:
+                            # 목록 응답은 메타뿐이다. 그대로 변환하면 있던 본문을 빈
+                            # 「본문」 한 절로 덮는다 — 이 문서는 건너뛰고 실패로 남긴다
+                            # (run 은 partial, 사유는 dead_letter).
+                            failed += 1
+                            dead_letter.append({"raw": _redact_for_dead_letter(raw),
+                                                "error": detail_err})
+                            continue
 
                     transformed = transform_record(
                         raw, rules, trust_pii=src_trust_pii,
