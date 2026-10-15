@@ -189,6 +189,21 @@ def _resolve_field(
     return None
 
 
+def _first_body_text(sections: list[Any]) -> str:
+    """요약이 빈 원본의 폴백 — 처음으로 글이 있는 절의 평문(record_sections 와 같은 평문화)."""
+    from ..ingest.db_writer import _blocks_to_text
+
+    for s in sections:
+        if not isinstance(s, dict):
+            continue
+        text = (_blocks_to_text(s.get("blocks") or []) or str(s.get("content_text") or "")).strip()
+        # MXWP DocumentJSON 은 하위 절을 subsections 에 둔다(다른 원본은 children).
+        text = text or _first_body_text(s.get("subsections") or s.get("children") or [])
+        if text:
+            return text
+    return ""
+
+
 def transform_record(
     raw: dict[str, Any], rules: dict[str, Any], *, trust_pii: bool
 ) -> dict[str, Any] | dict[str, str]:
@@ -202,7 +217,8 @@ def transform_record(
         severity_field 또는 sentiment_field 와 transform 체인,
         transform.sentiment_to_severity, transform.severity_to_quality_score,
         filter (key→expected 매칭, 모두 통과해야 함),
-        sections_field (passthrough — 본문을 단일 placeholder 대신 원본 sections 트리로 보존)
+        sections_field (passthrough — 본문을 단일 placeholder 대신 원본 sections 트리로 보존),
+        summary_from_body (원본 요약이 비면 첫 본문의 앞 300자)
 
     반환:
         - 성공: AX Hub 가 받을 record dict (``_external_id`` 포함)
@@ -324,8 +340,11 @@ def transform_record(
     if "agents" in rules:
         out["agents"] = list(rules["agents"])
 
-    # 9. summary — field 또는 template
+    # 9. summary — field 또는 template. 비면 summary_from_body 로 첫 본문 앞 300자(요약이 빈
+    #    원본은 카드 목록에서 제목 한 줄로만 보이고 검색에도 제목으로만 걸린다).
     summary = _resolve_field(raw, rules, field_key="summary_field", template_key="summary_template")
+    if not summary and rules.get("summary_from_body"):
+        summary = _first_body_text(out["content"].get("sections") or [])[:300] or None
     if summary:
         out["summary"] = summary[:500]
 

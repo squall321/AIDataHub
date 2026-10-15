@@ -110,6 +110,7 @@ sources:
       id_field: id
       title_field: title
       summary_field: summary
+      summary_from_body: true   # 원본 요약이 비면 첫 본문 앞 300자(namu 위키 171장 등)
       # tags 는 detail 의 content.metadata.tags 에 — sync_svc 가 detail fetch
       # 후 content.metadata 를 doc.metadata 로 평탄화하므로 'metadata.tags' 접근.
       tags_fields:
