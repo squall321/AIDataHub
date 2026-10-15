@@ -121,6 +121,30 @@ async def test_pagination_uses_sql_limit_offset(pg_session):
     assert total == 5 and len(rows) == 1  # 마지막 페이지 1건
 
 
+# ── 4. q 낱말 검색 — ESCAPE '/' 가 실제 PG 에서 도는지 ────────────────────
+@pytest.mark.asyncio
+async def test_q_literal_percent_pg(pg_session):
+    from api.services.record_query_svc import query_records
+
+    await _seed(pg_session, "DATA-HE-CAE-2026-0000000001", title="수율 100%")
+    await _seed(pg_session, "DATA-HE-CAE-2026-0000000002", title="부품 1000개")
+    _, total = await query_records(pg_session, q="100%")
+    assert total == 1  # '%' 는 글자 그대로 — 예전에는 '부품 1000개' 까지 2건
+
+
+@pytest.mark.asyncio
+async def test_q_words_and_pg(pg_session):
+    from api.services.record_query_svc import query_records
+
+    await _seed(pg_session, "DATA-HE-CAE-2026-0000000001",
+                title="접착제 물성과 온도에 따른 초점 드리프트", summary="요약말")
+    await _seed(pg_session, "DATA-HE-CAE-2026-0000000002", title="Camera module")
+    _, total = await query_records(pg_session, q="드리프트 접착제")
+    assert total == 1  # 순서가 바뀌어도 맞는다 — 예전에는 0건
+    _, total = await query_records(pg_session, q="camera  MODULE")
+    assert total == 1  # 대소문자·공백 여럿
+
+
 @pytest.mark.asyncio
 async def test_soft_delete_excluded_pg(pg_session):
     from datetime import datetime, timezone

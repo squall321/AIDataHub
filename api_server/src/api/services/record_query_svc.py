@@ -7,19 +7,30 @@
 """
 from __future__ import annotations
 
+import logging
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.models import Record
 from .sql_compat import (
+    FTS_OR_MAX_TOKENS,
     ArrayPredicate,
     array_contains,
     array_overlap,
     paginate_rows,
-    summary_ilike,
 )
+
+log = logging.getLogger(__name__)
+
+
+def _q_token(tok: str):
+    """낱말 하나 — 제목·요약에 그 글자가 있으면 참. '%'·'_' 는 글자 그대로다."""
+    return or_(
+        Record.title.icontains(tok, autoescape=True),
+        Record.summary.icontains(tok, autoescape=True),
+    )
 
 
 async def query_records(
@@ -63,10 +74,16 @@ async def query_records(
         stmt = stmt.where(pred.where_clause)
         if pred.python_filter is not None:
             py_predicates.append(pred)
-    if q:
-        stmt = stmt.where(
-            or_(summary_ilike(Record.title, q), summary_ilike(Record.summary, q))
-        )
+    # 낱말마다 AND — 통째 구절 ILIKE 는 순서가 바뀌거나 사이에 낱말이 끼면 0건이었다.
+    # 「제목에 모든 낱말」 OR 「요약에 모든 낱말」로 짜지 않는다 — 한 낱말은 제목에, 다른 낱말은
+    # 요약에 있는 카드를 놓친다.
+    words = (q or "").split()
+    if len(words) > FTS_OR_MAX_TOKENS:
+        log.warning("query_records: q 는 앞 %d낱말만 조건에 건다 — 뒤 %d낱말은 빠졌다(q %d낱말)",
+                    FTS_OR_MAX_TOKENS, len(words) - FTS_OR_MAX_TOKENS, len(words))
+    tokens = words[:FTS_OR_MAX_TOKENS]
+    if tokens:
+        stmt = stmt.where(and_(*[_q_token(t) for t in tokens]))
 
     stmt = stmt.order_by(Record.updated_at.desc(), Record.id.desc())
 

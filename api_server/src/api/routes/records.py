@@ -104,7 +104,9 @@ async def list_records(
     year: int | None = Query(None),
     agent: list[str] | None = Query(None),
     tag: list[str] | None = Query(None),
-    q: str | None = Query(None, description="ILIKE on title + summary"),
+    q: str | None = Query(
+        None, description="all words (space-separated), each ILIKE on title or summary"
+    ),
     include_deleted: bool = Query(
         False, description="True 면 soft-deleted 레코드도 포함"
     ),

@@ -325,7 +325,7 @@ curl -s -X POST -H "Content-Type: application/json" -H "X-API-Key: $KEY" \
 4. GET /api/search?mode=tag&tags=...     (정확한 태그를 알 때)
     │ 태그 사전 모르면?
     ▼
-5. GET /api/records?q=<title fragment>   (단순 ILIKE on title+summary, 마지막 폴백)
+5. GET /api/records?q=<낱말 몇 개>        (낱말마다 제목·요약 ILIKE, 모두 담은 것만, 마지막 폴백)
 ```
 
 각 모드의 강점/약점은 다음과 같다.
@@ -336,13 +336,13 @@ curl -s -X POST -H "Content-Type: application/json" -H "X-API-Key: $KEY" \
 | `semantic` | 동의어·재구성에 강함. 본문 단어와 질의어가 달라도 매칭 | pgvector 와 임베딩 backfill 필요. SQLite 폴백은 numpy 전체 로드 (소규모만) | 의미 유사도가 필요한 RAG, 본문이 아닌 요약 매칭 |
 | `fts` | section content_text + record title/summary 모두 ILIKE/to_tsvector | 한국어 형태소 분석기 미적용 (PG 의 `simple` configuration). 동의어 약함 | 영어 키워드, 정확한 단어 검색 |
 | `tag` | 정확한 카테고리 매칭. AND 의미 (`@>`) | 태그 사전을 미리 알아야 함 | UI 에서 사용자가 태그 체크박스 클릭 |
-| `records?q=` | 가장 단순. ILIKE on title + summary | recall 낮음 | 마지막 폴백 |
+| `records?q=` | 가장 단순. 공백으로 나눈 낱말을 모두 담은 레코드(낱말마다 title/summary ILIKE, `%`·`_` 는 글자 그대로) | recall 낮음 | 마지막 폴백 |
 
 **폴백 트리거 신호**: `ask` 응답의 `total_matched: 0` 또는
 `interpreted_query.source: "keyword"` 이고 `filters` 가 비었을 때 → semantic
 으로. semantic 이 503 (embedder 미준비) 이면 `mode=fts` 로. fts 가 0 건이면
 질의어를 1~2 단어로 줄여서 다시 시도, 그래도 0 건이면 `mode=tag` 로 (사용자가
-태그 후보를 알면). tag 도 실패면 `GET /api/records?q=...` 의 단순 ILIKE 가
+태그 후보를 알면). tag 도 실패면 `GET /api/records?q=...` 의 낱말 ILIKE 가
 최종 안전망이다.
 
 응답 모양 예 (`mode=fts`):
@@ -832,7 +832,7 @@ elif resp.status_code == 409:
 ?data_type=DOC&team=HE&group=CAE&year=2026
 &agent=iga-analyst&agent=cae-reporter           (overlap: 둘 중 하나라도 있으면)
 &tag=IGA&tag=NURBS                              (contains: 모두 포함)
-&q=tensile                                      (ILIKE on title + summary)
+&q=tensile                                      (낱말마다 title/summary ILIKE, 모두 AND)
 &include_deleted=false
 &limit=20&offset=0
 ```
