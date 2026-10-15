@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     # ``AIDH_HEALTH_GAUGE_TIMEOUT_S``, 0 이면 끈다. 넘으면 게이지만 null 로 두고 곧바로 200 을 준다.
     # 이 응답을 읽는 탐침의 한도(watchdog 5초)보다 작아야 한다.
     aidh_health_gauge_timeout_s: float = 2.0
+    # 레코드 목록 q(낱말 검색)가 본문 절(record_sections.content_text)까지 볼지 —
+    # ``AIDH_RECORDS_Q_BODY_SEARCH``. 켜도 전문가 필터(agents)가 있을 때만 본다(필터 없이
+    # record_sections 를 다 훑지 않게). 기본은 끔 — 운영 DB 사본에서 카드가 가장 많은 전문가
+    # (material-twin-analyst 2,729장)로 EXPLAIN ANALYZE 를 잰 뒤 켠다. trgm 인덱스가 없어 낱말마다
+    # 그 전문가 카드의 절을 훑는다. 바꾸면 API 를 다시 띄워야 반영된다(설명문도 이때 바뀐다).
+    aidh_records_q_body_search: bool = False
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000

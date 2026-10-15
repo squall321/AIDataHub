@@ -336,7 +336,7 @@ curl -s -X POST -H "Content-Type: application/json" -H "X-API-Key: $KEY" \
 | `semantic` | 동의어·재구성에 강함. 본문 단어와 질의어가 달라도 매칭 | pgvector 와 임베딩 backfill 필요. SQLite 폴백은 numpy 전체 로드 (소규모만) | 의미 유사도가 필요한 RAG, 본문이 아닌 요약 매칭 |
 | `fts` | section content_text + record title/summary 모두 ILIKE/to_tsvector | 한국어 형태소 분석기 미적용 (PG 의 `simple` configuration). 동의어 약함 | 영어 키워드, 정확한 단어 검색 |
 | `tag` | 정확한 카테고리 매칭. AND 의미 (`@>`) | 태그 사전을 미리 알아야 함 | UI 에서 사용자가 태그 체크박스 클릭 |
-| `records?q=` | 가장 단순. 공백으로 나눈 낱말을 모두 담은 레코드(낱말마다 title/summary ILIKE, `%`·`_` 는 글자 그대로) | recall 낮음 | 마지막 폴백 |
+| `records?q=` | 가장 단순. 공백으로 나눈 낱말을 모두 담은 레코드(낱말마다 title/summary ILIKE, `%`·`_` 는 글자 그대로). 서버가 본문 검색(`AIDH_RECORDS_Q_BODY_SEARCH`)을 켰으면 `agent` 필터가 있을 때 본문 절까지 | recall 낮음 | 마지막 폴백 |
 
 **폴백 트리거 신호**: `ask` 응답의 `total_matched: 0` 또는
 `interpreted_query.source: "keyword"` 이고 `filters` 가 비었을 때 → semantic

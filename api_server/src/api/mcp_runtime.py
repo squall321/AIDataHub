@@ -35,6 +35,7 @@ from typing import Any, Literal
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
+from .config import settings
 from .db.base import SessionLocal
 
 
@@ -925,7 +926,9 @@ async def tag_search(
     title="정형 필터로 레코드 목록 조회",
     description=(
         "team/group/doc_type/data_type/tags/agent/year + 낱말 검색(q — 공백으로 나눈 "
-        "낱말을 모두 담은 카드. 낱말마다 제목·요약에서 부분 일치) 로 "
+        "낱말을 모두 담은 카드. 낱말마다 제목·요약에서"
+        + (", agents 를 주면 본문에서도" if settings.aidh_records_q_body_search else "")
+        + " 부분 일치) 로 "
         "레코드 목록을 거른다. 의미검색(semantic_search)이 아니라 '조건에 맞는 것 "
         "나열'이 필요할 때 — 예: 'HE 팀 manual 문서 목록', '2026년 VOC 데이터'. "
         "본문은 빼고 경량 요약(id/title/team/group/doc_type/tags/summary)만 반환해 "

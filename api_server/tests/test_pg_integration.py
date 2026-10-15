@@ -146,6 +146,28 @@ async def test_q_words_and_pg(pg_session):
 
 
 @pytest.mark.asyncio
+async def test_q_body_exists_is_correlated_pg(pg_session, monkeypatch):
+    """본문 검색(스위치 켬) — paginate_rows 가 감싸는 count(*) 서브쿼리에서도 EXISTS 가 바깥 행에
+    상관돼야 한다. 상관이 끊기면 본문이 맞는 카드 하나 때문에 그 전문가 카드가 전부 걸린다."""
+    from api.config import settings
+    from api.db.models import RecordSection
+    from api.services.record_query_svc import query_records
+
+    monkeypatch.setattr(settings, "aidh_records_q_body_search", True)
+    for i in (1, 2, 3):
+        await _seed(pg_session, f"DATA-HE-CAE-2026-000000000{i}", title="AP", agents=["a"])
+    pg_session.add(RecordSection(record_id="DATA-HE-CAE-2026-0000000002", section_id="1",
+                                 level=1, title="본문", content_text="모바일 AP 발열 100%"))
+    await pg_session.flush()
+    rows, total = await query_records(pg_session, q="발열 모바일", agents=["a"], limit=1)
+    assert total == 1 and [r.id for r in rows] == ["DATA-HE-CAE-2026-0000000002"]
+    _, total = await query_records(pg_session, q="100%", agents=["a"])
+    assert total == 1
+    _, total = await query_records(pg_session, q="발열 모바일")
+    assert total == 0  # 전문가 필터가 없으면 본문은 보지 않는다
+
+
+@pytest.mark.asyncio
 async def test_soft_delete_excluded_pg(pg_session):
     from datetime import datetime, timezone
 

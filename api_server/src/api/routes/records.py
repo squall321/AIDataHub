@@ -27,6 +27,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth.dependencies import Principal, require_api_key
+from api.config import settings
 from api.db.base import SessionLocal, get_session
 from api.db.models import Record
 from api.services.audit import compute_diff, log_action, record_snapshot
@@ -105,7 +106,9 @@ async def list_records(
     agent: list[str] | None = Query(None),
     tag: list[str] | None = Query(None),
     q: str | None = Query(
-        None, description="all words (space-separated), each ILIKE on title or summary"
+        None,
+        description="all words (space-separated), each ILIKE on title or summary"
+        + (" (+ section body with agent)" if settings.aidh_records_q_body_search else ""),
     ),
     include_deleted: bool = Query(
         False, description="True 면 soft-deleted 레코드도 포함"

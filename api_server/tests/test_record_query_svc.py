@@ -149,3 +149,97 @@ async def test_q_word_cap_is_logged(test_session, caplog):
     assert total == 1   # 13번째 낱말은 조건에 들지 않는다(상한은 그대로 둔다)
     assert any(str(FTS_OR_MAX_TOKENS) in r.getMessage() and "낱말" in r.getMessage()
                for r in caplog.records), "상한 뒤 낱말을 버렸는데 경고가 없다"
+
+
+# ---------------------------------------------------------------------------
+# q 본문 검색 — 스위치(AIDH_RECORDS_Q_BODY_SEARCH, 기본 끔)를 켜고 전문가 필터가 있을 때만
+# 본문 절(record_sections)까지 본다. 요약이 빈 카드(mx-whitepaper-analyst 427장 중 320장)는
+# 제목 몇 글자로만 걸렸다. 켜기 전에는 운영 DB 사본에서 속도를 잰다(설정 주석).
+# ---------------------------------------------------------------------------
+async def _seed_body(session, rid, *texts, agents=("a",)):
+    from api.db.models import RecordSection
+
+    await _seed(session, id=rid, title="AP", summary="", agents=list(agents))
+    for i, t in enumerate(texts, 1):
+        session.add(RecordSection(record_id=rid, section_id=str(i), level=1, title=f"절{i}",
+                                  content_text=t))
+    await session.flush()
+
+
+@pytest.mark.asyncio
+async def test_q_matches_section_body_with_agents(test_session, monkeypatch):
+    from api.config import settings
+    from api.services.record_query_svc import query_records
+
+    monkeypatch.setattr(settings, "aidh_records_q_body_search", True)
+    await _seed_body(test_session, "DOC-HE-CAE-2026-0000000001", "모바일 AP 발열")
+    _, total = await query_records(test_session, q="모바일 발열", agents=["a"])
+    assert total == 1  # 두 낱말 다 본문에만 있다
+    _, total = await query_records(test_session, q="모바일 발열")
+    assert total == 0  # 전문가 필터가 없으면 본문은 보지 않는다
+    _, total = await query_records(test_session, q="모바일 없는말", agents=["a"])
+    assert total == 0  # 본문에서도 낱말마다 AND
+
+
+@pytest.mark.asyncio
+async def test_q_body_words_may_sit_in_different_sections(test_session, monkeypatch):
+    from api.config import settings
+    from api.services.record_query_svc import query_records
+
+    monkeypatch.setattr(settings, "aidh_records_q_body_search", True)
+    await _seed_body(test_session, "DOC-HE-CAE-2026-0000000001", "모바일 개요", "발열 대책")
+    _, total = await query_records(test_session, q="모바일 발열", agents=["a"])
+    assert total == 1  # 낱말마다 EXISTS 를 따로 두므로 절이 달라도 맞는다
+    _, total = await query_records(test_session, q="AP 발열", agents=["a"])
+    assert total == 1  # 한 낱말은 제목, 한 낱말은 본문
+
+
+@pytest.mark.asyncio
+async def test_q_body_search_is_off_by_default(test_session, monkeypatch):
+    from api.config import Settings, settings
+    from api.services.record_query_svc import query_records
+
+    # 코드 기본값 — 박스의 env·.env 와 무관하게 끔이어야 한다.
+    assert Settings.model_fields["aidh_records_q_body_search"].default is False
+    monkeypatch.setattr(settings, "aidh_records_q_body_search", False)
+    await _seed_body(test_session, "DOC-HE-CAE-2026-0000000001", "모바일 AP 발열")
+    _, total = await query_records(test_session, q="모바일 발열", agents=["a"])
+    assert total == 0  # 스위치를 켜기 전에는 제목·요약만 본다
+
+
+_DESC_PROBE = """
+from api.mcp_runtime import mcp
+from api.routes.records import router
+r = next(r for r in router.routes if r.path == "/api/records" and "GET" in r.methods)
+q = next(p for p in r.dependant.query_params if p.name == "q")
+print(mcp._tool_manager.get_tool("list_records").description)
+print("@@REST@@", q.field_info.description)
+"""
+
+
+@pytest.mark.parametrize("on", [False, True])
+def test_q_descriptions_follow_body_switch(on, tmp_path):
+    """설명문은 기동 때 한 번 만들어진다 — 스위치대로 본문을 말해야 모델·사람이 q 를 바로 쓴다.
+
+    별 프로세스로 띄운다. DB 를 부르는 기동 등록(연합·업로드 도구)은 끄고, DB 주소는 닿지 않는
+    곳으로 둔다 — 이 시험이 어떤 DB 에도 닿지 않게.
+    """
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    src = str(Path(__file__).resolve().parents[1] / "src")
+    env = {**os.environ, "PYTHONPATH": src, "AIDH_MCP_FEDERATION": "off", "AIDH_MCP_UPLOADS": "off",
+           "DATABASE_URL": "postgresql+asyncpg://nobody:x@127.0.0.1:1/none",
+           "AIDH_RECORDS_Q_BODY_SEARCH": "true" if on else "false"}
+    out = subprocess.run([sys.executable, "-c", _DESC_PROBE], capture_output=True, text=True,
+                         env=env, cwd=tmp_path, timeout=120)
+    assert out.returncode == 0, out.stderr[-2000:]
+    mcp_desc, rest_desc = out.stdout.split("@@REST@@")
+    if on:
+        assert "낱말마다 제목·요약에서, agents 를 주면 본문에서도 부분 일치" in mcp_desc
+        assert "(+ section body with agent)" in rest_desc
+    else:
+        assert "낱말마다 제목·요약에서 부분 일치" in mcp_desc
+        assert "body" not in rest_desc
