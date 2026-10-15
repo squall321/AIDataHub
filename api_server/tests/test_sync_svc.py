@@ -158,3 +158,34 @@ async def test_detail_success_still_updates_the_body(test_session, monkeypatch):
     assert out["failed"] == 0 and out["updated"] == 1, out
     rec = (await test_session.execute(select(Record).where(Record.id == _RID))).scalar_one()
     assert rec.content["sections"] == new
+
+
+# ---------------------------------------------------------------------------
+# materialtwin — 본문을 절 여러 개(sections)로 받는다(요청서 K3-9 가). MaterialTwinWeb 이 본문을
+# 6만 자에서 자르고 표지를 붙여 보냈고, 허브는 그 body 를 「본문」 한 절로만 실었다.
+# ---------------------------------------------------------------------------
+_MT_RAW = {
+    "id": 220, "name": "EMC", "category": "polymer", "material_code": "EMC-1",
+    "n_properties": 1, "n_sources": 1, "created_at": "2026-01-01T00:00:00",
+    "body": "잘린 본문\n… (본문 절단 — 전체는 content.properties 참조)",
+    "properties": [{"key": "mech.e", "value": 1.0}], "sources": [{"id": 1, "title": "TDS"}],
+}
+
+
+def test_materialtwin_rules_take_sections_from_the_export():
+    from api.services.sync_svc import transform_record
+
+    secs = [{"section_id": "1", "level": 1, "title": "본문 (1/2)", "content_text": "앞\n"},
+            {"section_id": "2", "level": 1, "title": "본문 (2/2)", "content_text": "뒤"}]
+    out = transform_record({**_MT_RAW, "sections": secs}, _yml_rules("materialtwin"),
+                           trust_pii=True)
+    assert out["content"]["sections"] == secs  # 표지 붙은 body 가 아니라 절 전부
+    assert out["content"]["properties"] == _MT_RAW["properties"]  # 구조 데이터는 그대로
+
+
+def test_materialtwin_rules_still_read_body_from_an_older_export():
+    from api.services.sync_svc import transform_record
+
+    out = transform_record(dict(_MT_RAW), _yml_rules("materialtwin"), trust_pii=True)
+    assert out["content"]["sections"] == [{"section_id": "1", "level": 1, "title": "본문",
+                                           "content_text": _MT_RAW["body"]}]

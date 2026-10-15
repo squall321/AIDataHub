@@ -179,6 +179,11 @@ sources:
       # 펴져 있어 전문검색이 걸린다. description 은 카탈로그 재료에서 전부 null 이라
       # 본문이 빈 문서가 적재되고 있었다.
       body_field: body
+      # 2026-10-15 — 본문은 절 여러 개(sections)로 받는다. body 는 6만 자에서 잘리고 끝에 표지
+      # (「본문 절단 — 전체는 content.properties 참조」)가 붙어, 긴 재료 카드는 뒤를 볼 길이 없었다.
+      # MaterialTwinWeb 이 절 하나의 크기 한도를 정한다(MATERIALTWIN_HUB_SECTION_MAX_CHARS). sections 가
+      # 없는 옛 판은 body 로 받는다(sync_svc 의 body_field 폴백).
+      sections_field: sections
       tags_fields:
         - category
         - material_code
