@@ -207,8 +207,19 @@ async def test_convert_md(test_client) -> None:
 # ---------------------------------------------------------------------------
 # 변환 + 적재
 # ---------------------------------------------------------------------------
+async def _register_agent(maker, agent_type: str) -> None:
+    """적재는 등록된 전문가 키만 받는다(strict_agent_validation 기본 켬)."""
+    from api.db.models import Agent
+
+    async with maker() as s:
+        s.add(Agent(agent_type=agent_type, name=agent_type, description="시험용",
+                    common_tags=[], data_types=["DOC"]))
+        await s.commit()
+
+
 @pytest.mark.asyncio
-async def test_convert_then_ingest_inserts_record(db_client) -> None:
+async def test_convert_then_ingest_inserts_record(db_client, test_session_maker) -> None:
+    await _register_agent(test_session_maker, "iga-analyst")
     files = {
         "file": (
             "ingest_demo.md",
@@ -277,6 +288,7 @@ async def test_ingest_with_full_metadata_overrides(
     from api.db.models import Record
     from sqlalchemy import select
 
+    await _register_agent(test_session_maker, "iga-analyst")
     files = {"file": ("meta_full.md", _make_md_bytes(), "text/markdown")}
     form = {
         "team": "HE",

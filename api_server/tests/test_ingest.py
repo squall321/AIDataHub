@@ -237,6 +237,10 @@ async def test_db_write_creates_record(db_session) -> None:
     session, models = db_session
     from api.ingest.db_writer import write_record
 
+    # 적재는 등록된 전문가 키만 받는다(strict_agent_validation 기본 켬).
+    session.add(models.Agent(agent_type="cline_sr", name="cline_sr", description="시험용"))
+    await session.flush()
+
     raw = {
         "id": "DATA-HE-CAE-2026-0000000010",
         "data_type": "DATA",
@@ -344,6 +348,11 @@ async def test_db_write_agent_junction(db_session) -> None:
     from sqlalchemy import select
 
     from api.ingest.db_writer import write_record
+
+    # 적재는 등록된 전문가 키만 받는다(strict_agent_validation 기본 켬).
+    for at in ("cline_sr", "rag_general"):
+        session.add(models.Agent(agent_type=at, name=at, description="시험용"))
+    await session.flush()
 
     raw = {
         "id": "DATA-HE-CAE-2026-0000000050",

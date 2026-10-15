@@ -306,6 +306,9 @@ async def write_record(
         - ``actor`` / ``request_id`` 를 전달하면 audit_log 에 변경 이벤트를 추가한다.
     """
     # 모델은 함수 단위 import (Agent 1 미완성 환경에서도 schema 모듈은 import 가능하도록).
+    from fastapi import HTTPException, status
+
+    from ..config import settings
     from ..db.models import (
         Agent,
         AgentRecord,
@@ -319,9 +322,11 @@ async def write_record(
     content_hash = compute_content_hash(record_in.content)
 
     # ----------------------------- agent_scope 등록 검증 (P1-7 / A-8) --------
-    # ``record_in.agents`` (← meta.agent_scope) 에 ``agents`` 테이블에 등록되지
-    # 않은 agent_type 이 있으면 경고만 남기고 진행한다 (warn-only). 오타/고아
-    # agent 식별자 조기 발견이 목적이며, 이후 strict 모드 전환을 대비한 단계.
+    # ``record_in.agents`` (← meta.agent_scope) 에 ``agents`` 테이블에 등록되지 않은
+    # agent_type 이 있으면 422 로 거절한다(``strict_agent_validation``, 기본 켬). 예전에는
+    # 경고만 남기고 진행해 _resync_agents 가 이름=키·설명 0자의 빈 전문가를 말없이 만들었고,
+    # 그 행이 운영 전문가 목록에 두세 달 떠 있었다(dynaforge-report·kooremapper-modelmeta).
+    # 스위치를 끄면(STRICT_AGENT_VALIDATION=false) 예전처럼 경고만 남긴다.
     if record_in.agents:
         registered_rows = await session.execute(select(Agent.agent_type))
         registered_agents: set[str] = {
@@ -329,8 +334,17 @@ async def write_record(
         }
         for agent_type in record_in.agents:
             if agent_type and agent_type not in registered_agents:
+                if settings.strict_agent_validation:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=(
+                            f"agent '{agent_type}' is not registered — register it before "
+                            f"ingest (record {record_in.id})"
+                        ),
+                    )
                 logger.warning(
-                    "record %s references unregistered agent_type %r — pending strict validation",
+                    "record %s references unregistered agent_type %r "
+                    "— strict_agent_validation is off",
                     record_in.id,
                     agent_type,
                 )
@@ -816,6 +830,8 @@ async def _resync_agents(
     """``agents`` 배열에 따라 junction 테이블을 갱신.
 
     누락된 agent stub 은 자동 생성한다 (외래키 충족 목적, 메타데이터는 비어있음).
+    ``strict_agent_validation`` 이 켜져 있으면(기본) write_record 가 미등록 키를 먼저 422 로
+    거절하므로, stub 은 스위치를 끈 때만 생긴다.
     """
     # 기존 매핑 제거.
     await session.execute(

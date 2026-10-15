@@ -22,6 +22,16 @@ def _reset_jobs_and_settings():
     job_svc.clear_all()
 
 
+async def _register_agents(session, record: dict) -> None:
+    """적재는 등록된 전문가 키만 받는다(strict_agent_validation 기본 켬) — 픽스처의 키를 먼저 넣는다."""
+    from api.db.models import Agent
+
+    for at in record.get("agents") or []:
+        session.add(Agent(agent_type=at, name=at, description="시험용", common_tags=[],
+                          data_types=["DOC"]))
+    await session.flush()
+
+
 @pytest.mark.asyncio
 async def test_auto_embed_schedules_when_flag_on(test_session, sample_doc_record_dict):
     """``AUTO_EMBED_ON_INSERT=True`` 면 INSERT 후 ``embed`` 잡이 1개 등록된다."""
@@ -32,6 +42,7 @@ async def test_auto_embed_schedules_when_flag_on(test_session, sample_doc_record
 
     settings.auto_embed_on_insert = True
 
+    await _register_agents(test_session, sample_doc_record_dict)
     record_in = normalize(sample_doc_record_dict)
     result = await write_record(test_session, record_in)
     await test_session.flush()
@@ -57,6 +68,7 @@ async def test_auto_embed_skipped_when_flag_off(test_session, sample_doc_record_
 
     settings.auto_embed_on_insert = False
 
+    await _register_agents(test_session, sample_doc_record_dict)
     record_in = normalize(sample_doc_record_dict)
     await write_record(test_session, record_in)
     await test_session.flush()

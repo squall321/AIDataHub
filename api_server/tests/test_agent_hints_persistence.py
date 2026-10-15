@@ -95,7 +95,12 @@ def test_normalizer_picks_up_top_level_hints() -> None:
 async def test_db_writer_persists_new_fields(test_session) -> None:
     from sqlalchemy import select
 
-    from api.db.models import Record
+    from api.db.models import Agent, Record
+
+    # 적재는 등록된 전문가 키만 받는다(strict_agent_validation 기본 켬).
+    test_session.add(Agent(agent_type="iga-analyst", name="IGA", description="시험용",
+                           common_tags=[], data_types=["DOC"]))
+    await test_session.flush()
 
     rec_in = RecordIn(
         id="DOC-HE-CAE-2026-0000000088",

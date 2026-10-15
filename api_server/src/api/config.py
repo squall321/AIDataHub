@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     # 비활성화 (false) 하면 미등록 team 도 ingest 허용 (마이그레이션 기간용).
     # ``group`` 은 lenient — 마스터 미존재 시 경고만 출력 (이 플래그와 무관).
     strict_team_validation: bool = True
+    # records.agents 에 agents 테이블에 없는 키가 있으면 적재를 거절한다. false 면 지금처럼
+    # 경고만 남기고 _resync_agents 가 이름=키·설명 0자의 빈 행을 만든다.
+    strict_agent_validation: bool = True
 
     # 그림(figure) 바이너리 저장소. ``/figures`` 정적 마운트의 루트.
     # 환경변수 ``FIGURES_DIR`` 로 오버라이드 가능.
