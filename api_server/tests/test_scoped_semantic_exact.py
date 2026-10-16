@@ -71,6 +71,8 @@ async def test_전역은_그대로_색인을_쓰는_정렬식이다(_pg):
     s = _Capture()
     await _pg.semantic_search(s, "낙하 충격", top_k=10)
     await _pg.semantic_search(s, "낙하 충격", top_k=10, data_types=["DOC"])
-    for stmt in s.stmts:
+    selects = [st for st in s.stmts if not str(st).startswith("SET LOCAL")]  # 전역은 탐색 폭을 먼저 건다(test_hnsw_ef_search)
+    assert len(selects) == 2
+    for stmt in selects:
         order = _order_by(stmt)
         assert "<=>" in order and "+" not in order, order

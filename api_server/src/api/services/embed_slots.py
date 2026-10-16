@@ -195,13 +195,50 @@ def threshold(s: Slot, key: str) -> float:
 
 
 # ---------------------------------------------------------------------------
+# 전역 HNSW 탐색 폭(hnsw.ef_search) — 두 슬롯 같은 값
+# ---------------------------------------------------------------------------
+# PG 기본값 40 으로는 전역 의미검색이 정확 검색 상위 10 의 3분의 1 남짓을 놓친다 — 질의 80개(한국어 · 영어 반반)의 재현율@10 이
+# v1(e5) 0.641 · m3(BGE-M3) 0.665 였다. 탐색이 그래프의 엉뚱한 무리에 갇혀 정답 카드 절(코사인 0.68)보다 먼 무관한 절(0.59)을
+# 1위로 내기도 했다. 1000(pgvector 상한)이면 v1 0.958 · m3 0.971 이고, 데운 캐시에서 상위 30 탐색이 p50 19~22ms · p95 26~30ms 다
+# (40 은 1.7ms) — dev 2026-10-16, HWAXPortal docs/embedder-bge-m3 EM-D16. 좌석 범위 검색은 정확 검색이라 이 값과 무관하다.
+# AIDH_HNSW_EF_SEARCH 로 바꾼다 — 0 이면 걸지 않는다(PG 기본값, 되돌리기).
+HNSW_EF_SEARCH_DEFAULT = 1000
+_HNSW_EF_SEARCH_MAX = 1000  # pgvector hnsw.ef_search 의 상한
+
+
+def hnsw_ef_search(k: int) -> int | None:
+    """이번 전역 탐색에 걸 ef_search — 색인은 ef_search 개 넘게 내지 못하므로 k 보다 작게 두지 않는다. 0 이면 None(걸지 않는다)."""
+    raw = os.environ.get("AIDH_HNSW_EF_SEARCH")
+    try:
+        ef = HNSW_EF_SEARCH_DEFAULT if raw is None or not raw.strip() else int(raw)
+    except ValueError as exc:
+        raise SlotConfigError(f"AIDH_HNSW_EF_SEARCH={raw!r} 는 정수가 아니다(0 이면 PG 기본값)") from exc
+    if ef < 0:
+        raise SlotConfigError(f"AIDH_HNSW_EF_SEARCH={raw!r} 는 0 이상이어야 한다")
+    if ef == 0:
+        return None
+    return min(_HNSW_EF_SEARCH_MAX, max(ef, int(k)))
+
+
+async def tune_hnsw(session, k: int) -> None:
+    """전역 HNSW 탐색 폭을 이 트랜잭션에만 건다(SET LOCAL). PostgreSQL 경로에서만 부른다 — SQLite 에는 이 설정이 없다."""
+    ef = hnsw_ef_search(k)
+    if ef is None:
+        return
+    from sqlalchemy import text
+
+    # SET 은 바인드를 받지 않는다 — 정수로 만든 값만 박는다.
+    await session.execute(text(f"SET LOCAL hnsw.ef_search = {int(ef)}"))
+
+
+# ---------------------------------------------------------------------------
 # 부팅 검증
 # ---------------------------------------------------------------------------
 def validate_settings() -> dict[str, Any]:
-    """설정만 본다(DB · 모델 없이) — 모르는 슬롯 이름이면 SlotConfigError. 부팅 첫 줄에서 부른다."""
+    """설정만 본다(DB · 모델 없이) — 모르는 슬롯 이름이나 잘못된 AIDH_HNSW_EF_SEARCH 면 SlotConfigError. 부팅 첫 줄에서 부른다."""
     a = active_name()
     f = fill_names()
-    return {"active": a, "fill": f}
+    return {"active": a, "fill": f, "hnsw_ef_search": hnsw_ef_search(1)}
 
 
 def model_files_present(repo_id: str) -> bool:
@@ -269,10 +306,12 @@ __all__ = [
     "embedder",
     "fill",
     "fill_names",
+    "hnsw_ef_search",
     "model_files_present",
     "model_id",
     "query_param",
     "slot",
     "threshold",
+    "tune_hnsw",
     "validate_settings",
 ]
