@@ -11,6 +11,7 @@ agent.sample_queries → ``agent_sample_embeddings`` 테이블 (Migration 0016) 
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Sequence
 
@@ -39,7 +40,9 @@ async def sync_agent_samples(
 
     호출자가 ``session.commit`` 을 별도 호출할 필요는 없다 — 이 함수가 commit 한다.
     """
-    from .embedding import get_embedder
+    from datetime import UTC, datetime
+
+    from . import embed_slots
 
     # 1) 기존 행 삭제
     await session.execute(
@@ -51,23 +54,27 @@ async def sync_agent_samples(
         await session.commit()
         return {"agent_type": agent_type, "count": 0}
 
-    # 2) 임베딩 계산 — 가능하면 batch.
-    embedder = get_embedder()
+    # 2) 임베딩 계산 — 활성 슬롯의 열만 곧바로 채운다(다른 슬롯은 백필이 새 행의 빈 열을 채운다).
+    slot = embed_slots.active()
+    cols = slot.cols("agent_sample_embeddings")
+    embedder = embed_slots.embedder(slot)
     encode_many = getattr(embedder, "encode_many", None)
+    # 스레드로 — 같은 모델로 백필이 도는 동안 잠금을 기다려도 이벤트 루프는 서지 않는다.
     if callable(encode_many):
-        vectors = encode_many(sample_queries)
+        vectors = await asyncio.to_thread(encode_many, sample_queries)
     else:
-        vectors = [embedder.encode(q) for q in sample_queries]
+        vectors = await asyncio.to_thread(lambda: [embedder.encode(q) for q in sample_queries])
+    now = datetime.now(UTC)
 
     # 3) insert
     for text, vec in zip(sample_queries, vectors):
-        session.add(
-            AgentSampleEmbedding(
-                agent_type=agent_type,
-                sample_text=text,
-                embedding=list(vec) if vec is not None else None,
-            )
-        )
+        row = AgentSampleEmbedding(agent_type=agent_type, sample_text=text)
+        setattr(row, cols.vec, list(vec) if vec is not None else None)
+        if vec is not None and cols.at:
+            setattr(row, cols.at, now)
+        if vec is not None and cols.model:
+            setattr(row, cols.model, getattr(embedder, "name", None))
+        session.add(row)
 
     await session.commit()
     return {"agent_type": agent_type, "count": len(sample_queries)}
@@ -101,23 +108,25 @@ async def search_samples(
     if not (query or "").strip():
         return []
 
-    from .embedding import get_embedder
+    from . import embed_slots
 
-    embedder = get_embedder()
-    qvec = embedder.encode_query(query)
+    slot = embed_slots.active()
+    vec_col = slot.vec_attr(AgentSampleEmbedding)
+    embedder = embed_slots.embedder(slot)
+    # 스레드로 — 같은 모델로 백필이 도는 동안 질의는 그 잠금을 기다린다(이벤트 루프를 세우지 않게).
+    qvec = await asyncio.to_thread(embedder.encode_query, query)
     top_k = max(1, min(int(top_k), 100))
 
     if is_postgres(session):
-        distance = AgentSampleEmbedding.embedding.op("<=>", return_type=Float())(qvec).label(
-            "distance"
-        )
+        distance = vec_col.op("<=>", return_type=Float())(
+            embed_slots.query_param(slot, qvec)).label("distance")
         stmt = (
             select(
                 AgentSampleEmbedding.agent_type.label("agent_type"),
                 AgentSampleEmbedding.sample_text.label("sample_text"),
                 distance,
             )
-            .where(AgentSampleEmbedding.embedding.is_not(None))
+            .where(vec_col.is_not(None))
             .order_by(distance.asc())
             .limit(top_k)
         )
@@ -145,8 +154,8 @@ async def search_samples(
     stmt = select(
         AgentSampleEmbedding.agent_type,
         AgentSampleEmbedding.sample_text,
-        AgentSampleEmbedding.embedding,
-    ).where(AgentSampleEmbedding.embedding.is_not(None))
+        vec_col.label("vec"),
+    ).where(vec_col.is_not(None))
     rows = (await session.execute(stmt)).all()
     if not rows:
         return []
@@ -156,7 +165,7 @@ async def search_samples(
         return []
     scored: list[tuple[float, str, str]] = []
     for r in rows:
-        v = np.asarray(r.embedding, dtype=float)
+        v = np.asarray(r.vec, dtype=float)
         v_norm = float(np.linalg.norm(v))
         if v_norm == 0.0:
             continue

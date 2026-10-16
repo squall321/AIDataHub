@@ -27,6 +27,7 @@ from sqlalchemy import (
     SmallInteger,
     String,
     Text,
+    TypeDecorator,
     UniqueConstraint,
     func,
     text,
@@ -60,6 +61,41 @@ except ImportError:  # pragma: no cover — pgvector 패키지 없음
     from sqlalchemy import JSON as _Vector  # type: ignore[assignment]
 
     _VECTOR_AVAILABLE = False
+
+# ---------------------------------------------------------------------------
+# halfvec — 임베딩 슬롯 m3 의 열(Migration 0032). 반정밀도라 1024차원 벡터 하나가 2KB 다(vector(768) 3KB).
+# pgvector 의 HALFVEC 는 결과를 HalfVector 객체로 돌려주는데, 파이썬에서 벡터를 읽는 자리(추천 · 군집 ·
+# SQLite 폴백)는 vector 열처럼 float32 배열을 기대한다 — 그래서 감싸서 같은 꼴로 돌려준다.
+# m3 벡터 열은 deferred(raiseload)다 — ORM 으로 절 · 레코드를 읽을 때마다 벡터(수 1024개)를 함께 끌어오지
+# 않는다. 벡터가 필요한 자리는 열을 직접 고르거나 undefer 한다(빠뜨리면 조용히 비지 않고 오류가 난다).
+# SQLite(test)는 'HALFVEC(1024)' 형 이름을 그대로 받고 글자 '[…]' 로 저장한다.
+# ---------------------------------------------------------------------------
+if _VECTOR_AVAILABLE:
+    from pgvector.sqlalchemy import HALFVEC as _HALFVEC  # type: ignore[import-not-found]
+
+    class HalfVecType(TypeDecorator):
+        """``halfvec(N)`` — 결과를 float32 배열로 돌려주는 HALFVEC."""
+
+        impl = _HALFVEC
+        cache_ok = True
+
+        def process_result_value(self, value, dialect):
+            to_numpy = getattr(value, "to_numpy", None)
+            if to_numpy is not None:
+                return to_numpy().astype("float32")
+            return value
+else:  # pragma: no cover — pgvector 패키지 없음
+    from sqlalchemy import JSON as _JSON
+
+    class HalfVecType(TypeDecorator):  # type: ignore[no-redef]
+        impl = _JSON
+        cache_ok = True
+
+        def __init__(self, dim=None):
+            super().__init__()
+            self.dim = dim
+
+_M3_DIM = 1024
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +189,14 @@ class Record(Base):
         signature_embedding: Mapped[list[float] | None] = mapped_column(
             _Vector, nullable=True
         )
+    # 임베딩 슬롯 m3(Migration 0032) — 같은 시그니처를 BGE-M3 로. 시각 · 모델은 백필 기록용이다.
+    signature_embedding_m3: Mapped[list[float] | None] = mapped_column(
+        HalfVecType(_M3_DIM), nullable=True, deferred=True, deferred_raiseload=True
+    )
+    signature_embedding_m3_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    signature_embedding_m3_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # ---- Attachment summary (유지: app 측 INSERT 로 갱신) -----------------
     has_attachments: Mapped[bool] = mapped_column(
@@ -337,6 +381,15 @@ class RecordSection(Base):
         TIMESTAMP(timezone=True), nullable=True
     )
     embedding_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # 임베딩 슬롯 m3(Migration 0032) — BGE-M3 halfvec(1024). 시각 · 모델의 뜻은 위 v1 의 둘과 같다
+    # (빈 본문은 시각을 채우고 모델 'skipped-empty' 로 표시해 백로그에서 뺀다).
+    embedding_m3: Mapped[list[float] | None] = mapped_column(
+        HalfVecType(_M3_DIM), nullable=True, deferred=True, deferred_raiseload=True
+    )
+    embedding_m3_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    embedding_m3_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     record: Mapped["Record"] = relationship(back_populates="sections")
 
@@ -517,6 +570,14 @@ class AgentSampleEmbedding(Base):
     embedding: Mapped[list[float] | None] = mapped_column(
         _Vector(_EMBEDDING_DIM), nullable=True
     )
+    # 임베딩 슬롯 m3(Migration 0032).
+    embedding_m3: Mapped[list[float] | None] = mapped_column(
+        HalfVecType(_M3_DIM), nullable=True, deferred=True, deferred_raiseload=True
+    )
+    embedding_m3_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    embedding_m3_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
@@ -1014,6 +1075,16 @@ class MCPUpload(Base):
         description_embedding: Mapped[list[float] | None] = mapped_column(
             _Vector, nullable=True
         )
+    # 임베딩 슬롯 m3(Migration 0032).
+    description_embedding_m3: Mapped[list[float] | None] = mapped_column(
+        HalfVecType(_M3_DIM), nullable=True, deferred=True, deferred_raiseload=True
+    )
+    description_embedding_m3_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    description_embedding_m3_model: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )
 
 
 class MCPUploadHistory(Base):

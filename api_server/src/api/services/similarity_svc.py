@@ -24,9 +24,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# e5-base 같은 의미 페어 ~0.86~0.94, 무관 페어 ~0.7~0.85 (recommended 0.92).
-_HIGH = 0.93
-_MED = 0.88
+# 확신 문턱(high · medium)은 슬롯마다 다르다 — e5-base 는 같은 의미 페어 ~0.86~0.94, 무관 페어 ~0.7~0.85 라
+# 0.93 · 0.88 이었고, BGE-M3 는 분포가 낮아 같은 몫을 가르는 값이 다르다(embed_slots.THRESHOLDS).
 
 
 def _signature(*, title: str = "", caption: str = "", headers: list | None = None, notes: str = "") -> str:
@@ -44,20 +43,27 @@ def _signature(*, title: str = "", caption: str = "", headers: list | None = Non
     return " | ".join(parts) or "(empty)"
 
 
-def _record_signature(rec: Any) -> str:
-    c = rec.content if isinstance(rec.content, dict) else {}
+def signature_text(*, title: str, caption: Any = None, headers: Any = None, notes: Any = None) -> str:
+    """레코드 시그니처 — 단건(ORM 객체)과 백필(content 에서 필드만 꺼낸 행)이 같은 규칙을 쓴다."""
     return _signature(
-        title=rec.title or "",
-        caption=str(c.get("caption") or ""),
-        headers=c.get("headers") if isinstance(c.get("headers"), list) else None,
-        notes=str(c.get("notes") or ""),
+        title=title or "",
+        caption=str(caption or ""),
+        headers=headers if isinstance(headers, list) else None,
+        notes=str(notes or ""),
     )
 
 
-def _confidence(score: float) -> str:
-    if score >= _HIGH:
+def _record_signature(rec: Any) -> str:
+    c = rec.content if isinstance(rec.content, dict) else {}
+    return signature_text(
+        title=rec.title or "", caption=c.get("caption"), headers=c.get("headers"), notes=c.get("notes")
+    )
+
+
+def _confidence(score: float, high: float, medium: float) -> str:
+    if score >= high:
         return "high"
-    if score >= _MED:
+    if score >= medium:
         return "medium"
     return "low"
 
@@ -80,23 +86,24 @@ async def suggest_by_similarity(
          suggested:{team?,group?,graph_type?,tags?},
          confidence:'high|medium|low|none', note}
     """
-    import numpy as np
-
-    from .embedding import get_embedder
+    from . import embed_slots
     from .sql_compat import is_postgres
 
     dt = (data_type or "DATA").upper()
     qsig = _signature(title=title, caption=caption, headers=headers, notes=notes)
 
-    emb = await asyncio.to_thread(get_embedder)
+    slot = embed_slots.active()
+    high = embed_slots.threshold(slot, "signature_high")
+    medium = embed_slots.threshold(slot, "signature_medium")
+    emb = await asyncio.to_thread(embed_slots.embedder, slot)
     # 시그니처는 passage 인코딩으로 통일 (저장분과 동일 공간). 백필(encode_many),
     # inline(compute_signature_embedding), 질의 모두 passage → 대칭 비교.
     qvec_list = await asyncio.to_thread(emb.encode, qsig)
 
     truncated = False
     if is_postgres(session):
-        # 대량(O(log N)) — pgvector hnsw ANN. signature_embedding 백필된 행만.
-        neighbors = await _ann_neighbors(session, qvec_list, dt, top_k)
+        # 대량(O(log N)) — pgvector hnsw ANN. 활성 슬롯의 시그니처가 백필된 행만.
+        neighbors = await _ann_neighbors(session, slot, qvec_list, dt, top_k)
     else:
         # SQLite 테스트 — on-the-fly numpy 폴백 (max_candidates 까지).
         neighbors, truncated = await _onthefly_neighbors(
@@ -109,7 +116,7 @@ async def suggest_by_similarity(
                         "분류를 직접 지정하세요."}
 
     # 다수결 — medium 이상 이웃만 (낮으면 1등만 참고). 확정 아닌 제안.
-    strong = [n for n in neighbors if n["score"] >= _MED] or neighbors[:1]
+    strong = [n for n in neighbors if n["score"] >= medium] or neighbors[:1]
     top_score = neighbors[0]["score"] if neighbors else 0.0
 
     def _majority(key: str) -> Any:
@@ -152,7 +159,7 @@ async def suggest_by_similarity(
     note = ("doc_type/tags/graph_type 은 유사 데이터 기준 제안이니 검토 후 채우세요. "
             "team/group 은 자동 확정하지 말고 needs_human 의 후보를 사용자에게 보여주고 "
             "어디에 속하는지 물어보세요 (유사도가 높아도 다른 팀 데이터일 수 있음).")
-    if top_score < _MED:
+    if top_score < medium:
         note = ("유사도가 낮습니다 — 같은 종류 데이터가 거의 없습니다. 분류 메타를 "
                 "추측하지 말고 사용자에게 team/group/doc_type 을 직접 물어보세요.")
     if truncated:
@@ -160,7 +167,7 @@ async def suggest_by_similarity(
 
     return {"neighbors": neighbors, "suggested": suggested,
             "needs_human": needs_human,
-            "confidence": _confidence(top_score), "note": note}
+            "confidence": _confidence(top_score, high, medium), "note": note}
 
 
 def _neighbor_dict(r: Any, score: float) -> dict[str, Any]:
@@ -172,20 +179,22 @@ def _neighbor_dict(r: Any, score: float) -> dict[str, Any]:
     }
 
 
-async def _ann_neighbors(session, qvec_list, dt: str, top_k: int) -> list[dict[str, Any]]:
-    """pgvector hnsw ANN — signature_embedding <=> qvec. cosine 거리 → 유사도."""
+async def _ann_neighbors(session, slot, qvec_list, dt: str, top_k: int) -> list[dict[str, Any]]:
+    """pgvector hnsw ANN — 그 슬롯의 시그니처 열 <=> qvec. cosine 거리 → 유사도."""
     from sqlalchemy import select
 
     from ..db.models import Record
+    from .embed_slots import query_param
 
-    dist = Record.signature_embedding.cosine_distance(qvec_list).label("distance")
+    col = slot.vec_attr(Record)
+    dist = col.cosine_distance(query_param(slot, qvec_list)).label("distance")
     rows = (
         await session.execute(
             select(Record, dist)
             .where(
                 Record.data_type == dt,
                 Record.deleted_at.is_(None),
-                Record.signature_embedding.isnot(None),
+                col.isnot(None),
             )
             .order_by(dist)
             .limit(top_k)
@@ -228,71 +237,45 @@ async def _onthefly_neighbors(
 # ---------------------------------------------------------------------------
 # 시그니처 임베딩 쓰기/백필 — ANN 인덱스에 채워 넣는다.
 # ---------------------------------------------------------------------------
-async def compute_signature_embedding(rec: Any) -> list[float] | None:
-    """레코드 1건의 시그니처 임베딩 계산 (passage 인코딩 — 백필/질의와 통일)."""
-    from .embedding import get_embedder
+async def compute_signature_embedding(rec: Any, slot=None) -> list[float] | None:
+    """레코드 1건의 시그니처 임베딩 계산 (passage 인코딩 — 백필/질의와 통일). 슬롯을 안 주면 활성 슬롯."""
+    from . import embed_slots
 
-    emb = await asyncio.to_thread(get_embedder)
+    slot = slot or embed_slots.active()
+    emb = await asyncio.to_thread(embed_slots.embedder, slot)
     return await asyncio.to_thread(emb.encode, _record_signature(rec))
 
 
 async def set_signature_embedding(session, record_id: str) -> bool:
-    """단건 시그니처 임베딩 계산 + 저장 (import 직후 즉시 검색 가능하게)."""
+    """단건 시그니처 임베딩 계산 + 저장 (import 직후 즉시 검색 가능하게) — 활성 슬롯의 열에 쓴다.
+    다른 슬롯은 스케줄러의 매-tick 백필(embed_backfill, records)이 채운다."""
+    from datetime import UTC, datetime
+
     from sqlalchemy import select, update
 
     from ..db.models import Record
+    from . import embed_slots
 
     rec = (
         await session.execute(select(Record).where(Record.id == record_id))
     ).scalar_one_or_none()
     if rec is None:
         return False
-    vec = await compute_signature_embedding(rec)
-    await session.execute(
-        update(Record).where(Record.id == record_id).values(signature_embedding=vec)
-    )
+    slot = embed_slots.active()
+    vec = await compute_signature_embedding(rec, slot)
+    cols = slot.cols("records")
+    values: dict[str, Any] = {cols.vec: vec}
+    if cols.at:
+        values[cols.at] = datetime.now(UTC)
+    if cols.model:
+        values[cols.model] = embed_slots.embedder(slot).name
+    await session.execute(update(Record).where(Record.id == record_id).values(**values))
     await session.commit()
     return True
-
-
-async def backfill_signature_embeddings(session, *, limit: int = 500) -> dict[str, int]:
-    """signature_embedding 이 NULL 인 레코드를 일괄 채운다 (스케줄러 sweep + 1회 백필)."""
-    from sqlalchemy import select, update
-
-    from ..db.models import Record
-    from .embedding import get_embedder
-
-    rows = (
-        await session.execute(
-            select(Record)
-            .where(Record.signature_embedding.is_(None), Record.deleted_at.is_(None))
-            .limit(limit)
-        )
-    ).scalars().all()
-    if not rows:
-        return {"filled": 0, "remaining": 0}
-
-    emb = await asyncio.to_thread(get_embedder)
-    sigs = [_record_signature(r) for r in rows]
-    vecs = await asyncio.to_thread(emb.encode_many, sigs)
-    for r, v in zip(rows, vecs):
-        await session.execute(
-            update(Record).where(Record.id == r.id).values(signature_embedding=list(v))
-        )
-    await session.commit()
-
-    remaining = (
-        await session.execute(
-            select(Record).where(
-                Record.signature_embedding.is_(None), Record.deleted_at.is_(None)
-            ).limit(1)
-        )
-    ).first()
-    return {"filled": len(rows), "remaining": 1 if remaining else 0}
 
 
 __all__ = [
     "suggest_by_similarity",
     "set_signature_embedding",
-    "backfill_signature_embeddings",
+    "signature_text",
 ]

@@ -191,115 +191,66 @@ def clear_all() -> None:
 # Embedding job handler
 # ---------------------------------------------------------------------------
 async def embed_handler(job: Job) -> dict:
-    """임베딩 backfill 핸들러.
+    """임베딩 backfill 핸들러 — 본체는 :mod:`api.services.embed_backfill` 이다.
 
     동작:
-        1. ``payload['record_id']`` (단일) 또는 ``payload['record_ids']``
-           (리스트) 로 대상 레코드를 정한다. 둘 다 없으면 미임베딩
-           (``embedding IS NULL``) 섹션 전체를 처리한다.
-        2. :func:`api.services.embedding.get_embedder` 로 embedder 를 얻어
-           각 섹션의 ``content_text`` 에 대해 :meth:`Embedder.encode` 를
-           호출, ``record_sections.embedding`` / ``embedded_at`` /
-           ``embedding_model`` 컬럼을 갱신한다.
-        3. 빈 텍스트는 skip, 인코딩 실패는 warning 후 skip.
+        1. ``payload['record_id']`` (단일) 또는 ``payload['record_ids']`` (리스트) 가 있으면 그 레코드의
+           절 · 시그니처만, 없으면 네 표(레코드 시그니처 · 에이전트 표본 · 도구 설명 · 절) 전부의 빈 행을 채운다.
+        2. 채우는 슬롯은 ``AIDH_EMBED_FILL`` + 활성 슬롯(``embed_slots.fill``)이다 — 기본은 v1 하나.
+        3. 키셋 페이지로 읽고 청크마다 커밋한다. (슬롯, 표)마다 advisory lock 하나 — 이미 누가 채우는 중이면
+           그 표는 건너뛴다(``locked``). 빈 텍스트는 ``skipped-empty`` 로 표시하고, 인코딩 실패는 세고 넘어간다.
 
     Returns:
-        ``{"sections_processed": N, "skipped": M, "model": "..."}``
+        예전 키(활성 슬롯의 절 기준) ``{"sections_processed", "skipped", "failed", "model",
+        "over_model_limit", "model_max_tokens"}`` + 슬롯 · 표별 전부 ``by_slot``.
     """
-    from datetime import datetime, timezone
-
-    from sqlalchemy import select
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-
-    from ..db.base import engine
-    from ..db.models import RecordSection
-    from .embedding import get_embedder, input_overflow
+    from . import embed_backfill, embed_slots
 
     target_ids = job.payload.get("record_ids")
     single_id = job.payload.get("record_id")
     if not target_ids and single_id:
         target_ids = [single_id]
 
-    # embedder 인스턴스화 — 모델 로드가 느릴 수 있어 (cold start ~수 초)
-    # 이벤트 루프를 막지 않도록 스레드로 오프로딩.
-    try:
-        embedder = await asyncio.to_thread(get_embedder)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("embed_handler: get_embedder failed: %s", exc)
-        raise
+    tables = ["records", "record_sections"] if target_ids else None
+    slots = embed_slots.fill()
+    plan = len(slots) * (len(tables) if tables else len(embed_slots.TABLES))
+    done_parts = 0
 
-    sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
-    processed = 0
-    skipped = 0
-    failed = 0
-    # 모델 입력 한도(e5 512 토큰)를 넘은 절 — 앞부분만 벡터에 들어간다. 모델 한도라 늘릴 수 없지만
-    # 말없이 두지 않는다: 잡 결과와 경고 로그에 수를 남긴다(뒤쪽 내용으로는 의미검색에 안 걸린다).
-    over_limit = 0
+    def _progress(done: int, total: int) -> None:
+        # (슬롯, 표) 하나가 끝날 때마다 한 칸 — 그 안에서는 행 비율로 채운다.
+        frac = (done / total) if total else 1.0
+        job.progress = min((done_parts + min(frac, 1.0)) / max(plan, 1), 1.0)
 
-    async with sessionmaker() as session:
-        stmt = select(RecordSection).where(RecordSection.embedding.is_(None))
-        if target_ids:
-            # record 갱신 시 _resync_sections 가 행을 재생성 (embedding NULL)
-            # 하므로 NULL 필터를 걸어도 갱신분은 항상 잡힌다. 이미 임베딩된
-            # 섹션 재처리 방지 — 267섹션 매뉴얼 1건 갱신에 수십 초 낭비 방지.
-            stmt = stmt.where(RecordSection.record_id.in_(list(target_ids)))
-        result = await session.execute(stmt)
-        sections = list(result.scalars().all())
+    by_slot: dict[str, dict] = {}
+    for s in slots:
+        for table in (tables or list(embed_slots.TABLES)):
+            res = await embed_backfill.run([s], [table], record_ids=target_ids, progress=_progress)
+            by_slot.setdefault(s.name, {}).update(res.get(s.name, {}))
+            done_parts += 1
+            job.progress = min(done_parts / max(plan, 1), 1.0)
 
-        total = max(len(sections), 1)
-        now = datetime.now(timezone.utc)
-
-        # 빈 텍스트는 인코딩 없이 'skipped-empty' 마킹 — embedded_at 을 채워야
-        # 백로그 통계 (embedding IS NULL AND embedded_at IS NULL) 에서 빠진다.
-        # 마킹 안 하면 매 backfill 마다 같은 빈 섹션을 재스캔하는 영구 가짜
-        # 백로그가 된다 (2026-06-10 진단: 302건이 이 상태였음).
-        to_encode: list[Any] = []
-        for sec in sections:
-            text = (sec.content_text or "").strip()
-            if not text:
-                sec.embedded_at = now
-                sec.embedding_model = "skipped-empty"
-                skipped += 1
-            else:
-                to_encode.append(sec)
-
-        # encode_many 배치 — 섹션별 단건 encode 대비 추론 비용 대폭 절감.
-        # 동기 CPU 작업이므로 스레드로 오프로딩 (이벤트 루프 보호).
-        batch_size = 64
-        for start in range(0, len(to_encode), batch_size):
-            batch = to_encode[start : start + batch_size]
-            texts = [(s.content_text or "")[:8000] for s in batch]
-            try:
-                vecs = await asyncio.to_thread(embedder.encode_many, texts)
-                for sec, vec in zip(batch, vecs):
-                    sec.embedding = vec
-                    sec.embedded_at = now
-                    sec.embedding_model = embedder.name
-                    processed += 1
-                    if input_overflow(embedder, sec.content_text or ""):
-                        over_limit += 1
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "embed_handler: encode_many failed for batch @%d: %s",
-                    start, exc,
-                )
-                failed += len(batch)
-            job.progress = min((skipped + processed + failed) / total, 1.0)
-        await session.commit()
-
-    max_tokens = embedder.input_limit()
-    if over_limit:
-        logger.warning(
-            "embed_handler: %d sections exceed the model input limit (%s tokens) — only the head "
-            "of each is embedded (model %s)", over_limit, max_tokens, embedder.name,
-        )
+    active = embed_slots.active().name
+    sec = (by_slot.get(active) or {}).get("record_sections") or {}
+    errors = {f"{sn}/{tn}": st["error"] for sn, tabs in by_slot.items()
+              for tn, st in tabs.items() if st.get("error")}
+    for sn, tabs in by_slot.items():
+        st = tabs.get("record_sections") or {}
+        if st.get("over_model_limit"):
+            logger.warning(
+                "embed_handler: %d sections exceed the model input limit (%s tokens) — only the head "
+                "of each is embedded (slot %s, model %s)", st["over_model_limit"], st.get("model_max_tokens"),
+                sn, st.get("model"),
+            )
     return {
-        "sections_processed": processed,
-        "skipped": skipped,
-        "failed": failed,
-        "model": embedder.name,
-        "over_model_limit": over_limit,
-        "model_max_tokens": max_tokens,
+        "sections_processed": int(sec.get("processed") or 0),
+        "skipped": int(sec.get("skipped_empty") or 0),
+        "failed": int(sec.get("failed") or 0),
+        "model": sec.get("model"),
+        "over_model_limit": int(sec.get("over_model_limit") or 0),
+        "model_max_tokens": sec.get("model_max_tokens"),
+        "slot": active,
+        "by_slot": by_slot,
+        "errors": errors,
     }
 
 

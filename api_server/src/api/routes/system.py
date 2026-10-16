@@ -49,31 +49,36 @@ async def system_health(
         ``{"status": "ok", "version": ..., "auth_required": ..., "build": ...,
            "sync_stale_sources": 0, "embed_backlog": 0}``
     """
+    from ..services import embed_slots
+
     # build 식별자: 환경변수 ``BUILD_SHA`` 우선, 없으면 "dev".
     build = os.environ.get("BUILD_SHA") or "dev"
-    embedder = os.environ.get("EMBEDDING_PROVIDER", "hash")
+    # 활성 슬롯의 공급자 — 예전처럼 EMBEDDING_PROVIDER 를 그대로 내면 m3 로 옮긴 뒤에도 e5_base 라고 말한다.
+    active = embed_slots.active()
+    fill = embed_slots.fill()
     out: dict = {
         "status": "ok",
         "version": __version__,
         "auth_required": bool(settings.auth_required),
         "build": build,
-        "embedder": embedder,
+        "embedder": active.provider,
+        "embed_slot": {"active": active.name, "fill": [s.name for s in fill],
+                       "model": embed_slots.model_id(active), "dim": active.dim},
         "sync_stale_sources": None,
         "embed_backlog": None,
+        "embed_backlog_by_slot": None,
     }
 
     async def _gauges() -> None:
         from ..db.models import RecordSection, SyncSource
+        from ..services.embed_backfill import backlog_condition
         from ..services.sync_svc import interval_minutes_from_cron as _interval_minutes_from_cron
 
-        # 미임베딩 백로그 — skipped-empty 마킹분 (embedded_at 채워짐) 제외.
+        # 미임베딩 백로그(절) — 활성 슬롯 기준. skipped-empty 마킹분(시각 채워짐) 제외.
         backlog = await session.scalar(
             select(func.count())
             .select_from(RecordSection)
-            .where(
-                RecordSection.embedding.is_(None),
-                RecordSection.embedded_at.is_(None),
-            )
+            .where(backlog_condition(active, "record_sections"))
         )
         out["embed_backlog"] = int(backlog or 0)
 
@@ -99,6 +104,20 @@ async def system_health(
             if (now - last).total_seconds() > interval_min * 60 * 4:
                 stale += 1
         out["sync_stale_sources"] = stale
+
+        # 채우는 슬롯마다 절 백로그 — 활성 슬롯은 위 값을 다시 쓴다. 다른 슬롯은 맨 끝에 잰다(한도에 걸려도
+        # 앞의 두 게이지는 남는다).
+        by_slot = {active.name: out["embed_backlog"]}
+        for s in fill:
+            if s.name in by_slot:
+                continue
+            n = await session.scalar(
+                select(func.count())
+                .select_from(RecordSection)
+                .where(backlog_condition(s, "record_sections"))
+            )
+            by_slot[s.name] = int(n or 0)
+        out["embed_backlog_by_slot"] = by_slot
 
     limit_s = float(settings.aidh_health_gauge_timeout_s)
     try:

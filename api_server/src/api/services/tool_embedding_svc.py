@@ -10,6 +10,7 @@ mcp_uploads.description / llm_hints 를 임베딩해 ``recommend_agents(q)`` 응
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -85,7 +86,16 @@ async def sync_tool_embedding(
 
     호출자가 commit 하지 않아도 됨 — 이 함수가 commit 한다.
     """
-    from .embedding import get_embedder
+    from datetime import UTC, datetime
+
+    from . import embed_slots
+
+    # 설명이 바뀌면 모든 슬롯의 벡터 · 기록을 비운다 — 활성 슬롯은 아래에서 곧바로 채우고, 나머지는 백필이
+    # 새 설명으로 다시 채운다(비우지 않으면 다른 슬롯에 옛 설명의 벡터가 남는다).
+    cleared: dict[str, Any] = {}
+    for name_ in embed_slots.SLOT_NAMES:
+        cols = embed_slots.slot(name_).cols("mcp_uploads")
+        cleared.update({c: None for c in (cols.vec, cols.at, cols.model) if c})
 
     text = build_description_text(manifest)
     if not text:
@@ -93,20 +103,24 @@ async def sync_tool_embedding(
         await session.execute(
             update(MCPUpload)
             .where(MCPUpload.name == name)
-            .values(description_text=None, description_embedding=None)
+            .values(description_text=None, **cleared)
         )
         await session.commit()
         return {"name": name, "embedded": False, "reason": "empty"}
 
-    embedder = get_embedder()
-    vec = embedder.encode(text)
+    slot = embed_slots.active()
+    cols = slot.cols("mcp_uploads")
+    embedder = embed_slots.embedder(slot)
+    vec = await asyncio.to_thread(embedder.encode, text)  # 이벤트 루프를 세우지 않게(백필 잠금 대기)
+    values: dict[str, Any] = {**cleared, cols.vec: (list(vec) if vec is not None else None)}
+    if vec is not None and cols.at:
+        values[cols.at] = datetime.now(UTC)
+    if vec is not None and cols.model:
+        values[cols.model] = getattr(embedder, "name", None)
     await session.execute(
         update(MCPUpload)
         .where(MCPUpload.name == name)
-        .values(
-            description_text=text,
-            description_embedding=(list(vec) if vec is not None else None),
-        )
+        .values(description_text=text, **values)
     )
     await session.commit()
     return {
@@ -136,18 +150,20 @@ async def search_tools(
     if not (query or "").strip():
         return []
 
-    from .embedding import get_embedder
+    from . import embed_slots
 
-    embedder = get_embedder()
-    qvec = embedder.encode_query(query)
+    slot = embed_slots.active()
+    vec_col = slot.vec_attr(MCPUpload)
+    embedder = embed_slots.embedder(slot)
+    # 스레드로 — 같은 모델로 백필이 도는 동안 질의는 그 잠금을 기다린다(이벤트 루프를 세우지 않게).
+    qvec = await asyncio.to_thread(embedder.encode_query, query)
     top_k = max(1, min(int(top_k), 20))
     # 설명은 자르지 않는다 — 예전엔 300자였고 '…' 도 길이도 없었다. recommend_agents 의
     # relevant_tools 로 그대로 실려 호출자가 도구를 고르는 근거가 된다.
 
     if is_postgres(session):
-        distance = MCPUpload.description_embedding.op("<=>", return_type=Float())(qvec).label(
-            "distance"
-        )
+        distance = vec_col.op("<=>", return_type=Float())(
+            embed_slots.query_param(slot, qvec)).label("distance")
         stmt = (
             select(
                 MCPUpload.name,
@@ -155,7 +171,7 @@ async def search_tools(
                 MCPUpload.description_text,
                 distance,
             )
-            .where(MCPUpload.description_embedding.is_not(None))
+            .where(vec_col.is_not(None))
             .where(MCPUpload.deprecated_at.is_(None))
             .order_by(distance.asc())
             .limit(top_k)
@@ -190,9 +206,9 @@ async def search_tools(
                 MCPUpload.name,
                 MCPUpload.manifest,
                 MCPUpload.description_text,
-                MCPUpload.description_embedding,
+                vec_col.label("vec"),
             )
-            .where(MCPUpload.description_embedding.is_not(None))
+            .where(vec_col.is_not(None))
             .where(MCPUpload.deprecated_at.is_(None))
         )
     ).all()
@@ -204,7 +220,7 @@ async def search_tools(
         return []
     scored: list[tuple[float, Any]] = []
     for r in rows:
-        v = np.asarray(r.description_embedding, dtype=float)
+        v = np.asarray(r.vec, dtype=float)
         vn = float(np.linalg.norm(v))
         if vn == 0.0:
             continue

@@ -31,6 +31,7 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import undefer
 
 from api.db.models import Record, RecordSection
 
@@ -202,7 +203,7 @@ async def build_query_groups(
     limit_per_group: int = 5,
     min_score: float = 0.4,
     top_k: int = 50,
-    sim_threshold: float = 0.85,
+    sim_threshold: float | None = None,
 ) -> dict[str, Any]:
     """자연어 ``query`` 를 시맨틱 검색 후 그리디 클러스터링.
 
@@ -210,10 +211,19 @@ async def build_query_groups(
         1. ``query`` → ``semantic_search(top_k)`` (record_sections 단위)
         2. ``min_score`` 이하 결과 컷
         3. record_id 별 최고 점수 1건만 유지 (중복 record 제거)
-        4. record 별 첫 sec 의 ``embedding`` 으로 그리디 클러스터
+        4. record 별 첫 sec 의 임베딩(활성 슬롯의 열)으로 그리디 클러스터
         5. 각 그룹의 공통 태그/도메인/agent 추출
         6. 라벨 합성 → 응답
+
+    ``sim_threshold`` 를 안 주면 활성 슬롯의 값이다 — 날 코사인 문턱이라 모델마다 다르다(embed_slots.THRESHOLDS).
     """
+    from . import embed_slots
+
+    slot = embed_slots.active()
+    if sim_threshold is None:
+        sim_threshold = embed_slots.threshold(slot, "cluster_sim")
+    vec_col = slot.vec_attr(RecordSection)
+    vec_name = slot.cols("record_sections").vec
     n_groups = max(1, int(n_groups))
     limit_per_group = max(1, min(int(limit_per_group), 20))
     min_score = max(0.0, min(float(min_score), 1.0))
@@ -274,13 +284,14 @@ async def build_query_groups(
                     select(RecordSection)
                     .where(RecordSection.record_id.in_(rec_set))
                     .where(RecordSection.section_id.in_(sec_set))
+                    .options(undefer(vec_col))  # m3 열은 deferred 다
                 )
             )
             .scalars()
             .all()
         )
         for s in sec_rows:
-            embedding_lookup[(s.record_id, s.section_id)] = s.embedding
+            embedding_lookup[(s.record_id, s.section_id)] = getattr(s, vec_name)
 
     # 클러스터 입력 build — 정렬은 입력 (score 내림차) 그대로 유지.
     cluster_input: list[dict[str, Any]] = []
@@ -365,11 +376,13 @@ async def cluster_around_record(
     *,
     anchor_id: str,
     mode: str = "hybrid",
-    sim_threshold: float = 0.85,
+    sim_threshold: float | None = None,
     tag_threshold: float = 0.6,
     limit: int = 20,
 ) -> dict[str, Any]:
     """``anchor_id`` 와 같은 의미 그룹의 record 모두 반환.
+
+    ``sim_threshold`` 를 안 주면 활성 슬롯의 값이다(날 코사인 — embed_slots.THRESHOLDS).
 
     mode:
         - ``semantic``: anchor 의 첫 section 임베딩을 기준으로 cosine
@@ -387,6 +400,13 @@ async def cluster_around_record(
         raise ValueError(
             f"unsupported mode: {mode!r} (expected semantic|tag|hybrid)"
         )
+    from . import embed_slots
+
+    slot = embed_slots.active()
+    if sim_threshold is None:
+        sim_threshold = embed_slots.threshold(slot, "cluster_record_sim")
+    vec_col = slot.vec_attr(RecordSection)
+    vec_name = slot.cols("record_sections").vec
 
     anchor = (
         await session.execute(select(Record).where(Record.id == anchor_id))
@@ -401,12 +421,13 @@ async def cluster_around_record(
         await session.execute(
             select(RecordSection)
             .where(RecordSection.record_id == anchor.id)
-            .where(RecordSection.embedding.is_not(None))
+            .where(vec_col.is_not(None))
             .order_by(RecordSection.level.asc(), RecordSection.section_id.asc())
             .limit(1)
+            .options(undefer(vec_col))  # m3 열은 deferred 다
         )
     ).scalar_one_or_none()
-    anchor_vec = _normalize(anchor_sec.embedding) if anchor_sec else None
+    anchor_vec = _normalize(getattr(anchor_sec, vec_name)) if anchor_sec else None
 
     # 후보군: 모든 다른 record (anchor 제외).
     candidates = (
@@ -428,12 +449,13 @@ async def cluster_around_record(
                 await session.execute(
                     select(RecordSection)
                     .where(RecordSection.record_id.in_(cand_ids))
-                    .where(RecordSection.embedding.is_not(None))
+                    .where(vec_col.is_not(None))
                     .order_by(
                         RecordSection.record_id.asc(),
                         RecordSection.level.asc(),
                         RecordSection.section_id.asc(),
                     )
+                    .options(undefer(vec_col))  # m3 열은 deferred 다
                 )
             )
             .scalars()
@@ -441,7 +463,7 @@ async def cluster_around_record(
         )
         # record 당 첫 section 임베딩만 유지.
         for s in sec_rows:
-            cand_embeds.setdefault(s.record_id, s.embedding)
+            cand_embeds.setdefault(s.record_id, getattr(s, vec_name))
 
     items: list[dict[str, Any]] = []
     for c in candidates:

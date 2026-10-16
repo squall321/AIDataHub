@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -20,6 +21,7 @@ from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import undefer
 
 from ..db.models import Agent, Record, RecordSection
 from ..services import sample_embedding_svc, search_svc
@@ -207,10 +209,13 @@ async def recommend_agents(
     search_query = expand_query(query)
 
     if stats is not None:
-        from .embedding import get_embedder, input_overflow
+        from . import embed_slots
+        from .embedding import input_overflow
 
         # 긴 질의는 모델 입력 한도(e5 512 토큰)에서 앞부분만 임베딩된다 — 응답에 그 사실을 싣는다.
-        stats["query_over_model_limit"] = input_overflow(get_embedder(), search_query, is_query=True)
+        # 활성 슬롯의 모델로 센다(의미검색이 그 모델로 인코딩한다). 셈은 토크나이저 잠금을 쓰므로 스레드로.
+        stats["query_over_model_limit"] = await asyncio.to_thread(
+            input_overflow, embed_slots.embedder(embed_slots.active()), search_query, is_query=True)
 
     # 1) 의미검색 top-N sections
     search_results = await search_svc.semantic_search(
@@ -401,15 +406,19 @@ async def build_context_bundle(
 
     # sample_query 벡터는 per-section 루프 전에 1회만 인코딩 (캐시).
     query_vecs: list[Any] = []
+    # 절 벡터와 앵커 벡터는 같은 슬롯(활성)의 열 · 모델이어야 한다.
+    from . import embed_slots
+
+    slot = embed_slots.active()
+    vec_col = slot.vec_attr(RecordSection)
+    vec_name = slot.cols("record_sections").vec
     if do_filter:
         import numpy as np
 
-        from .embedding import get_embedder
-
-        embedder = get_embedder()
+        embedder = embed_slots.embedder(slot)
         for sq in sample_queries:
             # sample query 는 section passage 벡터와 대조되는 질의 역할 — query prefix.
-            qv = np.asarray(embedder.encode_query(sq), dtype="float32")
+            qv = np.asarray(await asyncio.to_thread(embedder.encode_query, sq), dtype="float32")
             qn = float(np.linalg.norm(qv))
             if qn < 1e-12:
                 continue
@@ -534,11 +543,12 @@ async def build_context_bundle(
                     select(RecordSection)
                     .where(RecordSection.record_id == r.id)
                     .order_by(RecordSection.level.asc(), RecordSection.id.asc())
+                    .options(undefer(vec_col))  # m3 열은 deferred 다
                 )
             ).scalars().all()
             scored_secs: list[tuple[float | None, RecordSection]] = []
             for s in sec_rows:
-                rel = _relevance(s.embedding)
+                rel = _relevance(getattr(s, vec_name))
                 if rel is None:
                     # embedding 없음 → 스코어 불가. 드롭하지 않고 유지.
                     scored_secs.append((None, s))

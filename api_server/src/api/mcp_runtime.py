@@ -29,6 +29,7 @@ Tool 목록:
 """
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Any, Literal
 
@@ -648,9 +649,12 @@ async def agent_search(
         # 한도라 늘릴 수 없으니 응답에 싣는다(fts·tag 는 임베딩을 쓰지 않는다).
         query_over_model_limit = None
         if mode in ("semantic", "hybrid"):
-            from .services.embedding import get_embedder, input_overflow
+            from .services import embed_slots
+            from .services.embedding import input_overflow
 
-            query_over_model_limit = input_overflow(get_embedder(), search_q, is_query=True)
+            # 활성 슬롯의 모델로 센다(의미검색이 그 모델로 인코딩했다). 셈은 토크나이저 잠금을 쓰므로 스레드로.
+            query_over_model_limit = await asyncio.to_thread(
+                input_overflow, embed_slots.embedder(embed_slots.active()), search_q, is_query=True)
 
         # --- refuse_below_score 판단 ---
         refused = False
