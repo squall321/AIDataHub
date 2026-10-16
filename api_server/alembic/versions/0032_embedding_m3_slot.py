@@ -29,6 +29,12 @@ Create Date: 2026-10-16
     ``aidh.keep_updated_at = 'on'``(SET LOCAL)을 보면 건너뛰게 한다 — 임베딩 백필만 그 설정으로 쓴다.
     다른 모든 UPDATE 는 예전과 같다.
 
+잠금을 오래 기다리지 않는다:
+    열을 더하는 ALTER TABLE 은 잠깐이지만 AccessExclusive 잠금을 잡는다. 그 표에 오래 열린 트랜잭션이 있으면(예전 임베딩
+    스윕은 절 21만 개를 한 트랜잭션으로 몇 시간 쥐었다) 그것을 기다리는 동안 뒤에 줄 선 검색까지 모두 선다. 그래서
+    lock_timeout 10초 — 못 잡으면 이 이행이 실패하고(start_api.sh 는 alembic 오류로 멈추고 옛 API 는 그대로 돈다) 그
+    트랜잭션이 끝난 뒤 다시 올린다.
+
 downgrade 는 열을 지우고(색인이 있으면 함께 사라진다) 트리거 함수를 0002 의 것으로 되돌린다. v1 열은 손대지 않는다.
 """
 from __future__ import annotations
@@ -95,6 +101,7 @@ def upgrade() -> None:
     if bind.dialect.name != "postgresql":
         return  # SQLite 시험은 모델에서 create_all 로 짓는다.
     _require_halfvec(bind)
+    op.execute("SET LOCAL lock_timeout = '10s'")
     for table, vec in _COLUMNS:
         op.execute(
             f"ALTER TABLE {table} "
@@ -110,6 +117,7 @@ def downgrade() -> None:
 
     if op.get_bind().dialect.name != "postgresql":
         return
+    op.execute("SET LOCAL lock_timeout = '10s'")
     for table, vec in _COLUMNS:
         op.execute(
             f"ALTER TABLE {table} "

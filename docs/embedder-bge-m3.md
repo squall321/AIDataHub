@@ -74,6 +74,12 @@ curl -s http://127.0.0.1:8001/api/system/health                 # embed_slot.act
 bash deploy/apptainer/restart.sh --api
 ```
 
+**이행이 잠금을 10초만 기다린다.** 0032 의 ALTER TABLE 은 잠깐 AccessExclusive 잠금을 잡는다 — 그 표에 오래 열린 트랜잭션(예전
+임베딩 스윕은 절 21만 개를 한 트랜잭션으로 쥐었다)이 있으면 기다리는 동안 뒤에 줄 선 검색까지 선다. 그래서 `lock_timeout` 10초에
+'canceling statement due to lock timeout' 으로 실패하고(start_api.sh 는 alembic 오류로 멈추고 옛 API 는 그대로 돈다) 0031 에 남는다.
+그 트랜잭션이 끝난 뒤 다시 올린다 — 예전 스윕이 끝나기를 기다리거나, 옛 API 를 먼저 내린다(`kill "$(cat deploy/apptainer/logs/api.pid)"`
+뒤 `bash deploy/apptainer/start_api.sh` — `stop.sh` 는 PG 까지 내린다).
+
 **순서 — 백필을 먼저, FILL 은 그 뒤.** FILL 에 m3 를 먼저 넣고 재기동하면 인앱 스윕이 1분 뒤 m3 절 백필을 API 프로세스 안에서 시작해
 (m3, record_sections) 잠금을 쥔다. 그러면 CLI 는 그 표를 '잠김'(종료 코드 3)으로 건너뛴다. 그렇게 둬도 같은 일을 하지만 진행은
 `deploy/apptainer/logs/uvicorn.log` 에서만 보이고 API 재기동이 백필을 끊는다(다시 띄우면 이어 간다).
