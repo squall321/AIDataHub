@@ -262,6 +262,7 @@ class SentenceTransformerEmbedder(Embedder):
         fp16: bool = False,
         max_seq_length: int | None = None,
         batch_size: int | None = None,
+        batch_by_device: tuple[int, int] | None = None,
         model_id: str | None = None,
     ) -> None:
         """``dim`` 을 주면 그 차원을 기대한다(없으면 EMBEDDING_DIM) — 슬롯 m3 의 bge_m3 는 1024 고정이다.
@@ -270,8 +271,8 @@ class SentenceTransformerEmbedder(Embedder):
         있는지로 정한다 — 이름이 로컬 경로일 수 있어 공급자가 아는 값이면 직접 준다(bge_m3 는 False).
         ``fp16`` 은 CUDA 에 올렸을 때만 반정밀도로 돌린다(CPU 는 그대로 fp32). ``max_seq_length`` 는 모델이
         읽는 토큰 상한을 모델 기본값보다 낮출 때 준다 — 넘친 뒤쪽은 벡터에 들지 않고 input_overflow 가 그 수를 낸다.
-        ``batch_size`` 는 encode_many 를 호출자가 묶음 크기 없이 부를 때의 기본값이다(없으면 AIDH_EMBED_BATCH ·
-        CUDA 여부로 정한다).
+        ``batch_size`` 는 encode_many 를 호출자가 묶음 크기 없이 부를 때의 기본값이다. 없고 ``batch_by_device``
+        (CUDA 값, CPU 값)가 있으면 지금 모델이 올라 있는 장치로 고르고, 둘 다 없으면 AIDH_EMBED_BATCH · CUDA 여부로 정한다.
         """
         try:
             from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
@@ -294,6 +295,7 @@ class SentenceTransformerEmbedder(Embedder):
         self._fp16 = bool(fp16)
         self._max_seq = int(max_seq_length) if max_seq_length else None
         self._batch = int(batch_size) if batch_size else None
+        self._batch_by_device = batch_by_device
         self.model_id = model_id or resolved_name
         self._name = resolved_name
         # 장치 선택 — GPU 가 vLLM 등으로 점유된 박스에서 CUDA OOM 으로 임베딩이 죽는다(실측).
@@ -427,6 +429,10 @@ class SentenceTransformerEmbedder(Embedder):
         # 공급자가 정한 값(bge_m3 — 긴 입력이라 작게)이 먼저, 그다음 ``AIDH_EMBED_BATCH``, 없으면 CUDA 여부로.
         if getattr(self, "_batch", None):
             return int(self._batch)
+        by_dev = getattr(self, "_batch_by_device", None)
+        if by_dev:
+            on_cuda = str(getattr(getattr(self, "_model", None), "device", "")).startswith("cuda")
+            return int(by_dev[0] if on_cuda else by_dev[1])
         batch_env = os.environ.get("AIDH_EMBED_BATCH")
         if batch_env:
             try:
@@ -499,8 +505,10 @@ PROVIDER_MODEL_IDS: dict[str, str] = {
 # 코퍼스 절은 p50 1,608자 · p99 2,803자(2026-10-10)라 2,048 토큰이면 거의 모든 절을 통째로 읽는다(넘친 절 수는
 # 백필 결과와 경고 로그의 over_model_limit 이 낸다). 더 읽히려면 AIDH_BGE_M3_MAX_SEQ 를 올린다.
 BGE_M3_MAX_SEQ_DEFAULT = 2048
-# bge_m3 encode_many 묶음 기본값 — e5(128)보다 작게 둔다. 긴 절 32개(2,048 토큰)가 fp16 에서 2GB 안쪽이다.
-BGE_M3_BATCH_DEFAULT = 32
+# bge_m3 encode_many 묶음 기본값(CUDA, CPU). 묶음 하나가 모델 잠금을 쥐는 시간이 곧 같은 모델을 쓰는 검색 질의가
+# 기다릴 수 있는 최대다 — GPU 32개는 1초 안쪽(묶음 32 의 최대 할당 2.6GiB · 토큰 수 정렬 101 절/초), CPU 는 2 절/초라
+# 32개면 16초를 쥔다(dev 16 스레드 실측 1.9 절/초) → CPU 는 4개(2초). 둘 다 AIDH_BGE_M3_BATCH 로 덮는다.
+BGE_M3_BATCH_DEFAULT = (32, 4)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -579,7 +587,8 @@ def _build_embedder(provider: str) -> Embedder:
             e5_prefix=False,
             fp16=_env_flag("AIDH_BGE_M3_FP16", True),
             max_seq_length=_env_int("AIDH_BGE_M3_MAX_SEQ", BGE_M3_MAX_SEQ_DEFAULT),
-            batch_size=_env_int("AIDH_BGE_M3_BATCH", BGE_M3_BATCH_DEFAULT),
+            batch_size=_env_int("AIDH_BGE_M3_BATCH", 0) or None,
+            batch_by_device=BGE_M3_BATCH_DEFAULT,
             model_id=repo,
         )
     if provider in ("sentence_transformers", "st", "sbert"):

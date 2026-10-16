@@ -87,6 +87,10 @@ def test_bge_m3_읽는_토큰_상한과_반정밀도(monkeypatch):
     m = _FakeST.made[-1]
     assert m.max_seq_length == 4096 and m.halved is False and e._default_batch() == 8  # CPU 는 fp32
 
+    # 묶음 기본값은 장치마다 — CPU 는 묶음 하나가 모델 잠금을 오래 쥐어(2 절/초) 같은 모델의 질의가 기다린다
+    e = _bge(monkeypatch, device="cpu")
+    assert e._default_batch() == 4
+
     _bge(monkeypatch, AIDH_BGE_M3_FP16="0")
     assert _FakeST.made[-1].halved is False
 
