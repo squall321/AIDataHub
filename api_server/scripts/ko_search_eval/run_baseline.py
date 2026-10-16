@@ -115,35 +115,38 @@ async def run(args: argparse.Namespace) -> int:
           file=sys.stderr)
 
     t0 = time.monotonic()
-    async with httpx.AsyncClient(trust_env=False, timeout=httpx.Timeout(args.timeout)) as hc:
-        async with streamable_http_client(args.mcp_url, http_client=hc) as (rd, wr, _):
-            async with ClientSession(rd, wr) as session:
-                await session.initialize()
-                with out_path.open("a", encoding="utf-8") as f:
-                    for n, (q, mode) in enumerate(todo, 1):
-                        tool, build = MODES[mode]
-                        row = {"qid": q["qid"], "mode": mode}
-                        t = time.perf_counter()
-                        try:
-                            res = await session.call_tool(tool, build(q))
-                            row["ms"] = round((time.perf_counter() - t) * 1000, 1)
-                            if res.isError:
-                                txt = " ".join(getattr(c, "text", "") for c in res.content)
-                                row["error"] = txt.strip()[:300] or "isError"
-                            else:
-                                hits, extra = _hits(res)
-                                row["rank"], row["rank_same_title"] = _rank(hits, q["record_id"], q.get("gold_title", ""))
-                                row["n_hits"] = len(hits)
-                                row.update(extra)
-                        except Exception as exc:  # noqa: BLE001 — 한 건의 실패가 측정 전체를 멈추지 않게 남기고 간다
-                            row["ms"] = round((time.perf_counter() - t) * 1000, 1)
-                            row["error"] = f"{type(exc).__name__}: {str(exc)[:280]}"
-                        f.write(json.dumps(row, ensure_ascii=False) + "\n")
-                        f.flush()
-                        if n % 100 == 0:
-                            print(f"  {n}/{len(todo)} ({time.monotonic() - t0:.0f}초)", file=sys.stderr)
-                        if args.pause:
-                            await asyncio.sleep(args.pause)
+    async with (
+        httpx.AsyncClient(trust_env=False, timeout=httpx.Timeout(args.timeout)) as hc,
+        streamable_http_client(args.mcp_url, http_client=hc) as (rd, wr, _),
+        ClientSession(rd, wr) as session,
+    ):
+        await session.initialize()
+        with out_path.open("a", encoding="utf-8") as f:
+            for n, (q, mode) in enumerate(todo, 1):
+                tool, build = MODES[mode]
+                row = {"qid": q["qid"], "mode": mode}
+                t = time.perf_counter()
+                try:
+                    res = await session.call_tool(tool, build(q))
+                    row["ms"] = round((time.perf_counter() - t) * 1000, 1)
+                    if res.isError:
+                        txt = " ".join(getattr(c, "text", "") for c in res.content)
+                        row["error"] = txt.strip()[:300] or "isError"
+                    else:
+                        hits, extra = _hits(res)
+                        row["rank"], row["rank_same_title"] = _rank(hits, q["record_id"],
+                                                                    q.get("gold_title", ""))
+                        row["n_hits"] = len(hits)
+                        row.update(extra)
+                except Exception as exc:  # noqa: BLE001 — 한 건의 실패가 측정 전체를 멈추지 않게 남기고 간다
+                    row["ms"] = round((time.perf_counter() - t) * 1000, 1)
+                    row["error"] = f"{type(exc).__name__}: {str(exc)[:280]}"
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+                f.flush()
+                if n % 100 == 0:
+                    print(f"  {n}/{len(todo)} ({time.monotonic() - t0:.0f}초)", file=sys.stderr)
+                if args.pause:
+                    await asyncio.sleep(args.pause)
     print(f"끝 — {len(todo)}건, {time.monotonic() - t0:.0f}초", file=sys.stderr)
     return 0
 
