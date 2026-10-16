@@ -301,6 +301,20 @@ async def test_같은_슬롯_표를_쥔_러너가_있으면_겹쳐_돌지_않는
     assert res["processed"] == 2
 
 
+@pytest.mark.asyncio
+async def test_레코드_범위는_표를_쥔_러너가_있어도_곧바로_채운다(slots, bf_engine, test_engine):
+    """적재 직후 자동 임베딩이 몇 시간짜리 표 전체 백필(CLI)이 끝나기를 기다리면 새 카드가 그동안 안 찾힌다."""
+    from api.db.models import RecordSection
+    from api.services import embed_backfill, embed_slots
+
+    ids = await _seed(bf_engine, n_records=2, sections=("가",))
+    async with embed_backfill._hold(test_engine, "m3", "record_sections") as got:
+        assert got
+        res = await embed_backfill.fill_table(embed_slots.slot("m3"), "record_sections", record_ids=ids[:1])
+        assert res["locked"] is False and res["processed"] == 1
+    assert [v is not None for v in await _col(bf_engine, RecordSection, "embedding_m3")] == [True, False]
+
+
 def test_잠금_키는_슬롯과_표마다_다르고_박스가_달라도_같다():
     from api.services import embed_backfill
 

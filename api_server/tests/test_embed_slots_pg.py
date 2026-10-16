@@ -105,19 +105,22 @@ async def test_다른_연결이_같은_슬롯_표를_쥐면_건너뛴다(m3pg):
 
     sm = await _seed(m3pg, ["하나", "둘"])
     key = embed_backfill.lock_key("m3", "record_sections")
+    ids = [f"{_PREFIX}{i:010d}" for i in (1, 2)]
     try:
         async with m3pg.connect() as other:
             other = await other.execution_options(isolation_level="AUTOCOMMIT")
             assert (await other.execute(text("SELECT pg_try_advisory_lock(:k)"), {"k": key})).scalar()
             try:
-                res = await embed_backfill.fill_table(embed_slots.slot("m3"), "record_sections",
-                                                      record_ids=[f"{_PREFIX}{i:010d}" for i in (1, 2)])
+                # 표 전체를 도는 러너는 겹치지 않는다
+                res = await embed_backfill.fill_table(embed_slots.slot("m3"), "record_sections")
                 assert res["locked"] is True and res["processed"] == 0
+                # 레코드 범위(적재 직후 자동 임베딩)는 잠금과 상관없이 곧바로 채운다
+                res = await embed_backfill.fill_table(embed_slots.slot("m3"), "record_sections", record_ids=ids)
+                assert res["locked"] is False and res["processed"] == 2
             finally:
                 await other.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": key})
-        res = await embed_backfill.fill_table(embed_slots.slot("m3"), "record_sections",
-                                              record_ids=[f"{_PREFIX}{i:010d}" for i in (1, 2)])
-        assert res["processed"] == 2 and res["locked"] is False
+        res = await embed_backfill.fill_table(embed_slots.slot("m3"), "record_sections", record_ids=ids)
+        assert res["processed"] == 0 and res["backlog_at_start"] == 0
     finally:
         await _cleanup(sm)
 

@@ -9,7 +9,8 @@ RSS 16GB · 몇 시간 열린 트랜잭션이었고, 스케줄러는 30분마다
 - **청크마다 커밋** — 멈춰도 그때까지 채운 것은 남고, 다시 돌리면 빈 행부터 이어 간다(이어하기는 "비어 있는
   행" 조건 그 자체다 — 따로 적어 두는 진행 표지가 없다).
 - **(슬롯, 표)마다 하나** — PostgreSQL advisory lock 으로 같은 슬롯 · 같은 표를 두 러너가 함께 채우지 않는다
-  (인앱 스윕끼리, 스윕과 CLI). 잡지 못하면 기다리지 않고 '잠김' 으로 돌아간다.
+  (인앱 스윕끼리, 스윕과 CLI). 잡지 못하면 기다리지 않고 '잠김' 으로 돌아간다. 레코드 범위 실행(적재 직후 자동 임베딩)은
+  몇 행뿐이라 잠금 없이 곧바로 돈다.
 - **청크 단위 실패 격리** — 인코딩 · 쓰기가 실패한 청크는 세고 건너뛴다(다음 실행이 다시 집는다).
 - **빈 글** — 기록 열이 있는 표(절, 그리고 m3 의 모든 표)는 시각을 채우고 모델을 ``skipped-empty`` 로 적어
   백로그에서 뺀다. 기록 열이 없는 v1 의 세 표는 빈 글을 처음부터 고르지 않는다.
@@ -173,6 +174,11 @@ def lock_key(slot_name: str, table: str) -> int:
 
 
 @contextlib.asynccontextmanager
+async def _no_lock() -> AsyncIterator[bool]:
+    yield True
+
+
+@contextlib.asynccontextmanager
 async def _hold(engine, slot_name: str, table: str) -> AsyncIterator[bool]:
     """잡으면 True, 이미 누가 쥐고 있으면 False. PG 는 세션 advisory lock 을 연결 하나에 쥐고 끝에 놓는다
     (프로세스가 죽으면 연결이 끊기며 PG 가 놓는다). 연결은 AUTOCOMMIT — 몇 시간 열린 트랜잭션을 만들지 않는다."""
@@ -260,7 +266,11 @@ async def fill_table(
         return out
 
     t0 = time.monotonic()
-    async with _hold(engine, s.name, table) as got:
+    # 레코드 범위(적재 직후 자동 임베딩 · POST /api/jobs/embed record_ids)는 잠금을 잡지 않는다 — 몇 행뿐이고, 표 전체를
+    # 도는 러너(몇 시간짜리 CLI 백필 포함)가 쥐고 있어도 새 레코드는 곧바로 찾혀야 한다. 겹쳐도 쓰기는 '아직 빈 행'
+    # 조건이라 한 번만 들어간다.
+    lock = _hold(engine, s.name, table) if ids is None else _no_lock()
+    async with lock as got:
         if not got:
             out["locked"] = True
             log.info("embed backfill %s/%s: 다른 러너가 채우는 중이라 건너뛴다(advisory lock)", s.name, table)
