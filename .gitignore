@@ -123,3 +123,6 @@ api_server/mcp_uploads/_uploads
 
 # data-migrate 가 남기는 옛 경로 원본(유예 뒤 사람이 지운다). 미추적이면 deploy-all 의 git stash -u 가 치운다
 *.pre-move-*
+
+# 한국어 검색 평가셋 — 지식카드에서 만든 질의와 카드 id(사내 내용)라 커밋하지 않는다. 다시 만드는 법은 docs/ko-search-baseline.md
+api_server/scripts/ko_search_eval/data/
