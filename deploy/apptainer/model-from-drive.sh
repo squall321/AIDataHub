@@ -3,6 +3,7 @@
 # HF 직접 다운로드가 사내 프록시 SSL 인터셉트로 막힌 서버용. 이미 있으면(멱등) skip.
 #
 #   bash deploy/apptainer/model-from-drive.sh          # 최신 tar 복원
+#   AIDH_MODEL_REPOS="BAAI/bge-m3" bash deploy/apptainer/model-from-drive.sh   # .env 를 바꾸기 전에 bge-m3 를 먼저 받는다
 set -euo pipefail
 APPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$APPT_DIR/_common.sh"
@@ -19,13 +20,23 @@ fi
 [ -n "$REMOTE" ] && [[ "$REMOTE" == *:* ]] || { echo "[ERROR] 모델 remote 미확인 — AIDH_MODEL_REMOTE 설정"; exit 1; }
 command -v rclone >/dev/null || { echo "[ERROR] rclone 미설치"; exit 1; }
 
-# provider 가 이미 정합하게 로드되면(캐시 존재) 굳이 안 받는다 — 멱등 게이트
+# 필요한 모델이 이미 다 캐시에 있으면 굳이 안 받는다 — 멱등 게이트. 필요한 것 = 명시(AIDH_MODEL_REPOS) 또는
+# provider 의 모델 + 임베딩 슬롯 m3(AIDH_EMBED_ACTIVE · AIDH_EMBED_FILL 에 m3)를 쓰면 bge-m3.
 PROVIDER="$(sed -n 's/^EMBEDDING_PROVIDER=//p' "$APPT_DIR/.env" 2>/dev/null | tail -1)"
-declare -A MAP=( [e5_small]=multilingual-e5-small [e5_base]=multilingual-e5-base [e5_large]=multilingual-e5-large )
-WANT="${MAP[$PROVIDER]:-}"
-if [ -n "$WANT" ] && compgen -G "$HF_HUB/models--intfloat--$WANT" >/dev/null 2>&1; then
-  echo "[INFO] 이미 캐시에 존재: models--intfloat--$WANT — skip"; exit 0
+declare -A MAP=( [e5_small]=intfloat/multilingual-e5-small [e5_base]=intfloat/multilingual-e5-base
+                 [e5_large]=intfloat/multilingual-e5-large [bge_m3]=BAAI/bge-m3 )
+SLOTS="$(sed -n -e 's/^AIDH_EMBED_ACTIVE=//p' -e 's/^AIDH_EMBED_FILL=//p' "$APPT_DIR/.env" 2>/dev/null | tr '\n' ' ')"
+AUTO="${MAP[$PROVIDER]:-}"
+[[ "$SLOTS" =~ (^|[^[:alnum:]])m3([^[:alnum:]]|$) ]] && AUTO="$AUTO ${MAP[bge_m3]}"
+WANT="${AIDH_MODEL_REPOS:-$AUTO}"
+MISSING=""
+for r in $WANT; do
+  compgen -G "$HF_HUB/models--${r//\//--}/snapshots/*/config.json" >/dev/null 2>&1 || MISSING="$MISSING $r"
+done
+if [ -n "${WANT// /}" ] && [ -z "$MISSING" ]; then
+  echo "[INFO] 이미 캐시에 존재:$(printf ' %s' $WANT) — skip"; exit 0
 fi
+[ -n "$MISSING" ] && echo "→ 캐시에 없는 모델:$MISSING"
 
 LATEST="$(rclone cat "$REMOTE/latest.txt" 2>/dev/null | tr -d '[:space:]')"
 [ -n "$LATEST" ] || LATEST="$(rclone lsf "$REMOTE/" 2>/dev/null | grep -E '^aidh-models-.*\.tar\.gz$' | sort | tail -1)"
