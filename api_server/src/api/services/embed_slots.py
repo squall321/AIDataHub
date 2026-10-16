@@ -144,7 +144,9 @@ def model_id(s: Slot) -> str:
         return embedding.PROVIDER_MODEL_IDS[s.provider]
     if s.provider in ("sentence_transformers", "st", "sbert"):
         return os.environ.get("SENTENCE_TRANSFORMER_MODEL") or "intfloat/multilingual-e5-small"
-    return s.provider
+    if s.provider == "openai":
+        return f"openai/{os.environ.get('OPENAI_EMBEDDING_MODEL', 'text-embedding-3-small')}-d{s.dim}"
+    return embedding.HashEmbedder.model_id  # 모르는 공급자도 get_embedder 가 해시로 떨어진다
 
 
 def query_param(s: Slot, vec):

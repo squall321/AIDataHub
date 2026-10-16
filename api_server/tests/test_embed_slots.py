@@ -601,6 +601,9 @@ async def test_embed_응답은_활성_슬롯의_model_dim_을_싣는다(slots, m
 
     empty = await route.post_embed(route.EmbedRequest(texts=[]))
     assert empty == {"vectors": [], "dim": 1024, "model": "BAAI/bge-m3", "slot": "m3"}
+    monkeypatch.setenv("AIDH_EMBED_ACTIVE", "v1")
+    empty = await route.post_embed(route.EmbedRequest(texts=[]))
+    assert empty["model"] == "hash-sha256-v1" and empty["slot"] == "v1"   # 모델을 올린 응답과 같은 이름
 
 
 @pytest.mark.asyncio
