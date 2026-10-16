@@ -14,7 +14,8 @@
 몫)과 ``title_copy`` 로 따로 표시한다. 실행기는 이 표시로 나눠 센다.
 
 DB 는 읽기 전용 세션으로만 연다(``default_transaction_read_only``). 카드 본문은 LLM 요청에만 싣고 파일에는
-남기지 않는다. 평가셋은 사내 내용에서 나온 것이라 리포에 넣지 않는다(기본 위치는 gitignore 된 ``data/``).
+남기지 않는다 — 제목만 실행기의 동명 카드 인정(``rank_same_title``)에 쓰려고 남긴다. 평가셋은 사내 내용에서 나온
+것이라 리포에 넣지 않는다(기본 위치는 gitignore 된 ``data/``).
 
 실행(리포 루트에서)
   api_server/.venv/bin/python api_server/scripts/ko_search_eval/gen_queries.py --per-domain 15
