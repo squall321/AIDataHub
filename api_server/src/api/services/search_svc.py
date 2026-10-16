@@ -446,7 +446,8 @@ async def semantic_search(
         # ``return_type=Float()`` 명시 — 미명시 시 SQLAlchemy 가 결과 타입을 Vector
         # 로 추정해 pgvector ORM result processor 가 float scalar 를 vector 처럼
         # 파싱하다 TypeError 발생 (`'float' object is not subscriptable`).
-        distance = RecordSection.embedding.op("<=>", return_type=Float())(qvec).label("distance")
+        dist_expr = RecordSection.embedding.op("<=>", return_type=Float())(qvec)
+        distance = dist_expr.label("distance")
         stmt = (
             select(
                 RecordSection.id.label("section_pk"),
@@ -473,7 +474,14 @@ async def semantic_search(
         #   바인딩 0 인 좌석이 남의 문서를 자기 근거로 받게 된다(2026-09-01 실측).
         if record_ids is not None:
             stmt = stmt.where(RecordSection.record_id.in_(list(record_ids)))
-        stmt = stmt.order_by(distance.asc()).limit(fetch_k)
+        # ⚠ 좌석 범위(record_ids)는 **정확 검색**으로 정렬한다. `ORDER BY embedding <=> q` 그대로면 좌석이 커질 때(dev 실측 98~129장
+        #   사이) 플래너가 HNSW 색인 순서 훑기를 고르는데, 색인은 전역 이웃을 ef_search(기본 40)개만 내고 좌석 밖 것은 그 뒤에 걸러져
+        #   33건을 달라 해도 0~19건이 남았다 — 좌석 224개(카드 묶음 65.5%)가 히트를 잃었다(docs/ko-search-baseline.md). `+ 0` 을 붙인
+        #   식은 색인이 정렬을 대신할 수 없어 좌석 안 절을 다 재고 앞 fetch_k 를 고른다. 전역 검색(record_ids 없음)은 그대로 색인을
+        #   쓴다 — 전 코퍼스를 다 재면 느리다. 다만 색인은 ef_search(기본 40)개 넘게 내지 못해 전역 요청이 40건을 넘으면 그만큼만
+        #   온다(이번에 바꾸지 않았다 — docs/ko-search-baseline.md).
+        order_expr = dist_expr if record_ids is None else (dist_expr + 0.0)
+        stmt = stmt.order_by(order_expr.asc()).limit(fetch_k)
         rows = (await session.execute(stmt)).all()
         results: list[dict] = []
         for row in rows:
