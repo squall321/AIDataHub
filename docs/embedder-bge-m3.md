@@ -36,6 +36,16 @@ bash deploy/apptainer/restart.sh --api
 bash deploy/apptainer/embed-slot.sh status --slot m3          # 네 표의 m3 백로그(처음엔 행 수 그대로)
 
 # 1) 큰 백필 — GPU, 앞에 두고(tmux). vLLM 이 GPU 를 비운 동안 돌린다. 끊겨도 같은 명령이 빈 행부터 이어 간다
+#    PG 데이터가 HDD 면 먼저 두 표의 표 · TOAST · 색인 파일(dev 약 11GB)을 한 번 순차로 읽어 OS 캐시에 올린다 — 읽기만 한다.
+#    안 하면 쓰기가 색인 갱신의 무작위 읽기에 묶인다(dev 레코드 4.8행/초 → 데운 뒤 120행/초, 아래 '덧붙여' 7)
+( set -a; . deploy/apptainer/.env; set +a; export PGPASSWORD="$POSTGRES_PASSWORD"
+  D="$(readlink -f deploy/apptainer/data/postgres)/pgdata"
+  apptainer exec instance://aidh_postgres psql -h 127.0.0.1 -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -XAt -c "
+    SELECT pg_relation_filepath(oid) FROM pg_class WHERE oid IN (
+      SELECT unnest(ARRAY['records'::regclass, 'record_sections'::regclass]) UNION
+      SELECT reltoastrelid FROM pg_class WHERE relname IN ('records', 'record_sections') UNION
+      SELECT indexrelid FROM pg_index WHERE indrelid IN ('records'::regclass, 'record_sections'::regclass))" 2>/dev/null |
+  while read -r f; do cat "$D/$f" "$D/$f".[0-9]* > /dev/null 2>&1; done )
 bash deploy/apptainer/embed-slot.sh fill --slot m3 2>&1 | tee deploy/apptainer/logs/embed-m3-fill.log
 #    작은 표(시그니처 · 표본 · 도구) 먼저, 절은 마지막. 30초마다 '채운 수/전체 · 행/초 · 남은 시간' 을 찍는다
 #    끝나면 표준 출력에 JSON(표마다 채움 · 빈 글 · 실패 · 한도 넘침 · 초 · 행/초). 종료 코드 0 끝 · 1 실패 행 · 3 잠김
@@ -78,7 +88,9 @@ bash deploy/apptainer/restart.sh --api
 임베딩 스윕은 절 21만 개를 한 트랜잭션으로 쥐었다)이 있으면 기다리는 동안 뒤에 줄 선 검색까지 선다. 그래서 `lock_timeout` 10초에
 'canceling statement due to lock timeout' 으로 실패하고(start_api.sh 는 alembic 오류로 멈추고 옛 API 는 그대로 돈다) 0031 에 남는다.
 그 트랜잭션이 끝난 뒤 다시 올린다 — 예전 스윕이 끝나기를 기다리거나, 옛 API 를 먼저 내린다(`kill "$(cat deploy/apptainer/logs/api.pid)"`
-뒤 `bash deploy/apptainer/start_api.sh` — `stop.sh` 는 PG 까지 내린다).
+뒤 `bash deploy/apptainer/start_api.sh` — `stop.sh` 는 PG 까지 내린다). cae00 의 갱신 흐름(HWAXPortal update-all → deploy-all →
+`boot.sh --force` → `start_api.sh`)도 이행을 옛 API 를 내리기 **전에** 돌린다 — 그때 옛 스윕이 돌고 있으면 update-all 에 'aidh failed' 가
+보이고 옛 API 가 옛 코드로 계속 돈다. 다음 update-all 이 다시 올린다. `restart.sh --api` 는 옛 API 를 먼저 내리므로 이 경합이 없다.
 
 **순서 — 백필을 먼저, FILL 은 그 뒤.** FILL 에 m3 를 먼저 넣고 재기동하면 인앱 스윕이 1분 뒤 m3 절 백필을 API 프로세스 안에서 시작해
 (m3, record_sections) 잠금을 쥔다. 그러면 CLI 는 그 표를 '잠김'(종료 코드 3)으로 건너뛴다. 그렇게 둬도 같은 일을 하지만 진행은
@@ -188,6 +200,18 @@ dev 전체로 다시 재려면 `scripts/embed_calibrate.py`(절차 5).
    기존 파일은 손대지 않았다.
 6. **`refuse_below_score` 와 hybrid.** hybrid 모드의 히트 점수는 RRF(0.01~0.05)라 이 값을 0.05 넘게 적으면 hybrid 답이 늘 거절된다 —
    임베더와 무관한 기존 동작이고 지금 dev 에는 설정한 에이전트가 없다.
+7. **실 DB 에서는 백필 쓰기가 색인 갱신에 묶인다 — HDD 면 캐시를 먼저 데운다(dev 실주행 2026-10-16 09:28~ UTC).** 새 열을 채우는
+   UPDATE 는 대부분 HOT 이 아니다 — 페이지에 새 판을 둘 자리가 없어서다(절 7% · 레코드 30%만 HOT). HOT 이 아닌 갱신은 그 표의 **모든
+   색인에 새 항목**을 넣는다. 절이면 v1 HNSW(3.5GB) · 전문 검색 GIN · btree 넷이고, 레코드면 시그니처 HNSW · content GIN
+   (jsonb_path_ops 라 content 를 풀어 읽는다) 등 17개다. dev 의 PG 데이터는 HDD(`/data`)이고 `shared_buffers` 는 기본값 128MB 라 첫
+   청크가 무작위 읽기에 묶였다(레코드 1,024행에 약 3분 · 디스크 사용률 100%). 위 절차의 캐시 데우기(약 11GB, 1분 남짓) 뒤로 레코드
+   120~280행/초, 절 155~160행/초(GPU 를 인앱 v1 스윕과 나눠 쓰며)가 됐고 디스크 읽기는 0 이 됐다 — 그 뒤로는 쓰기(WAL · 체크포인트,
+   10분에 WAL 5GB · 요청 체크포인트 6번)가 디스크를 채운다. PG 설정은 바꾸지 않았다.
+   - 색인이 얼마나 자라나 — v1 HNSW 는 거의 자라지 않는다. pgvector 는 이미 있는 원소와 같은 벡터를 그 원소의 힙 TID 목록에 덧붙이기
+     때문이다(HOT 아닌 갱신 약 6만 8천 건 — v1 스윕이 새로 넣은 벡터 포함 — 동안 3,521→3,551MB). 그래서 검색 후보가 죽은 옛 판에
+     밀리지 않는다. 갱신마다 드는 비용은 그 같은 원소를 찾는 그래프 탐색이고, 위의 무작위 읽기가 그것이다. btree 는 PG 의 bottom-up
+     삭제로 자라지 않았고(pk 44MB 그대로), 전문 검색 GIN 은 561→581MB 로 자랐다. 죽은 옛 판은 자동 VACUUM 이 치운다. m3 색인을
+     CONCURRENTLY 로 지을 때 그 VACUUM 과 잠금이 겹치면 PG 가 자동 VACUUM 쪽을 취소한다.
 
 ## 시험
 
@@ -198,3 +222,6 @@ dev 전체로 다시 재려면 `scripts/embed_calibrate.py`(절차 5).
   halfvec CAST), SQLite 의미검색 · 군집 · 유사도 문턱, `/api/embed` · health.
 - `tests/test_embed_slots_pg.py` — 실 PG(`AIDH_TEST_PG_URL`, 0032 까지 올린 폐기용 DB) — halfvec 쓰기 · updated_at(트리거) · advisory
   lock · m3 전역/좌석 검색.
+- 본 venv(`api_server/.venv`)에는 `aiosqlite` 가 없어 SQLite 픽스처를 쓰는 시험 270여 개가 건너뛰어진다. 돌리려면 venv 는 그대로 두고 따로
+  깐 곳을 `PYTHONPATH` 에 붙인다(`pip install --target <임시 폴더> aiosqlite`). 그렇게 돌리면 합친 main(`e036812`)이 629 통과 · 35 실패다.
+  **35건은 합치기 전 main(`d99ddc9`)도 똑같이 실패한다** — 적재 · 가져오기 · 시드 시험('team HE is not registered' 등)이고 임베딩과 무관하다.
