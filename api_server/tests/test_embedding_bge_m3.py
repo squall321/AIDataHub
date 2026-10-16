@@ -197,3 +197,31 @@ def test_encode_many_는_묶음마다_잠금을_놓고_입력_순서를_지킨�
     assert e._model.batches == [["aaaaa", "aaaa"], ["aaa", "aa"], ["a"]]  # 긴 글부터 묶음 2개씩
 
 
+
+
+def test_encode_many_는_글자_수가_아니라_토큰_수로_줄_세운다():
+    """한국어 · 영어가 섞이면 같은 글자 수의 토큰 수가 몇 배씩 다르다 — 글자 수로 묶으면 덧채움이 79% 였다."""
+    import numpy as np
+
+    from api.services.embedding import SentenceTransformerEmbedder
+
+    class _Model:
+        max_seq_length = 100
+
+        def __init__(self):
+            self.batches = []
+
+        def tokenizer(self, texts, **kw):
+            return {"input_ids": [t.split() for t in texts]}
+
+        def encode(self, texts, **kw):
+            self.batches.append(list(texts))
+            return np.zeros((len(texts), 2), dtype="float32")
+
+    e = SentenceTransformerEmbedder.__new__(SentenceTransformerEmbedder)
+    e._uses_e5_prefix = False
+    e._model = _Model()
+    # 토큰 6 · 1 · 2 · 1 / 글자 11 · 14 · 3 · 5
+    texts = ["a b c d e f", "가나다라마바사아자차카타파하", "x y", "긴단어하나"]
+    e.encode_many(texts, batch_size=2)
+    assert e._model.batches == [["a b c d e f", "x y"], ["가나다라마바사아자차카타파하", "긴단어하나"]]
