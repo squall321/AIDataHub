@@ -319,19 +319,19 @@ async def test_레코드_시그니처는_같은_규칙으로_채우고_updated_a
 
     ids = await _seed(bf_engine, n_records=3)
     async with bf_engine() as s:
-        gone = await s.get(Record, ids[2])
         from datetime import UTC, datetime
 
-        gone.deleted_at = datetime.now(UTC)
+        for r in (await s.execute(select(Record))).scalars():
+            r.updated_at = datetime(2020, 1, 1, tzinfo=UTC)   # 지금과 확실히 다른 값(같은 초면 갱신을 못 가린다)
+        (await s.get(Record, ids[2])).deleted_at = datetime.now(UTC)
         await s.commit()
-        before = {r.id: r.updated_at for r in (await s.execute(select(Record))).scalars()}
         want = [_record_signature(r) for r in (await s.execute(select(Record).order_by(Record.id))).scalars()][:2]
+    before = dict(zip(ids, await _col(bf_engine, Record, "updated_at"), strict=True))
     res = await embed_backfill.fill_table(embed_slots.slot("m3"), "records")
     assert res["processed"] == 2                                    # 지운 레코드는 건너뛴다
     assert slots.m3.encoded == want                                  # 시그니처 규칙이 같다(제목 · 헤더 · 메모)
-    async with bf_engine() as s:
-        after = {r.id: r.updated_at for r in (await s.execute(select(Record))).scalars()}
-    assert after == before                                           # merge 의 최신 판정을 움직이지 않는다
+    after = dict(zip(ids, await _col(bf_engine, Record, "updated_at"), strict=True))
+    assert after == before and after[ids[0]].year == 2020             # merge 의 최신 판정을 움직이지 않는다
 
 
 @pytest.mark.asyncio
@@ -527,21 +527,28 @@ async def test_SQLite_의미검색은_활성_슬롯의_벡터만_본다(slots, t
 
 @pytest.mark.asyncio
 async def test_군집은_활성_슬롯의_열과_문턱을_쓴다(slots, test_session_maker, monkeypatch):
+    """두 레코드의 첫 절 코사인 0.70 — m3 문턱(0.58)이면 같은 그룹, e5 문턱(0.85)이면 아니다."""
+    import math
+
     from api.db.models import RecordSection
     from api.services import cluster_svc, embed_slots
 
-    ids = await _seed(test_session_maker, n_records=2, sections=("같은 글",))
+    ids = await _seed(test_session_maker, n_records=2, sections=("글",))
+    a = [0.0] * 1024
+    b = [0.0] * 1024
+    a[0] = 1.0
+    b[0], b[1] = 0.7, math.sqrt(1 - 0.49)
     async with test_session_maker() as s:
-        for row in (await s.execute(select(RecordSection))).scalars().all():
-            row.embedding_m3 = slots.m3.encode("같은 글")
+        rows = (await s.execute(select(RecordSection).order_by(RecordSection.record_id))).scalars().all()
+        rows[0].embedding_m3, rows[1].embedding_m3 = a, b
         await s.commit()
     async with test_session_maker() as s:
         res = await cluster_svc.cluster_around_record(s, anchor_id=ids[0], mode="semantic")
         assert res["cluster_size"] == 0                                  # v1 활성 — v1 벡터가 없다
         monkeypatch.setenv("AIDH_EMBED_ACTIVE", "m3")
-        monkeypatch.setitem(embed_slots.THRESHOLDS["m3"], "cluster_record_sim", 0.99)
+        assert embed_slots.threshold(embed_slots.active(), "cluster_record_sim") < 0.7
         res = await cluster_svc.cluster_around_record(s, anchor_id=ids[0], mode="semantic")
-        assert [i["id"] for i in res["items"]] == [ids[1]]
+        assert [i["id"] for i in res["items"]] == [ids[1]] and res["items"][0]["semantic_sim"] == 0.7
 
 
 @pytest.mark.asyncio
@@ -608,3 +615,33 @@ async def test_슬롯_간_질의는_스레드에서_인코딩한다(slots, pg, m
     await pg.search.semantic_search(_Capture(), "낙하", top_k=3)
     assert seen == [False]
     await asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+async def test_db_writer_가_레코드를_고쳐_쓰면_m3_시그니처도_비우고_죽지_않는다(slots, bf_engine, monkeypatch):
+    """m3 벡터 열은 deferred(raiseload) 다 — 객체에 hasattr 를 걸면 읽으려다 오류가 나 갱신 적재가 통째로 죽는다."""
+    from api.db.models import Record
+    from api.ingest.db_writer import write_record
+    from api.ingest.normalizer import normalize
+    from api.services import embed_backfill, embed_slots, org_svc
+
+    async def _ok(*a, **kw):
+        return None
+
+    monkeypatch.setattr(org_svc, "validate_team_group", _ok)
+    raw = {"id": "DATA-HE-CAE-2026-0000000777", "data_type": "DATA", "title": "인장 시험",
+           "headers": ["strain", "stress"], "rows": [[0.1, 10]]}
+    async with bf_engine() as s:
+        assert (await write_record(s, normalize(raw))).action == "inserted"
+        await s.commit()
+    assert (await embed_backfill.fill_table(embed_slots.slot("m3"), "records"))["processed"] == 1
+    assert (await _col(bf_engine, Record, "signature_embedding_m3_at"))[0] is not None
+
+    async with bf_engine() as s:
+        res = await write_record(s, normalize({**raw, "title": "압축 시험", "headers": ["strain", "load"]}))
+        await s.commit()
+    assert res.action == "updated"
+    assert await _col(bf_engine, Record, "signature_embedding_m3") == [None]
+    assert await _col(bf_engine, Record, "signature_embedding_m3_at") == [None]
+    res = await embed_backfill.fill_table(embed_slots.slot("m3"), "records")
+    assert res["processed"] == 1 and "압축 시험" in slots.m3.encoded[-1]
