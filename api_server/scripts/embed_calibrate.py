@@ -124,7 +124,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.queries:
         from api.services import embedding
 
-        qs = [json.loads(ln) for ln in open(args.queries, encoding="utf-8") if ln.strip()]
+        with open(args.queries, encoding="utf-8") as fh:
+            qs = [json.loads(ln) for ln in fh if ln.strip()]
         qs = [q["query"] for q in qs if not q.get("title_copy")]
         s1, s3 = _norm([r.v1 for r in secs]), _norm([r.m3 for r in secs])
         rid = np.array([r.record_id for r in secs])
