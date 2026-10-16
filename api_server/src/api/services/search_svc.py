@@ -20,6 +20,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy import Float, func, or_, select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import undefer
 
 from api.config import settings
 from api.db.models import AgentRecord, Record, RecordSection
@@ -359,9 +360,9 @@ async def semantic_search(
     """시맨틱 검색.
 
     동작:
-        1. ``query`` 를 :func:`api.services.embedding.get_embedder` 로 인코딩.
-        2. PostgreSQL: ``embedding <=> :query_vec`` (cosine distance) ORDER BY
-           오름차순 + LIMIT — pgvector ivfflat 인덱스 활용.
+        1. ``query`` 를 활성 슬롯(:mod:`api.services.embed_slots`)의 임베더로 인코딩.
+        2. PostgreSQL: 그 슬롯의 열 ``<=> :query_vec`` (cosine distance) ORDER BY
+           오름차순 + LIMIT — pgvector HNSW 인덱스 활용(m3 는 halfvec 열 · halfvec 질의).
         3. SQLite (테스트): 모든 미- ``NULL`` 임베딩 행을 가져와 numpy 로
            코사인 유사도 계산 (작은 데이터셋 가정).
         4. 응답: ``[{section_id, record_id, title, section_title,
@@ -384,7 +385,8 @@ async def semantic_search(
     가산→필터→``[:top_k]`` 순으로 처리한다. 둘 다 비활성이면 기존의 SQL
     ``LIMIT top_k`` 동작을 그대로 유지해 성능 저하를 피한다.
     """
-    from .embedding import get_embedder, input_overflow
+    from . import embed_slots
+    from .embedding import input_overflow
     from .rerank import maybe_rerank as _maybe_rerank, rerank_enabled as _rerank_enabled
 
     if not (query or "").strip():
@@ -395,11 +397,16 @@ async def semantic_search(
     #   아무리 올려도 좌석은 카드 절(평균 230~450자)의 앞 200자밖에 못 봤다. 운영 모델 창은
     #   1,048,576 토큰이고 본문은 이미 쿼리가 끌어온 열이라 싣는 값도 0 이다. 화면에서 줄이는
     #   것은 화면 몫이다(dashboard.js 의 slice(0, 200)·cluster_svc 의 군집 보기).
-    embedder = get_embedder()
+    # 활성 슬롯(AIDH_EMBED_ACTIVE)이 열과 임베더를 함께 정한다 — 질의와 저장 벡터가 같은 모델이어야 한다.
+    slot = embed_slots.active()
+    vec_col = slot.vec_attr(RecordSection)
+    embedder = embed_slots.embedder(slot)
     # E5 비대칭 모델: 질의는 query prefix — passage prefix 로 인코딩하면
     # ranking 이 모델 학습 의도와 어긋난다.
-    qvec = embedder.encode_query(query)
-    _qov = input_overflow(embedder, query, is_query=True)
+    # 스레드로 — 백필이 같은 모델로 묶음을 인코딩하는 동안 질의는 그 잠금(한 묶음)을 기다린다. 이벤트 루프
+    # 스레드에서 기다리면 그동안 이 프로세스의 다른 요청이 전부 선다.
+    qvec, _qov = await asyncio.to_thread(
+        lambda: (embedder.encode_query(query), input_overflow(embedder, query, is_query=True)))
     if _qov:
         # 모델 한도라 늘릴 수 없다 — 질의의 앞 max_tokens 만 검색에 쓰였다는 사실을 남긴다.
         # dict 를 돌려주는 도구(agent_search·recommend_agents)는 응답에도 싣는다.
@@ -446,7 +453,7 @@ async def semantic_search(
         # ``return_type=Float()`` 명시 — 미명시 시 SQLAlchemy 가 결과 타입을 Vector
         # 로 추정해 pgvector ORM result processor 가 float scalar 를 vector 처럼
         # 파싱하다 TypeError 발생 (`'float' object is not subscriptable`).
-        dist_expr = RecordSection.embedding.op("<=>", return_type=Float())(qvec)
+        dist_expr = vec_col.op("<=>", return_type=Float())(embed_slots.query_param(slot, qvec))
         distance = dist_expr.label("distance")
         stmt = (
             select(
@@ -464,7 +471,7 @@ async def semantic_search(
                 distance,
             )
             .join(Record, Record.id == RecordSection.record_id)
-            .where(RecordSection.embedding.is_not(None))
+            .where(vec_col.is_not(None))
             .where(Record.deleted_at.is_(None))
         )
         if data_types:
@@ -521,8 +528,9 @@ async def semantic_search(
     stmt = (
         select(RecordSection, Record)
         .join(Record, Record.id == RecordSection.record_id)
-        .where(RecordSection.embedding.is_not(None))
+        .where(vec_col.is_not(None))
         .where(Record.deleted_at.is_(None))
+        .options(undefer(vec_col))  # m3 열은 deferred 다(models.HalfVecType 참조)
     )
     if data_types:
         stmt = stmt.where(Record.data_type.in_(list(data_types)))
@@ -541,7 +549,7 @@ async def semantic_search(
 
     scored: list[tuple[float, RecordSection, Record]] = []
     for sec, rec in rows:
-        emb = sec.embedding
+        emb = getattr(sec, slot.cols("record_sections").vec)
         if emb is None:
             continue
         v = np.asarray(emb, dtype="float32")

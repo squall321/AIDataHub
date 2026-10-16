@@ -1258,11 +1258,15 @@ async def _persist_record_insert(
     )
     embedded_ok = False
     if sections_payload:
-        # embedder lazy import + 실패 silent (INSERT 자체는 보존)
+        # embedder lazy import + 실패 silent (INSERT 자체는 보존). 활성 슬롯의 열만 곧바로 채운다 —
+        # 다른 슬롯은 백필이 새 행의 빈 열을 채운다.
+        from . import embed_slots as _slots
+
+        slot = _slots.active()
+        cols = slot.cols("record_sections")
         embedder = None
         try:
-            from .embedding import get_embedder as _get_embedder
-            embedder = _get_embedder()
+            embedder = _slots.embedder(slot)
         except Exception:  # pragma: no cover — provider 설정 오류
             embedder = None
 
@@ -1273,24 +1277,24 @@ async def _persist_record_insert(
             embedded_at: datetime | None = None
             if embedder is not None and text:
                 try:
-                    vec = embedder.encode(text[:8000])
+                    # 스레드로 — 같은 모델로 백필이 도는 동안 잠금을 기다려도 이벤트 루프는 서지 않는다.
+                    vec = await asyncio.to_thread(embedder.encode, text[:8000])
                     model_name = embedder.name
                     embedded_at = now
                     embedded_ok = True
                 except Exception:  # pragma: no cover — encode 실패 silent
                     vec = None
-            session.add(
-                RecordSection(
-                    record_id=record_id,
-                    section_id=s["section_id"],
-                    level=int(s["level"]),
-                    title=s["title"],
-                    content_text=text,
-                    embedding=vec,
-                    embedded_at=embedded_at,
-                    embedding_model=model_name,
-                )
+            sec = RecordSection(
+                record_id=record_id,
+                section_id=s["section_id"],
+                level=int(s["level"]),
+                title=s["title"],
+                content_text=text,
             )
+            setattr(sec, cols.vec, vec)
+            setattr(sec, cols.at, embedded_at)
+            setattr(sec, cols.model, model_name)
+            session.add(sec)
         await session.flush()
 
     return {

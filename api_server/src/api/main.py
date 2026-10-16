@@ -29,13 +29,23 @@ except Exception:  # pragma: no cover
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 임베딩 슬롯(AIDH_EMBED_ACTIVE · AIDH_EMBED_FILL) — 모르는 값 · 없는 열이면 여기서 멈춘다(조용히 v1 로
+    # 떨어지지 않는다). v1 의 차원 어긋남은 아래 검사가 예전처럼 경고만 한다.
+    await _check_embed_slots()
+
     # v0.13.0 — EMBEDDING_DIM 환경변수와 실제 vector 컬럼 차원 일치 검증.
     # 불일치 시 sample_embedding sync 가 런타임에 실패하므로 부팅 단계에서 경고.
     await _check_embedding_dim_consistency()
 
+    # 견주기용 두 번째 인스턴스(AIDH_EVAL_INSTANCE=1) — 같은 DB 를 쓰는 본 인스턴스 곁에 다른 포트로 띄워
+    # 활성 슬롯만 바꿔 잰다. 부팅 때 DB 에 쓰는 일(동기화 소스 등록 · 멈춘 동기화 정리 — 본 인스턴스가 돌리는
+    # 동기화를 'stale' 로 지운다)과 스케줄러(동기화 · 임베딩 스윕)를 하지 않는다. 검색만 받는다.
+    eval_instance = (os.environ.get("AIDH_EVAL_INSTANCE") or "").strip().lower() in ("1", "true", "on", "yes")
+
     # v0.8 — config/sync_sources.yml 부팅 일괄 등록 (옵션 A).
     # AIDH_SYNC_BOOTSTRAP=false 로 비활성. 파일 없으면 silent skip.
-    await _bootstrap_sync_sources()
+    if not eval_instance:
+        await _bootstrap_sync_sources()
 
     # v0.14 — 무인 운영 (2026-06-10 진단 후속):
     #   1. 재시작 자기치유 — 직전 크래시로 남은 sync_runs.status='running' 정리.
@@ -43,9 +53,17 @@ async def lifespan(app: FastAPI):
     #   3. 인앱 스케줄러 — sync_sources.schedule_cron 자동 실행 + embed sweep.
     #      외부 cron 등록에 의존하지 않으므로 '등록 누락 → 데이터 정체' 자체가
     #      불가능해진다 (5/30~6/10 11일 정체의 근본 원인 제거).
-    await _cleanup_stale_sync_runs()
+    if not eval_instance:
+        await _cleanup_stale_sync_runs()
     _schedule_embedder_warmup()
-    scheduler_task = asyncio.create_task(_scheduler_loop())
+    if eval_instance:
+        import logging
+
+        logging.getLogger("api.main").warning(
+            "AIDH_EVAL_INSTANCE=1 — 견주기용 인스턴스: 동기화 소스 등록 · 멈춘 동기화 정리 · 스케줄러를 건너뛴다")
+        scheduler_task = asyncio.create_task(asyncio.sleep(0))
+    else:
+        scheduler_task = asyncio.create_task(_scheduler_loop())
 
     # MCP streamable_http_app 은 자체 lifespan(task group)이 있어야 동작한다.
     # FastAPI 의 mount() 는 sub-app 의 lifespan 을 자동 전파하지 않으므로,
@@ -92,16 +110,17 @@ async def _cleanup_stale_sync_runs() -> None:
 
 
 def _schedule_embedder_warmup() -> None:
-    """모델 로드 (~수 초) 를 부팅 블로킹 없이 백그라운드 스레드에서 선실행."""
+    """모델 로드 (~수 초) 를 부팅 블로킹 없이 백그라운드 스레드에서 선실행 — 활성 슬롯의 임베더만.
+    채우기만 하는 슬롯의 모델은 백필이 처음 쓸 때 올린다(전환 동안 두 모델이 한 프로세스에 오를 수 있다)."""
     import logging
 
     log = logging.getLogger("api.scheduler")
 
     async def _warm() -> None:
         try:
-            from .services.embedding import get_embedder
+            from .services import embed_slots
 
-            emb = await asyncio.to_thread(get_embedder)
+            emb = await asyncio.to_thread(embed_slots.embedder, embed_slots.active())
             log.info("embedder warmed up: %s", emb.name)
         except Exception as exc:  # noqa: BLE001
             log.warning("embedder warmup failed: %s", exc)
@@ -128,6 +147,7 @@ async def _scheduler_loop() -> None:
     embed_sweep_min = int(os.environ.get("AIDH_EMBED_SWEEP_MIN", "30") or 30)
     last_attempt: dict[int, float] = {}  # source_id → monotonic seconds
     last_embed_sweep = 0.0  # 0 → 첫 tick 에 즉시 1회 (startup backfill)
+    sweep_job = None  # 직전에 띄운 스윕 잡 — 아직 돌면 새로 띄우지 않는다
 
     log.info(
         "in-app scheduler started (tick=60s, embed_sweep=%dmin)", embed_sweep_min
@@ -140,34 +160,83 @@ async def _scheduler_loop() -> None:
         except Exception as exc:  # noqa: BLE001
             log.warning("scheduler sync pass failed: %s", exc)
         # --- embed sweep (미임베딩 잔여분 백필 — 실패 자동 복구 안전망) ---
+        # 예전엔 앞 스윕이 몇 시간째 돌아도 30분마다 새 잡을 겹쳐 띄웠다. 프로세스 안에서는 직전 잡이 끝났는지 보고,
+        # 프로세스 밖(CLI 백필)과는 (슬롯, 표)마다 advisory lock 이 막는다(embed_backfill).
         try:
             if time.monotonic() - last_embed_sweep >= embed_sweep_min * 60 - 1:
-                from .services import jobs as job_svc
-
-                job_svc.register("embed", job_svc.embed_handler, payload={})
+                sweep_job = _schedule_embed_sweep(sweep_job, log)
                 last_embed_sweep = time.monotonic()
-                log.info("embed sweep scheduled")
         except Exception as exc:  # noqa: BLE001
             log.warning("embed sweep scheduling failed: %s", exc)
 
         # --- signature 백필 (매 tick — REST 배치 import 가 ~1분 내 검색되게).
-        # NULL 0건이면 즉시 종료라 저렴. find_similar_data ANN 용.
+        # 빈 행 0건이면 곧바로 끝나 저렴. find_similar_data ANN 용.
         try:
             await _signature_backfill_sweep(log)
         except Exception as exc:  # noqa: BLE001
             log.warning("signature backfill failed: %s", exc)
 
 
-async def _signature_backfill_sweep(log) -> None:
-    """signature_embedding 이 NULL 인 레코드를 백필 (sweep 당 최대 500건)."""
-    from .db.base import SessionLocal
-    from .services import similarity_svc
+def _schedule_embed_sweep(prev, log):
+    """임베딩 스윕 잡을 띄운다 — 직전 잡이 아직 돌면 띄우지 않고 그 잡을 그대로 돌려준다."""
+    from .services import jobs as job_svc
 
-    async with SessionLocal() as session:
-        res = await similarity_svc.backfill_signature_embeddings(session, limit=500)
-        if res.get("filled"):
-            log.info("signature backfill: filled=%s remaining=%s",
-                     res["filled"], res["remaining"])
+    if prev is not None and prev.status in ("pending", "running"):
+        log.info("embed sweep still running (%s) — 이번 차례는 건너뛴다", prev.id)
+        return prev
+    job = job_svc.register("embed", job_svc.embed_handler, payload={})
+    log.info("embed sweep scheduled")
+    return job
+
+
+async def _signature_backfill_sweep(log) -> None:
+    """레코드 시그니처가 빈 행을 채우는 슬롯마다 백필 (sweep 당 슬롯마다 최대 500건)."""
+    from .services import embed_backfill
+
+    res = await embed_backfill.run(tables=["records"], limit=500, log_every_s=600)
+    for slot_name, tabs in res.items():
+        st = tabs.get("records") or {}
+        if st.get("processed"):
+            log.info("signature backfill %s: filled=%s backlog_at_start=%s",
+                     slot_name, st["processed"], st.get("backlog_at_start"))
+
+
+async def _check_embed_slots() -> None:
+    """임베딩 슬롯 설정 검증 — 틀리면 부팅을 멈춘다(SlotConfigError · RuntimeError).
+
+    1. AIDH_EMBED_ACTIVE · AIDH_EMBED_FILL 의 값(모르는 슬롯 이름).
+    2. 활성 · 채움 슬롯 중 m3 가 있으면 그 열(halfvec(1024))이 DB 에 있는가(PG 만 — 이행 안 됨이면 멈춘다).
+    3. m3 가 활성이면 BGE-M3 모델 파일이 이 박스에 있는가(없으면 멈춘다 — 모든 의미검색이 실패하기 때문).
+       채우기만 하면 경고만 한다(백필만 실패하고 검색은 v1 로 돈다).
+    """
+    import logging
+
+    from .services import embed_slots
+
+    log = logging.getLogger("api.main")
+    cfg = embed_slots.validate_settings()
+    if "m3" in cfg["fill"]:
+        problems: list[str] = []
+        # 두 번까지 — 풀의 첫 연결은 import 때(mcp_uploads 적재의 asyncio.run) 다른 루프에서 맺은 것이라
+        # 'attached to a different loop' 로 버려진다(실측 2026-10-16). 다음 연결은 새로 맺는다.
+        for attempt in (1, 2):
+            try:
+                async with engine.connect() as conn:
+                    problems = await embed_slots.check_columns(conn)
+                break
+            except Exception as exc:  # noqa: BLE001 — DB 가 잠깐 안 닿는 것은 열이 틀린 것과 다르다
+                if attempt == 2:
+                    log.warning("embed slots: DB 에 닿지 못해 m3 열을 확인하지 못했다(%s) — 부팅은 계속한다", exc)
+        if problems:
+            raise RuntimeError("임베딩 슬롯 열이 맞지 않는다 — " + "; ".join(problems))
+        repo = embed_slots.model_id(embed_slots.slot("m3"))
+        if not embed_slots.model_files_present(repo):
+            msg = (f"{repo} 모델 파일이 없다(AIDH_MODELS_DIR · HF 캐시) — 폐쇄망이면 "
+                   "deploy/apptainer/model-from-drive.sh 로 받는다")
+            if cfg["active"] == "m3":
+                raise RuntimeError(f"AIDH_EMBED_ACTIVE=m3 인데 {msg}")
+            log.warning("AIDH_EMBED_FILL 에 m3 가 있는데 %s — m3 백필이 실패한다", msg)
+    log.info("embed slots — active=%s fill=%s", cfg["active"], ",".join(cfg["fill"]))
 
 
 async def _run_due_syncs(last_attempt: dict[int, float], log) -> None:

@@ -447,8 +447,12 @@ async def write_record(
         existing.content_hash = content_hash
         # 제목/내용 변경 → 시그니처 stale. NULL 로 리셋하면 매-tick 백필이
         # 새 시그니처로 재계산 (find_similar_data 분류가 최신 내용 반영).
-        if hasattr(existing, "signature_embedding"):
-            existing.signature_embedding = None
+        # 임베딩 슬롯마다(v1 · m3) 벡터와 기록 열을 함께 비운다 — 기록(시각)이 남으면 백필이 비었다고 보지 않는다.
+        # ⚠ 있는지는 클래스에서 본다 — m3 벡터 열은 deferred(raiseload)라 객체에 hasattr 를 걸면 읽으려다 오류가 난다.
+        for _col in ("signature_embedding", "signature_embedding_m3",
+                     "signature_embedding_m3_at", "signature_embedding_m3_model"):
+            if hasattr(type(existing), _col):
+                setattr(existing, _col, None)
         existing.source_file = record_in.source_file
         existing.author = record_in.author
         existing.department = record_in.department

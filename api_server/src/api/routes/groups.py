@@ -52,11 +52,14 @@ class AutoGroupsRequest(BaseModel):
         le=1.0,
         description="시맨틱 검색 score 컷오프 (0..1).",
     )
-    sim_threshold: float = Field(
-        0.85,
+    sim_threshold: float | None = Field(
+        None,
         ge=0.0,
         le=1.0,
-        description="같은 그룹으로 묶을 코사인 임계.",
+        description=(
+            "같은 그룹으로 묶을 코사인 임계. 생략하면 활성 임베딩 슬롯의 기본값"
+            "(e5-base 0.85 — 모델마다 코사인 분포가 달라 슬롯마다 다르다)."
+        ),
     )
     top_k: int = Field(
         50, ge=1, le=200, description="시맨틱 검색 후보 풀 크기."
@@ -134,8 +137,9 @@ async def get_record_cluster(
     mode: ClusterMode = Query(
         "hybrid", description="semantic | tag | hybrid"
     ),
-    sim_threshold: float = Query(
-        0.85, ge=0.0, le=1.0, description="semantic / hybrid 컷오프."
+    sim_threshold: float | None = Query(
+        None, ge=0.0, le=1.0,
+        description="semantic / hybrid 컷오프(코사인). 생략하면 활성 임베딩 슬롯의 기본값(e5-base 0.85).",
     ),
     tag_threshold: float = Query(
         0.6, ge=0.0, le=1.0, description="tag jaccard 컷오프."
