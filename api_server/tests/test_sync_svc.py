@@ -189,3 +189,23 @@ def test_materialtwin_rules_still_read_body_from_an_older_export():
     out = transform_record(dict(_MT_RAW), _yml_rules("materialtwin"), trust_pii=True)
     assert out["content"]["sections"] == [{"section_id": "1", "level": 1, "title": "본문",
                                            "content_text": _MT_RAW["body"]}]
+
+
+@pytest.mark.asyncio
+async def test_ssrf_가드가_막으면_원장에_막힘과_사유를_남긴다(test_session, monkeypatch):
+    """예외만 올리면 last_status 가 예전 'ok' 그대로라 화면 · 원장에서 '돈다' 로 읽혔다 — 내부 동기화 셋이 07-18 부터 멈춰 있었는데
+    헬스의 sync_stale_sources 만 맞았다(10-17 cae00 리뷰 H4)."""
+    from sqlalchemy import select, update
+
+    from api.db.models import SyncSource
+    from api.services.sync_svc import run_sync
+
+    sid = await _seed_mxwp(test_session)
+    await test_session.execute(update(SyncSource).where(SyncSource.id == sid).values(last_status="ok"))
+    await test_session.commit()
+    monkeypatch.delenv("AIDH_SYNC_ALLOW_INTERNAL", raising=False)        # 내부 주소(127.0.0.1:8800)를 가드가 막는다
+    with pytest.raises(ValueError, match="unsafe"):
+        await run_sync(test_session, sid)
+    src = (await test_session.execute(select(SyncSource).where(SyncSource.id == sid))).scalar_one()
+    await test_session.refresh(src)
+    assert src.last_status == "blocked" and "unsafe" in (src.last_error or ""), (src.last_status, src.last_error)

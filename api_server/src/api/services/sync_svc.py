@@ -685,6 +685,21 @@ async def run_sync(
     # SSRF 방지 (defense-in-depth) — DB 에 저장된 URL 도 매 실행시 재검증
     ok, reason = validate_external_url(src.base_url)
     if not ok:
+        # 막힌 사유를 원장에 남긴다 — 예외만 올리면 last_status 가 예전 'ok' 그대로라 화면 · 원장에서는 '돈다' 로 읽혔다(헬스의
+        # sync_stale_sources 만 맞았다, 10-17 cae00 리뷰 H4 — signalforge-gs · mxwp · materialtwin 이 07-18 부터 멈춰 있었다).
+        # 기록이 실패해도 막힘 자체(아래 예외)는 그대로 올린다.
+        if not dry_run:
+            try:
+                from sqlalchemy import update as _update_blocked
+
+                await session.execute(
+                    _update_blocked(SyncSource)
+                    .where(SyncSource.id == source_id)
+                    .values(last_status="blocked", last_error=f"base_url unsafe: {reason}"[:500])
+                )
+                await session.commit()
+            except Exception:  # noqa: BLE001 — 기록 실패가 막힘을 가리지 않게
+                logger.warning("sync_source %s 막힘 사유를 원장에 적지 못했다", src.name, exc_info=True)
         raise ValueError(f"sync_source base_url unsafe: {reason}")
 
     # 동시 실행 차단 — sync_runs.status='running' + heartbeat 기반.
