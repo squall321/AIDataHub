@@ -798,3 +798,48 @@ async def test_persist_embedder_failure_silent(
         secs = (await s.execute(select(RecordSection).where(RecordSection.record_id == out["record_id"]))).scalars().all()
         assert len(secs) == 1
         assert secs[0].embedding is None  # 백필 job 이 후처리할 대상
+
+
+def test_부팅_적재는_공유_풀을_쓰지_않고_풀_없는_엔진으로_읽고_닫는다(tmp_path, monkeypatch):
+    """버리는 루프(asyncio.run)에서 공유 엔진의 연결을 쓰면 그 연결이 공유 풀로 돌아가 본 루프가 다시 집을 때 'Event loop is closed' 였다 —
+    부팅의 EMBEDDING_DIM 검사가 늘 건너뛰어졌다(10-17 cae00 리뷰 H3)."""
+    import asyncio
+
+    import pytest as _pt
+    _pt.importorskip("aiosqlite")
+    import sqlalchemy.ext.asyncio as sa_async
+    from sqlalchemy import make_url
+    from sqlalchemy.pool import NullPool
+
+    from api.db import base as db_base
+    from api.db.models import MCPUpload
+    from api.services import mcp_upload_svc
+
+    url = make_url(f"sqlite+aiosqlite:///{tmp_path / 'boot.db'}")
+
+    from tests.conftest import _sqlite_neutralize_pg_casts
+
+    async def _schema():
+        e = sa_async.create_async_engine(url)
+        with _sqlite_neutralize_pg_casts(MCPUpload.metadata):          # PG 전용 '{}'::jsonb 기본값을 SQLite 용으로 잠시 벗긴다
+            async with e.begin() as conn:
+                await conn.run_sync(lambda c: MCPUpload.__table__.create(c))
+        await e.dispose()
+    asyncio.run(_schema())
+
+    class _Shared:                      # 주소만 있다 — 함수가 공유 풀을 쓰면 AttributeError 로 드러난다
+        pass
+    _Shared.url = url
+    monkeypatch.setattr(db_base, "engine", _Shared)
+    made: list = []
+    real = sa_async.create_async_engine
+
+    def _spy(u, **kw):
+        eng = real(u, **kw)
+        made.append((kw.get("poolclass"), eng))
+        return eng
+    monkeypatch.setattr(sa_async, "create_async_engine", _spy)
+
+    assert mcp_upload_svc._load_uploads_sync() == []
+    assert [p for p, _ in made] == [NullPool], made
+    assert made[0][1].pool.status().startswith("NullPool"), "풀 없는 엔진이어야 한다"

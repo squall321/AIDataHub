@@ -1455,24 +1455,34 @@ def _load_uploads_sync() -> list[dict[str, Any]]:
     """
     async def _fetch() -> list[dict[str, Any]]:
         from sqlalchemy import select
-        from ..db.base import SessionLocal
+        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+        from sqlalchemy.pool import NullPool
+
+        from ..db.base import engine as shared
         from ..db.models import MCPUpload
-        async with SessionLocal() as session:
-            rows = (
-                await session.execute(
-                    select(MCPUpload).where(MCPUpload.deprecated_at.is_(None))
-                )
-            ).scalars().all()
-            return [
-                {
-                    "name": r.name,
-                    "current_sha": r.current_sha,
-                    "current_version": r.current_version,
-                    "manifest": dict(r.manifest or {}),
-                    "capabilities": dict(r.capabilities or {}),
-                }
-                for r in rows
-            ]
+        # 공유 엔진을 쓰지 않는다 — 이 루프(asyncio.run · 스레드)는 곧 닫히는데, 여기서 맺은 연결이 공유 풀로 돌아가면 본 루프가 그것을
+        # 다시 집을 때 'Event loop is closed' 였다. 그래서 부팅의 EMBEDDING_DIM 검사가 늘 건너뛰어졌다(10-17 cae00 리뷰 H3). 이 한 번은
+        # 풀 없는 엔진으로 읽고 닫는다.
+        eng = create_async_engine(shared.url, poolclass=NullPool)
+        try:
+            async with AsyncSession(eng) as session:
+                rows = (
+                    await session.execute(
+                        select(MCPUpload).where(MCPUpload.deprecated_at.is_(None))
+                    )
+                ).scalars().all()
+                return [
+                    {
+                        "name": r.name,
+                        "current_sha": r.current_sha,
+                        "current_version": r.current_version,
+                        "manifest": dict(r.manifest or {}),
+                        "capabilities": dict(r.capabilities or {}),
+                    }
+                    for r in rows
+                ]
+        finally:
+            await eng.dispose()
 
     try:
         loop = asyncio.get_running_loop()

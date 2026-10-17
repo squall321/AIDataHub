@@ -217,8 +217,9 @@ async def _check_embed_slots() -> None:
     cfg = embed_slots.validate_settings()
     if "m3" in cfg["fill"]:
         problems: list[str] = []
-        # 두 번까지 — 풀의 첫 연결은 import 때(mcp_uploads 적재의 asyncio.run) 다른 루프에서 맺은 것이라
-        # 'attached to a different loop' 로 버려진다(실측 2026-10-16). 다음 연결은 새로 맺는다.
+        # 두 번까지 — 예전엔 풀의 첫 연결이 import 때(mcp_uploads 적재의 asyncio.run) 다른 루프에서 맺은 것이라
+        # 'attached to a different loop' 로 버려졌다(실측 2026-10-16). 그 적재는 이제 풀 없는 엔진을 쓴다(H3) — 그래도 DB 가 잠깐
+        # 안 닿는 것을 한 번 더 버틴다.
         for attempt in (1, 2):
             try:
                 async with engine.connect() as conn:
