@@ -91,7 +91,9 @@ bash deploy/apptainer/restart.sh --api
 그 트랜잭션이 끝난 뒤 다시 올린다 — 예전 스윕이 끝나기를 기다리거나, 옛 API 를 먼저 내린다(`kill "$(cat deploy/apptainer/logs/api.pid)"`
 뒤 `bash deploy/apptainer/start_api.sh` — `stop.sh` 는 PG 까지 내린다). cae00 의 갱신 흐름(HWAXPortal update-all → deploy-all →
 `boot.sh --force` → `start_api.sh`)도 이행을 옛 API 를 내리기 **전에** 돌린다 — 그때 옛 스윕이 돌고 있으면 update-all 에 'aidh failed' 가
-보이고 옛 API 가 옛 코드로 계속 돈다. 다음 update-all 이 다시 올린다. `restart.sh --api` 는 옛 API 를 먼저 내리므로 이 경합이 없다.
+보이고 옛 API 가 옛 코드로 계속 돈다. 다음 update-all 이 다시 올린다. `restart.sh --api` 는 옛 API 를 먼저 내리므로 이 경합이 없다 —
+대신 이행이 다른 까닭으로 또 실패하면 API 가 내려간 채 남는다. 그래서 운영(cae00)은 쉬는 트랜잭션을 끊고(`start_api.sh` 가 이행 전에 pid ·
+시간을 찍는다) HWAXPortal `deploy-all-from-drive.sh aidh` 로 다시 올린다 — 실패해도 옛 API 가 남는다(10-17 cae00 리뷰 P2).
 
 **순서 — 백필을 먼저, FILL 은 그 뒤.** FILL 에 m3 를 먼저 넣고 재기동하면 인앱 스윕이 1분 뒤 m3 절 백필을 API 프로세스 안에서 시작해
 (m3, record_sections) 잠금을 쥔다. 그러면 CLI 는 그 표를 '잠김'(종료 코드 3)으로 건너뛴다. 그렇게 둬도 같은 일을 하지만 진행은
@@ -113,7 +115,7 @@ bash deploy/apptainer/merge-from-drive.sh            # dev 의 m3 백필 · 색�
 bash deploy/apptainer/embed-slot.sh status --slot m3 # 남은 것 = cae00 에서만 생긴 행(+ cae00 에서 고친 레코드)
 bash deploy/apptainer/embed-slot.sh index --slot m3
 # 전환 — .env 에 AIDH_EMBED_ACTIVE=m3 한 줄(채움에 m3 가 저절로 든다 — 남은 행은 인앱 스윕이 CPU 로 채운다)
-bash deploy/apptainer/restart.sh --api
+( cd ../HWAXPortal && ./infra/scripts/deploy-all-from-drive.sh aidh )   # 이행이 먼저 돌고 실패하면 옛 API 가 남는다(위 '이행이 잠금을')
 ```
 
 - **merge 가 m3 벡터를 나른다.** 절(`record_sections`)은 자연키로 dev 값이 그대로 덮인다. 레코드는 dev 의 `updated_at` 이 더 최신일 때만
