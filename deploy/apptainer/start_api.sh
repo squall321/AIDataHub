@@ -203,7 +203,8 @@ done
 require_port_free "$API_PORT" "API"
 
 echo "→ uvicorn api.main:app --host $API_HOST --port $API_PORT (백그라운드)"
-# 직전 세대 로그 1개 보존(.1) 후 새로 시작 — 장기 운행 무한 증가 방지.
+# 덧붙여 쓴다 — 예전엔 > 로 열어 기동마다 앞 기록을 지웠고, O_APPEND 가 아니라 포털 logrotate(copytruncate)에도 못 넣었다(10-17 결정 16).
+# 기동 때 cap(기본 20MB)을 넘었으면 한 벌(.1)만 넘긴다 — 장기 운행 무한 증가 방지.
 rotate_log "$LOG_DIR/uvicorn.log" "${AIDH_LOG_CAP_MB:-20}"
 # HuggingFace 모델이 로컬 캐시에 있으면 네트워크 확인을 건너뛴다.
 # MCP 첫 호출 시 수십 초 블로킹을 막기 위해 프로세스 환경에 직접 export.
@@ -215,7 +216,7 @@ nohup "$VENV_PY" -m uvicorn api.main:app \
     --host "$API_HOST" --port "$API_PORT" \
     --proxy-headers --forwarded-allow-ips="*" \
     "${ROOT_PATH_ARG[@]}" \
-    > "$LOG_DIR/uvicorn.log" 2>&1 &
+    >> "$LOG_DIR/uvicorn.log" 2>&1 &
 echo $! > "$LOG_DIR/api.pid"
 echo "  pid=$(cat "$LOG_DIR/api.pid")"
 
