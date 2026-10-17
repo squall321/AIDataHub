@@ -80,14 +80,41 @@ merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외�
     *) echo "    ✗ $t: staging 조회 실패" >&2; return 1 ;;
   esac
 
+  # dev(staging)에만 있는 열 — 열 목록은 운영 DB 에서 읽으므로 운영 이행이 늦으면 그 열은 오류 없이 빠진다. 10-17 cae00 에서 0032 가 잠금으로
+  # 늦어 m3 열이 그렇게 빠졌고, 다음 update-all 은 같은 덤프라 병합을 건너뛰었다(리뷰 H1). 이름째 알리고 끝에 3 으로 끝내 '병합함' 표식이
+  # 안 적히게 한다(포털 update-all 이 3 을 '다음에 다시' 로 말한다).
+  local _pc _sc _miss
+  _pc="$(PSQL -d "$DB" -tA -c "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='$t';" | sort)"
+  _sc="$(STAGE_SQL -tA -c "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='$t';" | sort)"
+  _miss="$(comm -13 <(printf '%s\n' "$_pc") <(printf '%s\n' "$_sc") | grep -v '^$' | paste -sd',' - || true)"
+  if [ -n "$_miss" ]; then
+    echo "    ⚠ $t: dev 에만 있는 열 — $_miss — 운영 DB 이행이 늦어 이 병합에서 빠졌다(이행 뒤 merge-from-drive.sh 를 한 번 더)"
+    COLS_MISSING="${COLS_MISSING:-} $t"
+  fi
   local cols; cols="$(PSQL -d "$DB" -tA -c "SELECT string_agg(quote_ident(column_name),',' ORDER BY ordinal_position) FROM information_schema.columns WHERE table_schema='public' AND table_name='$t' AND column_name <> ALL (string_to_array('$drop',','));")"
   local skip="$pk"; [ -n "$drop" ] && skip="$pk,$drop"
   local setclause; setclause="$(PSQL -d "$DB" -tA -c "
     SELECT string_agg(quote_ident(column_name)||'=EXCLUDED.'||quote_ident(column_name),', ')
     FROM information_schema.columns
     WHERE table_schema='public' AND table_name='$t' AND column_name <> ALL (string_to_array('$skip',','));")"
-  local where=""; [ -n "$upd" ] && where="WHERE $t.$upd IS NULL OR EXCLUDED.$upd >= $t.$upd"
+  # 엄격히 더 새로울 때만 덮는다 — 아래 세션은 aidh.keep_updated_at 으로 운영 updated_at 을 dev 값 그대로 두므로(병합 시각으로 올리지 않는다),
+  # >= 이면 바뀌지 않은 행도 매번 다시 써 m3 색인까지 갱신한다.
+  local where=""; [ -n "$upd" ] && where="WHERE $t.$upd IS NULL OR EXCLUDED.$upd > $t.$upd"
   local action="DO UPDATE SET $setclause $where"; [ -n "$setclause" ] || action="DO NOTHING"
+
+  # m3 슬롯 열(<열>_m3 · _m3_at · _m3_model)은 운영 값이 비었으면 updated_at 과 상관없이 채운다 — dev 의 m3 백필은 updated_at 을 일부러 안
+  # 움직이고(keep_updated_at), 예전 병합이 운영 updated_at 을 병합 시각으로 올려 둔 행이 많아 위 upsert 가 건너뛰었다(10-17 cae00 리뷰 H1-b
+  # — 레코드 시그니처 59,032건 전부). 슬롯 열은 그 박스의 덤프가 만든 값이 정본이라 비어 있을 때만 채운다(있는 값은 덮지 않는다).
+  local fill="" _s _on
+  if [ -n "$upd" ]; then
+    _on="$(printf '%s' "$pk" | tr ',' '\n' | sed 's/.*/r.& = m.&/' | paste -sd'&' - | sed 's/&/ AND /g')"
+    for _s in $(printf '%s\n' "$_pc" | grep -E '_m3$' || true); do
+      printf '%s\n' "$_sc" | grep -qx "$_s" || continue
+      fill="$fill
+UPDATE public.$t AS r SET $_s = m.$_s, ${_s}_at = m.${_s}_at, ${_s}_model = m.${_s}_model FROM _mg m
+ WHERE $_on AND r.$_s IS NULL AND m.$_s IS NOT NULL;"
+    done
+  fi
 
   local before after
   before="$(PSQL -d "$DB" -tA -c "SELECT count(*) FROM $t;")"
@@ -96,10 +123,12 @@ merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외�
   STAGE_SQL -v ON_ERROR_STOP=1 -q -c "COPY (SELECT $cols FROM public.$t) TO '$CFILE' (FORMAT binary);" 2>>/tmp/aidh-merge.log \
     || { echo "    ✗ $t: staging COPY 실패"; return 1; }
   # ② 운영 단일 세션: TEMP → COPY FROM 파일 → upsert
+  # aidh.keep_updated_at — 운영 updated_at 을 병합 시각으로 올리지 않는다(트리거가 이 설정을 본다, 이행 0032). 세션 단위라 이 psql 하나에만 든다.
   if PSQL -d "$DB" -v ON_ERROR_STOP=1 -q >>/tmp/aidh-merge.log 2>&1 <<SQL
+SET aidh.keep_updated_at = 'on';
 CREATE TEMP TABLE _mg (LIKE public.$t INCLUDING DEFAULTS);
 COPY _mg ($cols) FROM '$CFILE' (FORMAT binary);
-INSERT INTO public.$t ($cols) SELECT $cols FROM _mg ON CONFLICT ($pk) $action;
+INSERT INTO public.$t ($cols) SELECT $cols FROM _mg ON CONFLICT ($pk) $action;$fill
 DROP TABLE _mg;
 SQL
   then after="$(PSQL -d "$DB" -tA -c "SELECT count(*) FROM $t;")"; echo "    ✓ $t: +$((after-before)) (총 $after)"
@@ -131,5 +160,9 @@ PSQL -d postgres -c "DROP DATABASE IF EXISTS $STAGE_DB WITH (FORCE);" >/dev/null
 if [ -n "$FAILED" ]; then
   echo "✗ merge 일부 실패:$FAILED — /tmp/aidh-merge.log 확인 (나머지 테이블은 반영됨)"
   exit 1
+fi
+if [ -n "${COLS_MISSING:-}" ]; then
+  echo "⚠ merge 는 됐지만 dev 에만 있는 열이 빠졌다:$COLS_MISSING — 운영 DB 이행(start_api.sh 의 alembic) 뒤 이 스크립트를 한 번 더 돌린다"
+  exit 3
 fi
 echo "✓ merge 완료 — 운영 DB 유지 + dev 신규 반영. 롤백: restore-db.sh $BK"
