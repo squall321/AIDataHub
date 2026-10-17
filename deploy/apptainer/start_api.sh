@@ -151,6 +151,21 @@ if [[ "$_pg_ready" -ne 1 ]]; then
   exit 1
 fi
 
+# 이행 전에 쉬는 트랜잭션을 찍는다(10-17 cae00 리뷰 H2) — 열을 더하는 이행(0032)은 잠금을 10초만 기다리고 실패해 옛 API 를
+# 남긴다. 그때 무엇이 쥐고 있었는지 사람이 다시 찾지 않게 pid · 시간을 먼저 보인다. 조회가 안 되면(공유 PG 등) 말없이 넘어간다.
+_idle_tx="$(apptainer exec "instance://$INST_POSTGRES" \
+    psql -h 127.0.0.1 -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -F ' · ' -c \
+    "SELECT 'pid ' || pid, '트랜잭션 ' || date_trunc('second', now() - xact_start), '쉼 ' || date_trunc('second', now() - state_change),
+            coalesce(nullif(application_name, ''), '-'), left(regexp_replace(query, '\s+', ' ', 'g'), 60)
+       FROM pg_stat_activity
+      WHERE datname = current_database() AND state LIKE 'idle in transaction%' AND pid <> pg_backend_pid()
+      ORDER BY xact_start" 2>/dev/null || true)"
+if [[ -n "$_idle_tx" ]]; then
+  echo "  ⚠ 쉬는 트랜잭션 $(wc -l <<<"$_idle_tx")개 — 이행이 잠금을 못 잡아 실패하면 이것들이 원인이다(pid · 트랜잭션 나이 · 쉰 시간 · 앱 · 마지막 질의)"
+  sed 's/^/      /' <<<"$_idle_tx"
+  echo "      끊기: SELECT pg_terminate_backend(<pid>);  — 병합 · 백업이 아닌지 먼저 본다"
+fi
+
 echo "→ alembic upgrade head"
 _alembic_fail() {
   echo >&2
