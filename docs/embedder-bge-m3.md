@@ -117,8 +117,9 @@ bash deploy/apptainer/restart.sh --api
 ```
 
 - **merge 가 m3 벡터를 나른다.** 절(`record_sections`)은 자연키로 dev 값이 그대로 덮인다. 레코드는 dev 의 `updated_at` 이 더 최신일 때만
-  덮이고, m3 시그니처 세 열(`signature_embedding_m3` · `_at` · `_model`)은 cae00 값이 비어 있으면 `updated_at` 과 상관없이 채운다(있는 값은
-  덮지 않는다). 처음엔 `updated_at` 조건만 있었는데, 예전 병합이 cae00 의 `updated_at` 을 병합 시각으로 올려 둬서 10-17 cae00 병합은 레코드
+  덮이고, m3 시그니처 세 열(`signature_embedding_m3` · `_at` · `_model`)은 cae00 값이 비어 있고 제목 · 본문(`content_hash`)이 양쪽에서 같으면
+  `updated_at` 과 상관없이 채운다(있는 값은 덮지 않는다). cae00 에서 고친 레코드는 시그니처가 비워져 그 박스의 스윕이 새 내용으로 계산한다
+  — 병합이 dev 의 옛 내용 벡터를 넣지 않는다. 처음엔 `updated_at` 조건만 있었는데, 예전 병합이 cae00 의 `updated_at` 을 병합 시각으로 올려 둬서 10-17 cae00 병합은 레코드
   m3 시그니처를 한 건도 옮기지 못했다(59,032건, 리뷰 H1-b). 이제 병합 세션도 `aidh.keep_updated_at` 을 켜 cae00 `updated_at` 을 dev 값
   그대로 둔다.
 - **이행이 늦으면 병합이 3 으로 끝난다.** 덤프에 있는데 cae00 DB 에 아직 없는 열(0032 가 잠금으로 늦은 경우)은 `⚠ <표>: dev 에만 있는 열 — …`

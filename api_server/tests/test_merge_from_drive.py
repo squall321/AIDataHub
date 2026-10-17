@@ -80,7 +80,7 @@ else:
     sys.exit(9)
 '''
 
-_RECORDS = ["id", "title", "updated_at", "signature_embedding", "embedded_at"]
+_RECORDS = ["id", "title", "content_hash", "updated_at", "signature_embedding", "embedded_at"]
 _RECORDS_M3 = ["signature_embedding_m3", "signature_embedding_m3_at", "signature_embedding_m3_model"]
 _SECTIONS = ["id", "record_id", "section_id", "content_text", "embedding"]
 _SECTIONS_M3 = ["embedding_m3", "embedding_m3_at", "embedding_m3_model"]
@@ -143,9 +143,19 @@ def test_m3_슬롯은_운영이_비었으면_updated_at_과_상관없이_채운�
     fill = ("UPDATE public.records AS r SET signature_embedding_m3 = m.signature_embedding_m3, "
             "signature_embedding_m3_at = m.signature_embedding_m3_at, "
             "signature_embedding_m3_model = m.signature_embedding_m3_model FROM _mg m\n"
-            " WHERE r.id = m.id AND r.signature_embedding_m3 IS NULL AND m.signature_embedding_m3 IS NOT NULL;")
+            " WHERE r.id = m.id AND r.title IS NOT DISTINCT FROM m.title AND r.content_hash IS NOT DISTINCT FROM m.content_hash"
+            " AND r.signature_embedding_m3 IS NULL AND m.signature_embedding_m3 IS NOT NULL;")
     assert fill in s, s
     assert s.index("INSERT INTO public.records") < s.index(fill) < s.index("DROP TABLE _mg;")
+
+
+def test_같아야_할_열을_안_준_표는_슬롯을_따로_채우지_않는다(merge):
+    """채움은 그 표의 시그니처 재료가 양쪽에서 같을 때만 맞다 — 무엇이 재료인지 모르는 표는 채우지 않는다(운영에서 고친 행에 dev 의
+    옛 내용 벡터를 넣으면 그 박스의 스윕이 다시 계산하지 않는다)."""
+    cols = ["agent_type", "updated_at", "desc_m3", "desc_m3_at", "desc_m3_model"]
+    r, sessions = merge({"agents": cols}, {"agents": cols})
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "UPDATE public.agents" not in sessions["agents"], sessions["agents"]
 
 
 def test_updated_at_조건이_없는_표는_슬롯을_따로_채우지_않는다(merge):

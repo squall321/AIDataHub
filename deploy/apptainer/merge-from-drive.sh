@@ -55,14 +55,14 @@ mkdir -p "$(dirname "$BK")" 2>/dev/null && \
 STAGE_SQL() { apptainer exec "instance://$INST" psql -h 127.0.0.1 -p "$PORT" -U "$USER" -d "$STAGE_DB" "$@"; }
 CFILE="/tmp/aidh_mg.bin"   # 컨테이너 내부 경로(서버 COPY 대상)
 
-merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외컬럼(csv, 옵션)
+merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외컬럼(csv, 옵션) $5=m3 슬롯 채움 — 양쪽이 같아야 하는 열(csv, 옵션)
   # 충돌키는 **자연키**여야 한다. id 가 nextval() 대리키인 테이블(record_sections,
   # external_id_map 등)은 박스마다 값이 독립 생성돼, dev 의 id 가 운영에 없더라도
   # (record_id, section_id) 같은 자연키 유니크에 걸려 INSERT 전체가 죽는다
   # (실제로 cae00 에서 "record_sections: merge 실패" → set -e 로 뒤 4개 테이블과
   #  staging 정리까지 통째로 스킵됐다). 그런 테이블은 $4 로 id 를 제외해 운영 시퀀스가
   # 새 id 를 부여하게 하고, 자연키로 충돌 판정한다.
-  local t="$1" pk="$2" upd="${3:-}" drop="${4:-}"
+  local t="$1" pk="$2" upd="${3:-}" drop="${4:-}" same="${5:-}"
   # psql 이 접속·인증 실패로 죽으면 stdout 이 빈 문자열이라 '테이블 없음'과 구별되지 않는다.
   # 그러면 전 테이블이 skip 되는데 FAILED 에도 안 잡혀 '✓ merge 완료' 로 끝난다 —
   # 한 행도 안 들어왔는데 성공으로 보고된다. 'f' 만 진짜 '없음'이고 빈 값은 조회 실패다.
@@ -104,10 +104,12 @@ merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외�
 
   # m3 슬롯 열(<열>_m3 · _m3_at · _m3_model)은 운영 값이 비었으면 updated_at 과 상관없이 채운다 — dev 의 m3 백필은 updated_at 을 일부러 안
   # 움직이고(keep_updated_at), 예전 병합이 운영 updated_at 을 병합 시각으로 올려 둔 행이 많아 위 upsert 가 건너뛰었다(10-17 cae00 리뷰 H1-b
-  # — 레코드 시그니처 59,032건 전부). 슬롯 열은 그 박스의 덤프가 만든 값이 정본이라 비어 있을 때만 채운다(있는 값은 덮지 않는다).
+  # — 레코드 시그니처 59,032건 전부). 있는 값은 덮지 않는다. $5 의 열(시그니처의 재료)이 양쪽에서 같을 때만 채운다 — 운영에서 고친 레코드는
+  # 시그니처를 비워 그 박스의 스윕이 새 내용으로 다시 계산하는데(db_writer), 그 사이 병합이 dev 의 옛 내용 벡터를 넣으면 스윕이 다시 하지 않는다.
   local fill="" _s _on
-  if [ -n "$upd" ]; then
+  if [ -n "$upd" ] && [ -n "$same" ]; then
     _on="$(printf '%s' "$pk" | tr ',' '\n' | sed 's/.*/r.& = m.&/' | paste -sd'&' - | sed 's/&/ AND /g')"
+    _on="$_on$(printf '%s' "$same" | tr ',' '\n' | sed 's/.*/ AND r.& IS NOT DISTINCT FROM m.&/' | paste -sd'\0' -)"
     for _s in $(printf '%s\n' "$_pc" | grep -E '_m3$' || true); do
       printf '%s\n' "$_sc" | grep -qx "$_s" || continue
       fill="$fill
@@ -146,7 +148,8 @@ try_merge org_teams              "code"                 ""
 try_merge org_groups             "team_code,code"       ""
 try_merge doc_types              "code"                 ""
 try_merge agents                 "agent_type"           "updated_at"
-try_merge records                "id"                   "updated_at"
+# 레코드 시그니처(m3)는 제목 · 본문이 양쪽에서 같을 때만 채운다(시그니처 = 제목 + 본문의 caption · headers · notes).
+try_merge records                "id"                   "updated_at" ""         "title,content_hash"
 try_merge agent_records          "agent_type,record_id" ""
 # ↓ id 가 대리키(nextval)라 자연키로 충돌 판정하고 id 는 운영 시퀀스에 맡긴다.
 try_merge record_sections        "record_id,section_id" ""          "id"
