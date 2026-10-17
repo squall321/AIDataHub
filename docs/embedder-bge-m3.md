@@ -116,9 +116,13 @@ bash deploy/apptainer/embed-slot.sh index --slot m3
 bash deploy/apptainer/restart.sh --api
 ```
 
-- **merge 가 m3 벡터를 나른다.** 절(`record_sections`)은 자연키로 dev 값이 그대로 덮인다. 레코드는 `updated_at` 이 같거나 dev 가 더 최신일
-  때만 덮이는데, m3 시그니처 백필은 `updated_at` 을 움직이지 않으므로(아래 '덧붙여' 2) 양쪽에서 안 고친 레코드는 m3 시그니처가 따라온다.
-  cae00 에서 고친 레코드는 덮이지 않고 그 박스의 스윕이 채운다.
+- **merge 가 m3 벡터를 나른다.** 절(`record_sections`)은 자연키로 dev 값이 그대로 덮인다. 레코드는 dev 의 `updated_at` 이 더 최신일 때만
+  덮이고, m3 시그니처 세 열(`signature_embedding_m3` · `_at` · `_model`)은 cae00 값이 비어 있으면 `updated_at` 과 상관없이 채운다(있는 값은
+  덮지 않는다). 처음엔 `updated_at` 조건만 있었는데, 예전 병합이 cae00 의 `updated_at` 을 병합 시각으로 올려 둬서 10-17 cae00 병합은 레코드
+  m3 시그니처를 한 건도 옮기지 못했다(59,032건, 리뷰 H1-b). 이제 병합 세션도 `aidh.keep_updated_at` 을 켜 cae00 `updated_at` 을 dev 값
+  그대로 둔다.
+- **이행이 늦으면 병합이 3 으로 끝난다.** 덤프에 있는데 cae00 DB 에 아직 없는 열(0032 가 잠금으로 늦은 경우)은 `⚠ <표>: dev 에만 있는 열 — …`
+  로 찍고 종료코드 3 이다 — 포털 update-all 은 '병합함' 표식을 안 적어 다음 실행이 다시 병합한다. 이행 뒤 `merge-from-drive.sh` 를 한 번 더.
 - **m3 를 merge 전에 켜지 않는다.** 활성 · 채움에 m3 를 먼저 넣으면 인앱 스윕이 109만 절을 CPU 로 임베딩하기 시작한다(1.9 절/초 — 약
   6.6일, 그동안 같은 모델의 질의가 묶음마다 기다린다).
 - **덤프는 dev 가 이행한 뒤의 것이어야 한다.** merge 는 cae00 의 열 목록으로 덤프에서 고른다 — cae00 은 0032 를 올렸는데 덤프가 그 전
@@ -207,6 +211,7 @@ dev 전체로 다시 재려면 `scripts/embed_calibrate.py`(절차 5).
    이었다. 지금은 프로세스 안에서는 앞 잡을 보고, 프로세스 밖(CLI)과는 (슬롯, 표)마다 advisory lock 이 막는다.
 4. **부팅 때 풀의 첫 연결은 버려진다.** import 때 `mcp_uploads` 적재가 `asyncio.run` 으로 맺은 연결이 풀에 남아 lifespan 의 첫 연결이
    'attached to a different loop' 로 죽는다(예전부터 — 그동안 차원 검사가 조용히 삼켰다). 슬롯 열 검사는 두 번까지 시도한다.
+   — 10-17 고침(cae00 리뷰 H3): 그 적재는 이제 풀 없는 엔진으로 읽고 닫는다.
 5. **기존 PG 통합 시험(`tests/test_pg_integration.py`)은 실 PG 에서 8개 모두 실패한다** — 세션 범위 `pg_engine` 과 함수 범위 시험 ·
    `pg_session` 의 이벤트 루프가 달라서다(pytest-asyncio 1.3). 이번 PG 시험(`tests/test_embed_slots_pg.py`)은 세션 루프에서 돈다.
    기존 파일은 손대지 않았다.
@@ -240,6 +245,10 @@ dev 전체로 다시 재려면 `scripts/embed_calibrate.py`(절차 5).
    그래서 전역 검색은 이 트랜잭션에만 `SET LOCAL hnsw.ef_search = 1000` 을 건다(`embed_slots.tune_hnsw`, 요청 수보다 작게 두지 않는다).
    좌석 범위 검색은 정확 검색이라 상관없다. 레코드 시그니처 색인(5만 9천 행)은 40 에서도 v1 0.985 · m3 0.982 라 그대로 둔다.
    e5 도 낮았으므로 **지금 v1 로 도는 박스도 이 판을 받으면 전역 의미검색 재현율이 오른다.**
+9. **v1 표지(`embedding_model`)는 믿지 않는다.** cae00 에서 79만 행이 'e5-small-d384' 라고 적혀 있는데 실제 벡터는 768차원 e5-base 다(표본 —
+   노름 1.000 · 교차 유사도 같은 공간, 10-17 cae00 리뷰 H5). 지금은 표지로 재임베딩을 거는 코드가 없어(채움은 빈 열만 본다 —
+   `embed_backfill`) 고치지 않았다. 표지를 보고 다시 임베딩하는 코드를 만들 때는 표지가 아니라 열의 차원과 표본 대조로 판정한다 — 아니면
+   80만 행을 다시 계산한다.
 
 ## 시험
 

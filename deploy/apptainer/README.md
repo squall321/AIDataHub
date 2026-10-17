@@ -83,3 +83,16 @@ deploy/apptainer/
 | `pip install` 실패 | 동일 — 프록시 또는 사내 PyPI 미러 (`PIP_INDEX_URL` 환경변수) 설정 |
 | `CREATE EXTENSION vector` 실패 | base 이미지가 pgvector 포함이라 거의 없음. `tail logs/postgres-ext.log` |
 | API 가 DB 못 찾음 | `cat api_server/.env` 의 `DATABASE_URL` 이 PG 포트와 일치하는지 확인 |
+| `alembic upgrade head` 실패 — 잠금(`lock_timeout`) | `start_api.sh` 가 이행 전에 쉬는 트랜잭션의 pid · 시간을 찍는다(`⚠ 쉬는 트랜잭션`). 병합 · 백업이 아닌지 보고 `SELECT pg_terminate_backend(<pid>);` 뒤 다시 기동한다. 기동이 실패해도 옛 API 는 그대로 돈다 |
+
+## PG 안전망 — 쉬는 트랜잭션 시한(박스마다 한 번)
+
+트랜잭션을 연 채 쉬는 연결은 열을 더하는 이행(0032 등)을 막는다 — 10-17 cae00 에서 옛 API 의 쉬는 연결이 이행을 막았다. 30분이 지나면 PG 가
+그 연결을 끊게 한다(새 연결부터 든다). 병합(`merge-from-drive.sh`) · 백업이 돌지 않을 때 한 번 건다. dev 는 2026-10-17 에 걸었다.
+
+```bash
+cd deploy/apptainer && ( set -a; . ./.env; set +a
+  apptainer exec "instance://${INST_POSTGRES:-aidh_postgres}" psql -h 127.0.0.1 -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+    -c "ALTER DATABASE \"$POSTGRES_DB\" SET idle_in_transaction_session_timeout = '30min';" )
+# 확인(새 연결): ... -tAc 'SHOW idle_in_transaction_session_timeout'  → 30min
+```
