@@ -67,3 +67,36 @@ def test_dim_validation_is_reachable_and_guards_mismatch(monkeypatch):
     assert "EMBEDDING_DIM" in src and "actual_dim" in src
     # _to_cpu_and_retry 안에는 남아 있으면 안 된다(그쪽이면 도달 불가다).
     assert "actual_dim" not in inspect.getsource(m.SentenceTransformerEmbedder._to_cpu_and_retry)
+
+
+def test_encode_many_falls_back_to_cpu(monkeypatch):
+    """백필 묶음 경로(encode_many)도 GPU 가 점유돼 실패하면 CPU 로 강등해 다시 인코딩한다. 예전엔 폴백이 encode · encode_query
+    에만 있어 dev 백필이 묶음마다 CUDA 오류로 실패했다(10-16, docs/ko-search-baseline.md '덧붙여 본 것' 3)."""
+    import numpy as np
+
+    cls = _embedder_cls()
+    e = cls.__new__(cls)
+    e._name = "dummy/model"
+    e._uses_e5_prefix = False
+    e._batch = 2                      # 묶음 둘 — 첫 묶음에서 강등하고 둘째는 CPU 모델로 바로 간다
+
+    class _GPU:
+        device = "cuda:0"
+
+        def encode(self, texts, **kw):
+            raise RuntimeError("CUDA error: out of memory")
+
+    class _FakeST:
+        device = "cpu"
+
+        def __init__(self, name, device=None):
+            self.dev = device
+
+        def encode(self, texts, **kw):
+            return np.array([[float(len(t)), 1.0] for t in texts])
+
+    monkeypatch.setitem(sys.modules, "sentence_transformers", types.SimpleNamespace(SentenceTransformer=_FakeST))
+    e._model = _GPU()
+    assert e.encode_many(["가나다", "a", "bc"]) == [[3.0, 1.0], [1.0, 1.0], [2.0, 1.0]], "입력 순서 그대로, 모든 묶음이 인코딩됐다"
+    assert isinstance(e._model, _FakeST) and e._model.dev == "cpu", "CPU 로 강등했다"
+

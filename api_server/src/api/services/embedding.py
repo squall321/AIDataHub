@@ -471,13 +471,12 @@ class SentenceTransformerEmbedder(Embedder):
         out: list[list[float]] = [[] for _ in wrapped]
         for start in range(0, len(order), bs):
             idx = order[start : start + bs]
+            batch = [wrapped[i] for i in idx]
             with self._guard():
-                vecs = self._model.encode(
-                    [wrapped[i] for i in idx],
-                    normalize_embeddings=True,
-                    batch_size=len(idx),
-                    show_progress_bar=False,
-                )
+                # GPU 가 점유돼 실패하면 CPU 로 강등해 다시 — encode · encode_query 와 같은 폴백. 예전엔 여기만 빠져 dev 백필이
+                # 묶음마다 CUDA 오류로 실패했다(10-16 00:19~03:52 UTC 경고 24,080건, docs/ko-search-baseline.md '덧붙여 본 것' 3).
+                vecs = self._to_cpu_and_retry(lambda: self._model.encode(
+                    batch, normalize_embeddings=True, batch_size=len(batch), show_progress_bar=False))
             for i, v in zip(idx, vecs, strict=True):
                 out[i] = v.astype("float32").tolist()
         return out
