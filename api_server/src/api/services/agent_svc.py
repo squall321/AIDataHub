@@ -321,21 +321,27 @@ async def resync_all_agent_samples(session: AsyncSession) -> dict:
     rows = (
         await session.execute(select(Agent).order_by(Agent.agent_type))
     ).scalars().all()
+    # 값을 먼저 떼어 둔다. 한 agent 의 표본 행이 flush 에서 거절되면 세션을 롤백해야 다음
+    # agent 를 할 수 있는데, 롤백은 읽어 둔 행을 모두 만료시킨다. 롤백 없이 만료된 행을 읽던
+    # 예전 코드는 첫 실패에서 PendingRollbackError 로 500 을 내, errors 도 남은 agent 도
+    # 잃었다(10-30 AD-21 검토).
+    targets = [(ag.agent_type, list(ag.sample_queries or [])) for ag in rows]
     successes: list[dict] = []
     errors: list[dict] = []
-    for ag in rows:
+    for agent_type, samples in targets:
         try:
             summary = await sample_embedding_svc.sync_agent_samples(
                 session,
-                agent_type=ag.agent_type,
-                sample_queries=list(ag.sample_queries or []),
+                agent_type=agent_type,
+                sample_queries=samples,
             )
             successes.append(summary)
-        except Exception as exc:  # pragma: no cover — env-specific
-            log.warning("resync_all failed for agent=%s: %s", ag.agent_type, exc)
-            errors.append({"agent_type": ag.agent_type, "error": str(exc)})
+        except Exception as exc:
+            await session.rollback()
+            log.warning("resync_all failed for agent=%s: %s", agent_type, exc)
+            errors.append({"agent_type": agent_type, "error": str(exc)})
     return {
-        "agents_total": len(rows),
+        "agents_total": len(targets),
         "successes": successes,
         "errors": errors,
     }

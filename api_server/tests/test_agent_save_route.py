@@ -160,3 +160,21 @@ async def test_invalid_value_rejected_before_saving(db_client) -> None:
     errors = resp.json()["error"]["details"]["errors"]
     assert any(e["loc"][:2] == ["body", "response_config"] for e in errors)
     _assert_stored((await db_client.get(f"/api/agents/{_KEY}")).json(), body)
+
+
+async def test_resync_all_collects_failures_and_goes_on(db_client, reject_sample_rows) -> None:
+    """한 agent 의 표본 행이 거절돼도 나머지를 하고 errors 에 남긴다.
+
+    예전에는 첫 실패 뒤 만료된 행을 읽다가 PendingRollbackError 로 500 이었다.
+    """
+    reject_sample_rows["times"] = 0
+    for key in ("he-a-first", "he-b-second"):
+        resp = await db_client.post("/api/agents", json={**_operator(), "agent_type": key})
+        assert resp.status_code == 201, resp.text
+    reject_sample_rows["times"] = 1  # 첫 agent 의 첫 행만 거절
+    resp = await db_client.post("/api/agents/resync-samples-all")
+    assert resp.status_code == 200, resp.text
+    out = resp.json()
+    assert out["agents_total"] == 2
+    assert [e["agent_type"] for e in out["errors"]] == ["he-a-first"]
+    assert [s["agent_type"] for s in out["successes"]] == ["he-b-second"]
