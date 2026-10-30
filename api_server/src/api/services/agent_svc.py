@@ -7,7 +7,8 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.db.models import Agent, AgentHistory, AgentRecord, Record
+from api.db.models import Agent, AgentHistory, Record
+from api.services.sql_compat import array_overlap
 
 log = logging.getLogger(__name__)
 
@@ -355,12 +356,19 @@ async def resync_all_agent_samples(session: AsyncSession) -> dict:
 
 
 async def records_for_agent(session: AsyncSession, agent_type: str) -> list[Record]:
-    """`agents.agent_type` 매핑된 레코드(우선순위 내림차순)."""
+    """좌석에 묶인 레코드(지운 것은 빼고 최근 적재순).
+
+    묶음의 정본은 ``records.agents`` 다(AD-20). 추천의 기록 수 · agent_search 범위 ·
+    discover 의 기록 수 · ``list_records``(포털 전문가 보기)가 모두 이 배열을 보고, 적재 ·
+    자동 바인딩(bind-matching) · 레코드 PATCH · 전문가 삭제가 모두 이 배열을 고친다.
+    예전에는 ``agent_records`` 로 목록을 냈는데, 그 표는 자동 바인딩 · PATCH 가 채우지 않고
+    박스 병합이 행을 지우지 않아 추천이 센 기록과 이 목록이 어긋났다. 지운 레코드는
+    추천 · discover 가 세지 않으므로 여기서도 뺀다.
+    """
+    pred = array_overlap(Record.agents, [agent_type], session)
     stmt = (
         select(Record)
-        .join(AgentRecord, AgentRecord.record_id == Record.id)
-        .where(AgentRecord.agent_type == agent_type)
-        .order_by(AgentRecord.priority.desc(), Record.created_at.desc())
+        .where(pred.where_clause, Record.deleted_at.is_(None))
+        .order_by(Record.created_at.desc())
     )
-    rows = (await session.execute(stmt)).scalars().unique().all()
-    return list(rows)
+    return pred.apply_python((await session.execute(stmt)).scalars().all())
