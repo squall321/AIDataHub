@@ -172,13 +172,29 @@ _DRM_WHY = {
     "NASCA": "사내 DRM(NASCA)으로 암호화된 문서라 서버가 열 수 없습니다.",
     "OLE": "암호화(DRM · 암호)돼 있거나 구형 형식(.ppt · .doc · .xls)이라 서버가 열 수 없습니다.",
 }
-# 할 일 — 포털이 같은 파일에 띄우는 안내(DocExtractHint · docs/chat-ppt B)와 같은 길이다.
-# PC 도우미는 PPT · Word · PDF 만 연다.
-_DRM_HINT = (
-    "사내 DRM 문서는 그 PC · 그 계정에서만 풀립니다. "
-    "PPT · Word · PDF 는 HWAX 포털 챗에 붙이면 뜨는 "
-    "'PC 의 PowerPoint(또는 Word) 로 열어 가져오기'(PC 도우미)로 글을 뽑아 올리세요."
+# 할 일 — PPT · Word · PDF 는 포털이 같은 파일에 띄우는 안내(DocExtractHint ·
+# docs/chat-ppt B)와 같은 길이고 단추 이름도 포털 그대로다(PDF 도 Word).
+# PC 도우미는 Excel · md 를 열지 않는다(포털 hwax-doc-extract.ps1).
+_PC_APP = {SourceFormat.PPTX: "PowerPoint", SourceFormat.DOCX: "Word", SourceFormat.PDF: "Word"}
+_DRM_HINT_PC = (
+    "HWAX 포털 챗에 붙이면 뜨는 "
+    "'PC 의 {app} 로 열어 가져오기'(PC 도우미)로 글을 뽑아 올리세요."
 )
+_DRM_HINT_OTHER = "PC 에서 파일을 열어 필요한 내용을 복사해 챗에 붙여 넣으세요."
+# OLE 는 암호만 건 새 형식이거나 확장자만 바꾼 구형일 수 있다 — 다시 저장하면 서버가 읽는다.
+_OLE_RESAVE = (
+    "암호만 걸렸거나 구형이면 암호를 풀고 "
+    "새 형식(.pptx · .docx · .xlsx)으로 다시 저장해 올려도 됩니다."
+)
+
+
+def _drm_message(head: str, fmt: SourceFormat) -> str:
+    """무엇이 + 할 일을 한 줄로. HWAX 포털은 MCP 결과의 error 칸 첫 줄을 220자까지만 화면에 낸다."""
+    app = _PC_APP.get(fmt)
+    parts = [_DRM_WHY[head], _DRM_HINT_PC.format(app=app) if app else _DRM_HINT_OTHER]
+    if head == "OLE":
+        parts.append(_OLE_RESAVE)
+    return " ".join(parts)
 
 
 def _encrypted_head(file_path: Path) -> str | None:
@@ -212,7 +228,7 @@ def convert_file(
     # 임시 폴더를 만들기 전에 거른다.
     head = _encrypted_head(file_path)
     if head is not None:
-        raise DrmProtectedError(f"{_DRM_WHY[head]} {_DRM_HINT}", details={"header": head})
+        raise DrmProtectedError(_drm_message(head, fmt), details={"header": head})
 
     output_dir = req.resolved_output_dir()
 

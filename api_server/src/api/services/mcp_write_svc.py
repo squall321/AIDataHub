@@ -512,8 +512,9 @@ async def run_convert(
         payload = await asyncio.to_thread(convert_file, path, fmt, req)
     except DrmProtectedError as exc:
         # 암호화 문서는 '손상' 이 아니다 — 따로 알리고 할 일을 준다(AD-03).
-        # 서버 inbox 경로는 싣지 않는다.
-        return {"status": "error", "error": f"drm protected: {exc.details.get('header')} header",
+        # error 칸에 무엇이 + 할 일을 싣는다 — HWAX 포털은 status=error 면 error 칸만 화면에 낸다
+        # (code · suggestion 은 닿지 않는다). 서버 inbox 경로는 싣지 않는다.
+        return {"status": "error", "error": exc.message,
                 "code": "drm_protected", "recoverable": False, "suggestion": exc.message}
     except Exception as exc:  # noqa: BLE001 — 변환 실패 전반
         return {"status": "error", "error": f"conversion failed: {exc}"[:200],
