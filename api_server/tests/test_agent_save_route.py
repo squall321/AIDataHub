@@ -1,4 +1,4 @@
-# POST · PATCH /api/agents 가 저장한 뒤 500 을 내지 않는지 — 운영자 동기화가 멈추던 것(AD-21)
+# 전문가 저장(REST · MCP)이 저장 뒤 500 을 내지 않는지, 표본 색인 상태가 참인지(AD-21)
 """agent 행을 커밋한 뒤 같은 세션에서 표본 임베딩 동기화가 돈다. 그 표본 행 INSERT 가
 flush 에서 실패하면 SQLAlchemy 는 세션을 '롤백 대기' 로 두고 붙어 있던 행을 모두 만료시킨다
 — 방금 커밋한 agent 까지. 응답(AgentOut.model_validate)이 그 행을 읽다가 칸마다
@@ -8,6 +8,14 @@ flush 에서 실패하면 SQLAlchemy 는 세션을 '롤백 대기' 로 두고 �
 까닭 줄은 서버 로그에 있다).
 실패는 표본 행 INSERT 를 막는 매퍼 이벤트로 흉내 낸다. 실 PG 의 거절(차원 · 길이 등)과
 세션에 남는 꼴이 같다.
+
+적대 검토(10-30)가 더 찾은 것 — MCP create_agent · patch_agent 는 입력 모델을 거치지 않아 응답
+모델이 못 읽는 값을 저장했고(그 agent 의 REST 수정은 저장한 뒤 500), 저장 응답의 표본 색인
+상태는 기본값(0 · 거짓)이라 색인 실패를 가렸다. 표본 글만 바꾸고 수가 같으면 GET 도 낡음을
+못 봤고, resync-samples-all 은 첫 실패에서 500 이었다.
+
+SQLite 시험은 aiosqlite 가 있어야 돈다(본 venv 에는 없다 — docs/embedder-bge-m3.md '시험').
+맨 아래 둘은 DB 없이 돌아 본 venv 에서도 고침을 지킨다.
 """
 from __future__ import annotations
 
@@ -19,10 +27,8 @@ try:
 except ImportError:  # pragma: no cover
     aiosqlite_available = False
 
-pytestmark = [
-    pytest.mark.asyncio,
-    pytest.mark.skipif(not aiosqlite_available, reason="aiosqlite 미설치"),
-]
+pytestmark = [pytest.mark.asyncio]
+_sqlite = pytest.mark.skipif(not aiosqlite_available, reason="aiosqlite 미설치")
 
 _KEY = "he-calc-laminate"
 
@@ -99,6 +105,7 @@ def mcp_db(test_session_maker, monkeypatch):
     return mcp_write_svc
 
 
+@_sqlite
 async def test_operator_payload_post_then_patch_round_trips(db_client) -> None:
     body = _operator()
     resp = await db_client.post("/api/agents", json=body)
@@ -125,6 +132,7 @@ async def test_operator_payload_post_then_patch_round_trips(db_client) -> None:
     assert _index_state(got) == (len(patch["sample_queries"]), False)
 
 
+@_sqlite
 async def test_save_answers_after_sample_sync_fails(db_client, reject_sample_rows) -> None:
     """표본 행이 거듭 거절돼도 저장한 값으로 2xx 를 낸다.
 
@@ -147,6 +155,7 @@ async def test_save_answers_after_sample_sync_fails(db_client, reject_sample_row
     assert _index_state(got) == (0, True)
 
 
+@_sqlite
 async def test_failed_reindex_with_same_count_is_stale(db_client, reject_sample_rows) -> None:
     """표본 글만 바꾸고 수는 그대로인 저장의 재색인이 실패하면 롤백이 옛 행을 남긴다.
 
@@ -167,6 +176,7 @@ async def test_failed_reindex_with_same_count_is_stale(db_client, reject_sample_
     assert _index_state(listed[_KEY]) == (len(new), True)
 
 
+@_sqlite
 async def test_save_answers_when_retry_recovers(db_client, reject_sample_rows) -> None:
     """한 번 거절된 뒤 다시 시도가 붙어도 응답이 저장한 값을 읽는다.
 
@@ -183,6 +193,7 @@ async def test_save_answers_when_retry_recovers(db_client, reject_sample_rows) -
     assert _index_state(got) == (len(body["sample_queries"]), False)
 
 
+@_sqlite
 async def test_invalid_value_rejected_before_saving(db_client) -> None:
     """응답 모델이 못 받는 값은 입력 모델(AgentIn · AgentPatch)이 저장 전에 422 로 거절한다.
 
@@ -214,6 +225,7 @@ async def test_invalid_value_rejected_before_saving(db_client) -> None:
     _assert_stored((await db_client.get(f"/api/agents/{_KEY}")).json(), body)
 
 
+@_sqlite
 async def test_mcp_write_checks_values_like_rest(db_client, mcp_db) -> None:
     """MCP create_agent · patch_agent 도 REST 와 같은 입력 모델로 저장 전에 거른다.
 
@@ -239,6 +251,7 @@ async def test_mcp_write_checks_values_like_rest(db_client, mcp_db) -> None:
     assert (await db_client.get("/api/agents")).status_code == 200
 
 
+@_sqlite
 async def test_mcp_write_reports_real_index_state(mcp_db, reject_sample_rows) -> None:
     """표본 색인이 실패하면 MCP 결과도 그렇게 말한다.
 
@@ -251,6 +264,7 @@ async def test_mcp_write_reports_real_index_state(mcp_db, reject_sample_rows) ->
         "patched", 0, True)
 
 
+@_sqlite
 async def test_resync_all_collects_failures_and_goes_on(db_client, reject_sample_rows) -> None:
     """한 agent 의 표본 행이 거절돼도 나머지를 하고 errors 에 남긴다.
 
@@ -267,3 +281,50 @@ async def test_resync_all_collects_failures_and_goes_on(db_client, reject_sample
     assert out["agents_total"] == 2
     assert [e["agent_type"] for e in out["errors"]] == ["he-a-first"]
     assert [s["agent_type"] for s in out["successes"]] == ["he-b-second"]
+
+
+# ---- DB 없이 도는 것(본 venv 에서도 공식 시험에서 실행된다) ----
+async def test_mcp_rejects_before_opening_a_session(monkeypatch) -> None:
+    """MCP 쪽 거르기는 세션을 열기 전에 끝난다 — 틀린 값은 DB 에 닿지 않는다."""
+    from api.services import mcp_write_svc
+
+    def _no_db():
+        raise AssertionError("거르지 않고 세션을 열었다")
+
+    monkeypatch.setattr(mcp_write_svc, "SessionLocal", _no_db)
+    bad = await mcp_write_svc.create_agent(
+        agent={**_operator(), "retrieval_config": [["top_k", 5]]})
+    assert (bad["code"], bad["fields"]) == ("invalid_field", ["retrieval_config"]), bad
+    bad = await mcp_write_svc.patch_agent(
+        agent_type=_KEY, patch={"common_tags": ["HE팀", None], "data_types": "DOC"})
+    assert (bad["code"], bad["fields"]) == ("invalid_field", ["common_tags", "data_types"]), bad
+    assert "common_tags.1" in bad["error"]
+
+
+async def test_sync_failure_rolls_back_and_rereads_the_agent(monkeypatch) -> None:
+    """표본 동기화가 실패할 때마다 세션을 롤백하고 agent 를 다시 읽는다(고침의 핵심).
+
+    롤백이 없으면 다시 시도도 PendingRollbackError 이고, 다시 읽기가 없으면 응답이 만료된 행을
+    읽는다. 위 SQLite 시험이 실제 세션으로 같은 것을 본다.
+    """
+    from types import SimpleNamespace
+
+    from api.services import agent_svc, sample_embedding_svc
+
+    calls: list = []
+
+    class _Session:
+        async def rollback(self) -> None:
+            calls.append("rollback")
+
+        async def refresh(self, obj) -> None:
+            calls.append(("refresh", obj.agent_type))
+
+    async def _rejected(_session, *, agent_type, sample_queries):
+        calls.append(("sync", agent_type))
+        raise RuntimeError("expected 1024 dimensions, not 768 (시험이 낸 거절)")
+
+    monkeypatch.setattr(sample_embedding_svc, "sync_agent_samples", _rejected)
+    await agent_svc._sync_samples_safely(
+        _Session(), agent=SimpleNamespace(agent_type=_KEY), samples=["질문"])
+    assert calls == [("sync", _KEY), "rollback", ("refresh", _KEY)] * 2
