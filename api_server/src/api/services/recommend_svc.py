@@ -66,7 +66,7 @@ _STOPWORDS = {
     # 대화체·요청
     "토론", "논의", "얘기", "이야기", "대해", "대한", "관련", "알려", "설명", "싶어", "하고",
     "해줘", "진행", "궁금", "질문", "문의", "우리", "제가", "내가", "했는데", "한데",
-    "근거", "기록",  # 요청 낱말 — 아래 _REQUEST_PREFIXES 주석
+    "근거", "기록", "전문",  # 요청 낱말 — 아래 _REQUEST_PREFIXES 주석
     # 결함 라이프사이클(범용)
     "불량", "원인", "증상", "해법", "해결", "방법", "대책", "방안", "분석", "문제", "이슈",
     "현상", "개선", "검토", "평가", "영향", "발생", "사례", "관점", "종합", "전반",
@@ -78,10 +78,12 @@ _STOPWORDS = {
 # 요청 낱말 — '전문가를 추천해 줘 · 근거가 된 기록 수를 알려 줘' 는 해 달라는 말이지
 # 분야가 아니다(AD-19). 겹침 항에 남으면 이름 · 설명에 이 말이 든 무관한 전문가가 가점을
 # 받는다(DW-13 — 로그 플랫폼 · MCP 레지스트리). '전문가' 는 이름에 거의 다 들어 있어
-# (dev 10-30 — 796명 중 776명) 가리는 힘도 없다. 어미('추천하고' · '찾아줘' · '알려줘')는
-# 조사 떼기가 못 떼므로 앞부분으로 본다. '근거' · '기록' 은 '근거리' 처럼 앞이 같은 분야
-# 낱말이 있어 앞부분으로 보지 않고 _STOPWORDS 에 둔다(조사를 뗀 꼴로 걸린다).
-_REQUEST_PREFIXES = ("전문가", "에이전트", "추천", "찾", "알려")
+# (dev 10-30 — 796명 중 776명) 가리는 힘도 없다. 영어 이름 끝의 Specialist · Expert · Agent
+# 도 같다(이름 505 · 194 · 50명). 어미('추천하고' · '찾아줘' · '알려줘')는 조사 떼기가 못
+# 떼므로 앞부분으로 본다. '근거' · '기록' · '전문' 은 '근거리' · '전문검색' 처럼 앞이 같은 분야
+# 낱말이 있어 앞부분으로 보지 않고 _STOPWORDS 에 둔다(조사를 뗀 꼴로 걸린다 — '전문으로' ·
+# '전문의').
+_REQUEST_PREFIXES = ("전문가", "에이전트", "추천", "찾", "알려", "expert", "specialist", "agent")
 # 한국어 조사 — 토큰 끝에서 떼어 어간을 얻는다("불량의"→"불량", "휨은"→"휨"). 긴 것부터 시도.
 _JOSA = ("으로써", "으로", "에서", "에게", "까지", "부터", "보다", "처럼", "라도", "이나",
          "조차", "마저", "에는", "에도", "을", "를", "이", "가", "은", "는", "의", "에",
@@ -300,6 +302,8 @@ async def recommend_agents(
     all_metas = (await session.execute(select(Agent))).scalars().all()
     meta_by_type = {a.agent_type: a for a in all_metas}
     agent_desc_match: dict[str, float] = {}
+    # 기록 · 표본 신호가 0 이고 어휘 일치도 약한 전문가 — 점수와 상관없이 순위 맨 뒤(AD-19).
+    weak_only: set[str] = set()
     qtok = _query_terms(search_query)  # 조사·불용어 제거 후 distinctive 토큰만(확장 질의)
     if qtok:
         for a in all_metas:
@@ -311,23 +315,29 @@ async def recommend_agents(
             hits = sum(1 for t in qtok if t in profile)
             if hits:
                 frac = hits / len(qtok)
-                # 기록 · 표본 신호가 0 인 전문가는 역할이 질의를 덮는다고 볼 만큼
-                # (_LOW_CONF_DESC) 일치할 때만 겹침으로 오른다(AD-19). 그보다 약한 일치는
-                # 낱말 한두 개가 우연히 겹친 것이고, 전문가가 수백 명이면 늘 있다(dev 10-30 —
-                # 요청 낱말을 뺀 뒤에도 DW-13 질의에 796명 중 260명이 '내부' · '된' 등으로
-                # 겹친다). 강한 이름 · 설명 일치로 데이터 얇은 적합 전문가를 올리는 길
-                # (9b6ee6e 'PCB 휨')은 그대로 둔다.
-                if a.agent_type not in all_ats and frac < _LOW_CONF_DESC:
-                    continue
+                # 기록 · 표본 신호가 0 인 전문가는 역할이 질의를 덮을 때 — 질의어의
+                # _LOW_CONF_DESC 이상이고 낱말 둘 이상(질의어가 하나면 하나) — 만 점수대로
+                # 선다(AD-19). 그보다 약한 일치는 낱말 한두 개가 우연히 겹친 것이고, 전문가가
+                # 수백 명이면 늘 있다(dev 10-30 — 요청 낱말을 뺀 뒤에도 DW-13 질의에 796명 중
+                # 260명이 '내부' · '된' 등으로 겹친다). 그런 전문가는 빼지 않고 근거가 있는
+                # 전문가 뒤로 미룬다. 비율은 기능어('잘' · '아는' · '있나요?')가 분모를 키우면
+                # 맞는 전문가도 밑으로 내려가고, 심의 후보(top_k 40) · 띵킹 예심(desc_match
+                # 0.15) · 임베딩이 빈 강등 상태(모두 신호 0)는 이 목록에서 고르기 때문이다.
+                # 강한 이름 · 설명 일치로 데이터 얇은 적합 전문가를 올리는 길(9b6ee6e 'PCB 휨')은
+                # 그대로 둔다.
+                if a.agent_type not in all_ats and (
+                        frac < _LOW_CONF_DESC or hits < min(2, len(qtok))):
+                    weak_only.add(a.agent_type)
                 agent_desc_match[a.agent_type] = frac
                 agent_score[a.agent_type] += _DESC_WEIGHT * frac
 
     if not agent_score:
         return []
 
-    # 5) ranked list — why 에 sample 매칭이 있으면 함께 표기
+    # 5) ranked list — why 에 sample 매칭이 있으면 함께 표기. 신호 없는 약한 일치(weak_only)는
+    #    점수와 상관없이 근거 있는 전문가 뒤에 선다(3d 주석).
     ranked: list[dict[str, Any]] = []
-    for at, sc in sorted(agent_score.items(), key=lambda kv: kv[1], reverse=True):
+    for at, sc in sorted(agent_score.items(), key=lambda kv: (kv[0] in weak_only, -kv[1])):
         meta = meta_by_type.get(at)
         # ⚠ agents 표에 없는 키는 내보내지 않는다. records.agents 는 FK 가 없어 좌석을 지워도
         # 문자열이 남고(고아 키), 예전에는 meta 가 None 이면 키 자체를 이름으로 써서 그대로
@@ -351,6 +361,8 @@ async def recommend_agents(
             )
         if agent_desc_match.get(at):
             why_parts.append(f"역할/설명 어휘 매칭 {agent_desc_match[at] * 100:.0f}%")
+        if at in weak_only:
+            why_parts.append("기록 · 표본 근거 없이 어휘만 약하게 겹쳐 근거 있는 전문가 뒤")
         ranked.append(
             {
                 "agent_type": at,
