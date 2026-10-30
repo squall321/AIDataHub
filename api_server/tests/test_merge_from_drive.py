@@ -1,4 +1,4 @@
-# merge-from-drive.sh — 운영에 없는 열을 알리고(3), m3 슬롯은 updated_at 과 상관없이 비어 있을 때 채우는지(10-17 cae00 리뷰 H1 · H1-b)
+# merge-from-drive.sh — 운영에 없는 열을 알리고(3), m3 슬롯은 updated_at 과 상관없이 비어 있을 때 채우는지(10-17 cae00 리뷰 H1 · H1-b), 표본은 id 로 덮지 않는지(10-30 AD-21 후속)
 from __future__ import annotations
 
 import json
@@ -75,6 +75,10 @@ elif sql.startswith("SELECT column_name FROM information_schema.columns"):
     print("\n".join(cols(side)))
 elif sql.startswith("SELECT count(*) FROM"):
     print("3")
+elif sql.startswith("SELECT pg_get_serial_sequence"):
+    print(f"public.{table()}_id_seq")
+elif sql.startswith("WITH want AS"):
+    pass  # 표본 색인이 sample_queries 와 다른 agent 없음
 else:
     print("unexpected sql: " + sql, file=sys.stderr)
     sys.exit(9)
@@ -164,6 +168,20 @@ def test_updated_at_조건이_없는_표는_슬롯을_따로_채우지_않는다
     assert r.returncode == 0, r.stdout + r.stderr
     s = sessions["record_sections"]
     assert "UPDATE public.record_sections" not in s and " WHERE " not in s.split("ON CONFLICT", 1)[1], s
+
+
+def test_표본은_id_로_덮지_않고_agent_단위로_맞춘다(merge):
+    """dev 의 대리 키(id)로 맞추면(ON CONFLICT (id)) 이 박스의 다른 agent 행을 덮고 순번이 뒤처져 다음 표본 저장이 겹친 id 로
+    거절된다(10-30 AD-21 후속). 동작은 실 PostgreSQL 시험(test_merge_samples_pg, opt-in)이 본다 — 여기서는 기본 시험으로 꼴만 지킨다."""
+    agents = ["agent_type", "sample_queries", "updated_at"]
+    samples = ["id", "agent_type", "sample_text", "embedding", "created_at"]
+    r, sessions = merge({"agents": agents, "agent_sample_embeddings": samples},
+                        {"agents": agents, "agent_sample_embeddings": samples})
+    assert r.returncode == 0, r.stdout + r.stderr
+    s = sessions["agent_sample_embeddings"]
+    assert "ON CONFLICT" not in s, s
+    assert "setval('public.agent_sample_embeddings_id_seq'" in s, s
+    assert "INSERT INTO public.agent_sample_embeddings (agent_type,sample_text,embedding,created_at) SELECT" in s, s
 
 
 def test_병합_실패는_열_빠짐보다_먼저_1로_끝난다(merge):

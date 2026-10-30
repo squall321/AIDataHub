@@ -2,6 +2,7 @@
 # AI Data Hub — Drive 의 dev 덤프를 cae00 운영 DB에 MERGE(추가/갱신)한다. DROP 하지 않는다.
 # cae00 에서 자체 등록한 에이전트·레코드는 유지하고, dev 신규는 추가, 양쪽에 있으면
 # updated_at 최신 우선(없으면 dev 로 갱신). staging DB 로 로드 후 테이블별 upsert(FK 순서).
+# 에이전트 표본 임베딩만은 행이 아니라 agent 단위로 맞춘다(아래 merge_samples).
 #
 #   bash deploy/apptainer/merge-from-drive.sh            # Drive 최신 덤프로 merge
 #   AIDH_MERGE_DUMP=/path/to.sql.gz bash ... merge-from-drive.sh   # 로컬 덤프 지정
@@ -138,6 +139,74 @@ SQL
   apptainer exec "instance://$INST" rm -f "$CFILE" 2>/dev/null
 }
 
+# 에이전트 표본 임베딩(agent_sample_embeddings)은 agents.sample_queries 의 파생 표다 — 저장할 때마다 그 agent 의 행을 통째로
+# 지우고 새로 넣는다(sample_embedding_svc.sync_agent_samples). id 는 박스마다 따로 매기는 순번이라 예전처럼 dev 의 id 로 맞추면
+# (ON CONFLICT (id)) 이 박스의 다른 agent 행을 덮고(he-x 의 표본이 he-y 로 바뀐다), dev 의 id 를 그대로 넣으면서 순번은 올리지
+# 않아 이 박스의 다음 표본 INSERT 가 겹친 id 로 거절됐다(10-30 요청 AD-21 — 저장 뒤 500 · 표본 색인 실패). 그래서 한 트랜잭션 ·
+# 표 쓰기 잠금 안에서 agent 단위로 맞춘다.
+#   ① 순번을 표의 가장 큰 id 뒤로 민다(앞으로만) — 예전 병합이 남긴 겹침부터 걷는다.
+#   ② 색인된 글이 그 agent 의 sample_queries(빈 글은 뺀다 — sync_agent_samples 와 같다)와 다른 agent 만 다시 짓는다 — 덤프의
+#      행 글이 꼭 같으면 그 행으로(벡터째, id 는 이 박스 순번), sample_queries 가 비었으면 지우기만. 맞는 agent 의 행은 그대로다.
+#   ③ 그래도 다른 agent 는 이 박스의 임베더로만 고칠 수 있다 — 병합 실패가 아니라 이름째 알린다.
+SAMPLE_WANT_HAVE="want AS (
+    SELECT a.agent_type::text AS agent_type,
+           COALESCE((SELECT array_agg(q ORDER BY q) FROM unnest(a.sample_queries) q WHERE q ~ '[^[:space:]]'), '{}') AS t
+      FROM public.agents a),
+  have AS (SELECT agent_type, array_agg(sample_text ORDER BY sample_text) AS t FROM public.agent_sample_embeddings GROUP BY agent_type)"
+
+merge_samples() {
+  local t=agent_sample_embeddings _tex _sex _pc _sc _miss cols seq out n_take n_drop seqv stale
+  _tex="$(PSQL -d "$DB" -tA -c "SELECT to_regclass('public.$t') IS NOT NULL;" 2>/dev/null)"
+  case "$_tex" in t) : ;; f) echo "    · $t: 운영에 없음 — skip"; return 0 ;; *) echo "    ✗ $t: 운영 DB 조회 실패(접속·인증 확인)" >&2; return 1 ;; esac
+  _sex="$(STAGE_SQL -tA -c "SELECT to_regclass('public.$t') IS NOT NULL;" 2>/dev/null)"
+  case "$_sex" in t) : ;; f) echo "    · $t: staging 에 없음 — skip"; return 0 ;; *) echo "    ✗ $t: staging 조회 실패" >&2; return 1 ;; esac
+  _pc="$(PSQL -d "$DB" -tA -c "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='$t';" | sort)"
+  _sc="$(STAGE_SQL -tA -c "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='$t';" | sort)"
+  _miss="$(comm -13 <(printf '%s\n' "$_pc") <(printf '%s\n' "$_sc") | grep -v '^$' | paste -sd',' - || true)"
+  if [ -n "$_miss" ]; then
+    echo "    ⚠ $t: dev 에만 있는 열 — $_miss — 운영 DB 이행이 늦어 이 병합에서 빠졌다(이행 뒤 merge-from-drive.sh 를 한 번 더)"
+    COLS_MISSING="${COLS_MISSING:-} $t"
+  fi
+  cols="$(PSQL -d "$DB" -tA -c "SELECT string_agg(quote_ident(column_name),',' ORDER BY ordinal_position) FROM information_schema.columns WHERE table_schema='public' AND table_name='$t' AND column_name <> ALL (string_to_array('id',','));")"
+  seq="$(PSQL -d "$DB" -tA -c "SELECT pg_get_serial_sequence('public.$t','id');")"
+  [ -n "$seq" ] || { echo "    ✗ $t: id 순번을 찾지 못했다" >&2; return 1; }
+
+  apptainer exec "instance://$INST" rm -f "$CFILE" 2>/dev/null
+  STAGE_SQL -v ON_ERROR_STOP=1 -q -c "COPY (SELECT $cols FROM public.$t) TO '$CFILE' (FORMAT binary);" 2>>/tmp/aidh-merge.log \
+    || { echo "    ✗ $t: staging COPY 실패"; return 1; }
+  # 잠금은 쓰기만 막는다(API 의 표본 저장 · 백필이 이 짧은 트랜잭션을 기다린다). 오래 쥔 트랜잭션이 있으면 줄 뒤의 쓰기까지 세우지 않게 10초만 기다린다.
+  if ! out="$(PSQL -d "$DB" -v ON_ERROR_STOP=1 -qtA 2>>/tmp/aidh-merge.log <<SQL
+BEGIN;
+SET LOCAL lock_timeout = '10s';
+LOCK TABLE public.$t IN SHARE ROW EXCLUSIVE MODE;
+CREATE TEMP TABLE _seq ON COMMIT DROP AS
+  SELECT setval('$seq', x.m) AS v FROM (SELECT max(id) AS m FROM public.$t) x, $seq s
+   WHERE x.m > s.last_value - CASE WHEN s.is_called THEN 0 ELSE 1 END;
+CREATE TEMP TABLE _mg ON COMMIT DROP AS SELECT $cols FROM public.$t WITH NO DATA;
+COPY _mg ($cols) FROM '$CFILE' (FORMAT binary);
+CREATE TEMP TABLE _fix ON COMMIT DROP AS
+  WITH $SAMPLE_WANT_HAVE,
+  dev AS (SELECT agent_type, array_agg(sample_text ORDER BY sample_text) AS t FROM _mg GROUP BY agent_type)
+  SELECT w.agent_type, COALESCE(d.t = w.t, false) AS take
+    FROM want w LEFT JOIN have h USING (agent_type) LEFT JOIN dev d USING (agent_type)
+   WHERE COALESCE(h.t, '{}') IS DISTINCT FROM w.t AND (w.t = '{}' OR d.t = w.t);
+DELETE FROM public.$t e USING _fix f WHERE e.agent_type = f.agent_type;
+INSERT INTO public.$t ($cols) SELECT $cols FROM _mg WHERE agent_type IN (SELECT agent_type FROM _fix WHERE take);
+SELECT count(*) FILTER (WHERE take), count(*) FILTER (WHERE NOT take), (SELECT max(v) FROM _seq) FROM _fix;
+COMMIT;
+SQL
+)"; then
+    echo "    ✗ $t: merge 실패 — /tmp/aidh-merge.log 확인"; apptainer exec "instance://$INST" rm -f "$CFILE" 2>/dev/null; return 1
+  fi
+  apptainer exec "instance://$INST" rm -f "$CFILE" 2>/dev/null
+  IFS='|' read -r n_take n_drop seqv <<<"$out"
+  echo "    ✓ $t: 덤프 판으로 다시 지은 agent ${n_take} · 지우기만 ${n_drop}${seqv:+ · 순번을 $seqv 로 올림} (총 $(PSQL -d "$DB" -tA -c "SELECT count(*) FROM $t;")행)"
+  if ! stale="$(PSQL -d "$DB" -tA -c "WITH $SAMPLE_WANT_HAVE SELECT w.agent_type FROM want w LEFT JOIN have h USING (agent_type) WHERE COALESCE(h.t, '{}') IS DISTINCT FROM w.t ORDER BY 1;")"; then
+    echo "    ⚠ $t: 색인이 sample_queries 와 다른 agent 를 세지 못했다"; return 0
+  fi
+  [ -z "$stale" ] || echo "    ⚠ $t: 색인된 표본 글이 sample_queries 와 다른 agent $(printf '%s\n' "$stale" | grep -c .)개 — 덤프에 맞는 행이 없어 이 박스의 임베더로 다시 지어야 한다: $(printf '%s\n' "$stale" | head -10 | paste -sd' ' -) — 끝난 뒤 이 박스에서: curl -fsS -X POST http://127.0.0.1:${API_PORT:-8001}/api/agents/resync-samples-all"
+}
+
 echo "→ 테이블 merge (부모→자식 순)"
 : > /tmp/aidh-merge.log
 # 한 테이블 실패가 나머지와 staging 정리까지 막지 않게 실패를 모아 마지막에 판정한다.
@@ -154,7 +223,8 @@ try_merge agent_records          "agent_type,record_id" ""
 # ↓ id 가 대리키(nextval)라 자연키로 충돌 판정하고 id 는 운영 시퀀스에 맡긴다.
 try_merge record_sections        "record_id,section_id" ""          "id"
 try_merge record_attachments     "id"                   ""
-try_merge agent_sample_embeddings "id"                  ""
+# ↓ 파생 표 — 행의 id 가 아니라 agent 단위로(agents 다음이어야 한다 — 병합된 sample_queries 를 본다).
+merge_samples || FAILED="$FAILED agent_sample_embeddings"
 try_merge external_id_map        "source,external_id"   ""          "id"
 try_merge mcp_upstreams          "alias"                ""
 
