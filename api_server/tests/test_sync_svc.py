@@ -63,6 +63,12 @@ def test_mxwp_rules_turn_on_the_summary_fallback():
     assert out.get("summary") == _LONG[:300]
 
 
+def test_mxwp_lists_only_org_audience():
+    # MXWP 목록의 기본 범위는 audience=mine(부른 사람이 보는 문서)이다. 허브로 밀어낼 때는 org 만 —
+    # MXWhitePaper docs/llm-wiki checklist 'AIDataHub 는 ?audience=org'. list_filter 는 query string 으로 간다.
+    assert _yml_rules("mxwp")["list_filter"] == {"status": "published", "audience": "org"}
+
+
 # ---------------------------------------------------------------------------
 # 상세 조회 실패 — 목록 응답(메타뿐)으로 변환해 있던 본문을 빈 「본문」 한 절로 덮던 것.
 # ---------------------------------------------------------------------------

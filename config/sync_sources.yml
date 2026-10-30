@@ -137,6 +137,9 @@ sources:
       language: ko
       list_filter:
         status: published
+        # 목록의 기본 범위는 audience=mine(부른 사람이 보는 문서)이다 — 허브로 밀어낼 때는 org 범위만 받는다
+        # (MXWhitePaper docs/llm-wiki checklist 'AIDataHub 는 ?audience=org', 10-27 검토 AD-17).
+        audience: org
       sections_field: sections
       attachments_field: "content.attachments"
       attachment_mode: url_ref
