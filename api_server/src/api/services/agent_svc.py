@@ -96,7 +96,7 @@ async def create_agent(
     await session.refresh(agent)
     # v0.13.0 — sample_queries 가 있으면 임베딩 동기화 (best-effort).
     if agent.sample_queries:
-        await _sync_samples_safely(session, agent_type=agent.agent_type, samples=list(agent.sample_queries))
+        await _sync_samples_safely(session, agent=agent, samples=list(agent.sample_queries))
     return agent
 
 
@@ -134,25 +134,33 @@ async def update_agent(
     await session.commit()
     await session.refresh(agent)
     if samples_changed:
-        await _sync_samples_safely(session, agent_type=agent.agent_type, samples=new_samples)
+        await _sync_samples_safely(session, agent=agent, samples=new_samples)
     return agent
 
 
 async def _sync_samples_safely(
     session: AsyncSession,
     *,
-    agent_type: str,
+    agent: Agent,
     samples: list[str],
 ) -> None:
     """sample_embedding_svc.sync_agent_samples 호출. 임베딩 실패가 agent
     save 흐름을 깨지 않게 try/except. 1회 자동 retry — 첫 시도가 transient
     실패(rate limit / 일시 네트워크) 일 경우 자동 복구. 두 번 다 실패 시 UI 가
     'Resync samples' 버튼으로 수동 retry 가능.
+
+    실패할 때마다 세션을 롤백하고 agent 를 다시 읽는다. 표본 행 INSERT 가 flush 에서
+    실패하면 세션이 '롤백 대기' 로 남고 붙어 있던 행이 모두 만료된다 — 이미 커밋한 agent
+    까지. 그대로 두면 다시 시도도 PendingRollbackError 로 끝나고, 돌려받은 agent 를 읽는
+    응답(AgentOut.model_validate)이 칸마다 ValidationError 를 내 저장은 끝났는데 500 이
+    났다(10-28 cae00 운영자 동기화 실측, 10-30 요청 AD-21). 롤백이 되돌리는 것은 표본 행
+    교체뿐이다 — agent 행과 이력은 이미 커밋돼 있다.
     """
     import asyncio
 
     from . import sample_embedding_svc
 
+    agent_type = agent.agent_type
     last_exc: Exception | None = None
     for attempt in (1, 2):
         try:
@@ -168,6 +176,8 @@ async def _sync_samples_safely(
             return
         except Exception as exc:
             last_exc = exc
+            await session.rollback()
+            await session.refresh(agent)
             if attempt == 1:
                 await asyncio.sleep(0.5)
             continue
