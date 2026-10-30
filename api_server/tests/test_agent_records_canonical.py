@@ -112,3 +112,38 @@ async def test_list_and_counts_agree_across_write_paths(db_client, test_session_
         ranked = await recommend_svc.recommend_agents(s, query="낙하 충격 코너 응력", top_k=5)
     seat = next(r for r in ranked if r["agent_type"] == _AT)
     assert seat["matched_records"] == len(listed)
+
+
+@pytest.mark.asyncio
+async def test_duplicate_seat_key_counts_once(db_client, test_session_maker):
+    """PATCH 는 agents 의 겹친 키를 거르지 않는다 — discover 도 목록처럼 카드 한 장으로 센다."""
+    from api.services import recommend_svc
+
+    await _seed(test_session_maker)
+    resp = await db_client.patch(f"/api/records/{_R_PATCH}", json={"agents": [_AT, _AT]})
+    assert resp.status_code == 200, resp.text
+
+    listed = {r["id"] for r in (await db_client.get(f"/api/agents/{_AT}/records")).json()}
+    assert listed == {_R_INGEST, _R_BIND, _R_PATCH}
+    tax = (await db_client.get("/api/taxonomy/agents")).json()
+    assert next(i for i in tax["items"] if i["agent_type"] == _AT)["record_count"] == len(listed)
+    disc = (await db_client.get("/api/discover")).json()
+    assert next(a for a in disc["agents"] if a["agent_type"] == _AT)["record_count"] == len(listed)
+    async with test_session_maker() as s:
+        ranked = await recommend_svc.recommend_agents(s, query="낙하 충격 코너 응력", top_k=5)
+    assert next(r for r in ranked if r["agent_type"] == _AT)["matched_records"] == len(listed)
+
+
+@pytest.mark.asyncio
+async def test_records_for_agent_leaves_sections_unloaded(test_session_maker):
+    """목록 · 미리보기가 쓰지 않는 절(벡터 포함) · 첨부를 카드마다 끌어오지 않는다."""
+    from sqlalchemy import inspect
+
+    from api.services import agent_svc
+
+    await _seed(test_session_maker)
+    async with test_session_maker() as s:
+        rows = await agent_svc.records_for_agent(s, _AT)
+    assert {r.id for r in rows} == {_R_INGEST, _R_BIND}
+    for r in rows:
+        assert {"sections", "attachments"} <= inspect(r).unloaded, r.id

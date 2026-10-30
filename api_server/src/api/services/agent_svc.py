@@ -6,6 +6,7 @@ import logging
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import raiseload
 
 from api.db.models import Agent, AgentHistory, Record
 from api.services.sql_compat import array_overlap
@@ -364,11 +365,16 @@ async def records_for_agent(session: AsyncSession, agent_type: str) -> list[Reco
     예전에는 ``agent_records`` 로 목록을 냈는데, 그 표는 자동 바인딩 · PATCH 가 채우지 않고
     박스 병합이 행을 지우지 않아 추천이 센 기록과 이 목록이 어긋났다. 지운 레코드는
     추천 · discover 가 세지 않으므로 여기서도 뺀다.
+
+    절 · 첨부는 읽지 않는다(raiseload). 부르는 곳(목록 응답 RecordOut · RAG 미리보기의 ID)이
+    쓰지 않는데, 기본 selectin 이면 카드마다 절과 그 벡터까지 따라온다. 정본을 바꾸면서 자동
+    바인딩 · PATCH 로 묶인 카드도 이 목록에 들어와 좌석에 따라 수천 장이 된다.
     """
     pred = array_overlap(Record.agents, [agent_type], session)
     stmt = (
         select(Record)
         .where(pred.where_clause, Record.deleted_at.is_(None))
         .order_by(Record.created_at.desc())
+        .options(raiseload(Record.sections), raiseload(Record.attachments))
     )
     return pred.apply_python((await session.execute(stmt)).scalars().all())

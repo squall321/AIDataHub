@@ -270,7 +270,9 @@ async def build_discover_payload(
         .all()
     )
     for arr in all_agent_arrays:
-        for at in arr or []:
+        # 레코드마다 한 번 — 배열에 같은 키가 두 번 들어도(PATCH 는 거르지 않는다) 목록
+        # (GET /api/agents/{key}/records) · taxonomy · 추천처럼 카드 한 장으로 센다(AD-20).
+        for at in set(arr or []):
             if isinstance(at, str) and at:
                 agent_record_counts[at] = agent_record_counts.get(at, 0) + 1
 
@@ -687,7 +689,9 @@ def build_json_schema() -> dict[str, Any]:
         ],
         "x-relationships": {
             "parent_record_id": "self-FK to records.id (derived/translated/extracted documents)",
-            "agents": "agents[] ↔ agent_records (many-to-many junction with priority)",
+            "agents": "agents[] is the canonical seat binding (record lists, record counts, "
+                      "recommend and agent_search scope read it); agent_records is a priority "
+                      "side table filled at ingest (only /api/data ordering reads it)",
             "attachments": "GET /api/records/{id}/attachments",
             "sections": "GET /api/records/{id}/sections (DOC only)",
             "related_record_ids": "manual curation of cross-record relations",
@@ -743,7 +747,8 @@ _ALL_HINTS: dict[str, list[dict[str, str]]] = {
         {
             "hint": "agent 가 사용 가능한 레코드만 필터하려면 /api/data?agent=...",
             "sample_endpoint": "GET /api/data?agent=iga-analyst&query=offset&limit=5",
-            "why_useful": "agent_records junction + relevance score 정렬.",
+            "why_useful": "records.agents 로 후보를 고르고 "
+                          "agent_records priority + relevance score 로 정렬.",
         },
         {
             "hint": "agent 메타만 보려면 /api/agents/{agent_type}.",
