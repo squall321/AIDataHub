@@ -454,11 +454,14 @@ async def get_agent_session(agent_type: str) -> dict[str, Any]:
         "matched than were returned, `applied_config.agent_record_scope` is how many records "
         "the seat owns. Each hit's `snippet` is the whole section body. "
         "as_of (optional): ISO date 'YYYY-MM-DD' or datetime (its calendar date as written is "
-        "used) — excludes the seat's cards whose valid_from (the source's date) is after that "
-        "day; cards with no valid_from are kept unchecked. With as_of, applied_config echoes "
-        "`as_of` plus the counts `as_of_excluded_later` and `as_of_undated_kept`, and "
-        "`agent_record_scope` counts only the cards searched. An empty as_of means none; a "
-        "malformed one is an error, never a silent no-filter."
+        "used) — excludes the seat's cards whose valid_from (validity start: the source's date "
+        "for synced cards, the uploader's for uploads) is after that day. as_of_undated (with "
+        "as_of): 'keep' (default — cards with no valid_from stay, unchecked) | 'exclude' (drop "
+        "them too). With as_of, each hit carries `valid_from` (null = undated), and applied_config "
+        "echoes `as_of` plus the seat-wide counts `as_of_excluded_later` and "
+        "`as_of_undated_kept` (or `as_of_undated_excluded`); `agent_record_scope` counts only "
+        "the cards searched. Omit as_of (or pass '') for no cutoff; a malformed one, null "
+        "included, is an error, never a silent no-filter."
     ),
 )
 async def agent_search(
@@ -466,13 +469,15 @@ async def agent_search(
     q: str,
     mode: SearchMode = "semantic",
     top_k: int | None = None,
-    as_of: str | None = None,
+    as_of: str = "",
+    as_of_undated: Literal["keep", "exclude"] = "keep",
 ) -> dict[str, Any]:
     """Agent retrieval_config 를 자동 적용하는 agent-scoped 검색.
 
     동작:
         1. agent 의 retrieval_config (top_k / score_threshold / data_type_filter / tag_boost) 로드
-        2. agent 소속 record_ids 로 검색 범위 제한 (as_of 면 valid_from 이 그 날 뒤인 카드는 뺀다)
+        2. agent 소속 record_ids 로 검색 범위 제한 (as_of 면 valid_from 이 그 날 뒤인 카드는 뺀다 —
+           날짜 없는 카드는 as_of_undated 가 'exclude' 일 때만 뺀다)
         3. required_tags / excluded_tags 후필터
         4. score_threshold 미달 결과 제거
         5. tag_boost 가중치 적용 후 재정렬
@@ -484,7 +489,8 @@ async def agent_search(
     from .services.recommend_svc import expand_query
 
     # 날짜가 틀리면 DB 를 열기 전에 오류로 돌려준다 — 거르지 못한 결과를 거른 것처럼 주면
-    # 소급 심의가 그 날 뒤의 카드를 모른 채 근거로 쓴다.
+    # 소급 심의가 그 날 뒤의 카드를 모른 채 근거로 쓴다. as_of 를 `str | None` 으로 두면 MCP 층
+    # (FastMCP)이 글을 JSON 으로 먼저 풀어 글 "null" 이 None(안 줌)이 됐다 — 그래서 `str` 이다.
     as_of_date = _parse_as_of(as_of)
 
     # 구어로 물으면 **전문가가 거절한다** — 자료는 있는데 말이 안 맞아 점수가 임계 밑으로 떨어진다
@@ -546,19 +552,22 @@ async def agent_search(
             seat_rows = list((await session.execute(fb_stmt)).all())
         agent_record_ids = [rid for rid, _vf in seat_rows]
 
-        # as_of — 그 날까지 있던 카드만 찾는다. 믿을 날짜는 valid_from(동기화가 원천 날짜로
-        # 채운다 — sync_svc transform_record 10.)이고, created_at 은 허브에 적재한 날이라
-        # 쓰지 않는다. 날짜 없는 카드는 **남기고 센다** — 업로드 · 가져오기 카드는 올린 쪽이
-        # 날짜를 줄 때만 차고 논문 카드 길은 주지 않아, 빼면 지식만 가진 좌석이 통째로
-        # 빈다(HWAXPortal docs/delib-engine-feedback D-15 — 그래서 as_of 를 미뤘었다).
-        # 그 날 뒤로 날짜가 찍힌 카드만 뺀다.
+        # as_of — 그 날까지 있던 카드만 찾는다. 믿을 날짜는 valid_from(유효 시작 — 동기화는
+        # 원천 날짜로 채우고(sync_svc transform_record 10.), 업로드 · 변환은 올린 사람이 적은
+        # 날이라 작성일보다 이를 수 있다)이고, created_at 은 허브에 적재한 날이라 쓰지 않는다.
+        # 날짜 없는 카드는 기본으로 **남기고 센다** — 업로드 · 가져오기 카드는 올린 쪽이 날짜를
+        # 줄 때만 차고 논문 카드 길은 주지 않아, 빼면 지식만 가진 좌석이 통째로 빈다. 어떻게
+        # 볼지는 사람 결정으로 남아(HWAXPortal docs/delib-engine-feedback D-15) 부른 쪽이
+        # as_of_undated 로 고른다. 그 날 뒤로 날짜가 찍힌 카드는 늘 뺀다.
         as_of_cfg: dict[str, Any] = {}
+        keep_undated = as_of_undated == "keep"
         if as_of_date is not None:
+            undated = "as_of_undated_kept" if keep_undated else "as_of_undated_excluded"
             as_of_cfg = {
                 "as_of": as_of_date.isoformat(),
                 "as_of_excluded_later": sum(
                     1 for _rid, vf in seat_rows if vf is not None and vf > as_of_date),
-                "as_of_undated_kept": sum(1 for _rid, vf in seat_rows if vf is None),
+                undated: sum(1 for _rid, vf in seat_rows if vf is None),
             }
 
         # ⚠ 빈 목록을 None(=범위 제한 없음)으로 접으면 안 된다. 이 도구는 agent_type 이
@@ -572,15 +581,19 @@ async def agent_search(
                 as_of_cfg,
             )
         if as_of_date is not None:
-            agent_record_ids = [rid for rid, vf in seat_rows if vf is None or vf <= as_of_date]
+            agent_record_ids = [rid for rid, vf in seat_rows
+                                if (vf <= as_of_date if vf is not None else keep_undated)]
             if not agent_record_ids:
                 # '0 mapped' 와 다른 말이어야 한다 — HWAXAgentServer card_review
                 # (_EMPTY_SCOPE_RE)가 그 낱말을 '묶인 자료 0건 — 역할만으로 답한다' 로 읽는다.
-                # 여기는 묶인 카드가 다 그 날 뒤다.
+                # 여기는 묶인 카드가 다 그 날 뒤다(엄격이면 날짜 없는 카드도 뺐다).
+                dropped = f"{as_of_cfg['as_of_excluded_later']} later"
+                if not keep_undated:
+                    dropped += f", {as_of_cfg['as_of_undated_excluded']} undated"
                 return _refused_result(
                     agent_type, q, mode, refusal_message,
                     f"agent '{agent_type}' has no records dated on or before as_of "
-                    f"{as_of_cfg['as_of']} ({as_of_cfg['as_of_excluded_later']} later excluded)",
+                    f"{as_of_cfg['as_of']} ({dropped} excluded)",
                     as_of_cfg,
                 )
         scope_record_ids = agent_record_ids
@@ -685,6 +698,14 @@ async def agent_search(
                     ),
                     "validated",
                 )
+
+        # as_of 면 히트마다 valid_from 을 싣는다(null = 날짜 없이 남긴 카드) — 좌석 전체의 수로는
+        # 인용한 근거 가운데 어느 것이 날짜 미확인인지 모른다. 안 주면 히트 꼴은 종전 그대로다.
+        if as_of_date is not None:
+            vf_by_id = {rid: vf for rid, vf in seat_rows}
+            for h in hits:
+                vf = vf_by_id.get(h.get("record_id"))
+                h["valid_from"] = vf.isoformat() if vf is not None else None
 
         # 질의가 임베딩 모델 입력 한도(e5 512 토큰)를 넘으면 앞부분만 의미검색에 쓰였다 — 모델
         # 한도라 늘릴 수 없으니 응답에 싣는다(fts·tag 는 임베딩을 쓰지 않는다).
