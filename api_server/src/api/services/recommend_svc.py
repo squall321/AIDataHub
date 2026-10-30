@@ -66,6 +66,7 @@ _STOPWORDS = {
     # 대화체·요청
     "토론", "논의", "얘기", "이야기", "대해", "대한", "관련", "알려", "설명", "싶어", "하고",
     "해줘", "진행", "궁금", "질문", "문의", "우리", "제가", "내가", "했는데", "한데",
+    "근거", "기록",  # 요청 낱말 — 아래 _REQUEST_PREFIXES 주석
     # 결함 라이프사이클(범용)
     "불량", "원인", "증상", "해법", "해결", "방법", "대책", "방안", "분석", "문제", "이슈",
     "현상", "개선", "검토", "평가", "영향", "발생", "사례", "관점", "종합", "전반",
@@ -74,6 +75,13 @@ _STOPWORDS = {
     "cause", "causes", "symptom", "symptoms", "solution", "solutions", "analysis", "discuss",
     "discussion", "want", "how", "what", "why", "root",
 }
+# 요청 낱말 — '전문가를 추천해 줘 · 근거가 된 기록 수를 알려 줘' 는 해 달라는 말이지
+# 분야가 아니다(AD-19). 겹침 항에 남으면 이름 · 설명에 이 말이 든 무관한 전문가가 가점을
+# 받는다(DW-13 — 로그 플랫폼 · MCP 레지스트리). '전문가' 는 이름에 거의 다 들어 있어
+# (dev 10-30 — 796명 중 776명) 가리는 힘도 없다. 어미('추천하고' · '찾아줘' · '알려줘')는
+# 조사 떼기가 못 떼므로 앞부분으로 본다. '근거' · '기록' 은 '근거리' 처럼 앞이 같은 분야
+# 낱말이 있어 앞부분으로 보지 않고 _STOPWORDS 에 둔다(조사를 뗀 꼴로 걸린다).
+_REQUEST_PREFIXES = ("전문가", "에이전트", "추천", "찾", "알려")
 # 한국어 조사 — 토큰 끝에서 떼어 어간을 얻는다("불량의"→"불량", "휨은"→"휨"). 긴 것부터 시도.
 _JOSA = ("으로써", "으로", "에서", "에게", "까지", "부터", "보다", "처럼", "라도", "이나",
          "조차", "마저", "에는", "에도", "을", "를", "이", "가", "은", "는", "의", "에",
@@ -110,11 +118,11 @@ def _tokenize(text: str) -> set[str]:
 
 
 def _query_terms(query: str) -> set[str]:
-    """desc 매칭용 질의어 — 조사 제거 + 불용어 제거로 distinctive 토큰만 남긴다."""
+    """desc 매칭용 질의어 — 조사 제거 + 불용어 · 요청 낱말 제거로 distinctive 토큰만 남긴다."""
     terms = set()
     for t in _tokenize(query):
         s = _stem(t)
-        if s in _STOPWORDS or t in _STOPWORDS:
+        if s in _STOPWORDS or t in _STOPWORDS or t.startswith(_REQUEST_PREFIXES):
             continue
         terms.add(s)
     return terms
@@ -303,6 +311,14 @@ async def recommend_agents(
             hits = sum(1 for t in qtok if t in profile)
             if hits:
                 frac = hits / len(qtok)
+                # 기록 · 표본 신호가 0 인 전문가는 역할이 질의를 덮는다고 볼 만큼
+                # (_LOW_CONF_DESC) 일치할 때만 겹침으로 오른다(AD-19). 그보다 약한 일치는
+                # 낱말 한두 개가 우연히 겹친 것이고, 전문가가 수백 명이면 늘 있다(dev 10-30 —
+                # 요청 낱말을 뺀 뒤에도 DW-13 질의에 796명 중 260명이 '내부' · '된' 등으로
+                # 겹친다). 강한 이름 · 설명 일치로 데이터 얇은 적합 전문가를 올리는 길
+                # (9b6ee6e 'PCB 휨')은 그대로 둔다.
+                if a.agent_type not in all_ats and frac < _LOW_CONF_DESC:
+                    continue
                 agent_desc_match[a.agent_type] = frac
                 agent_score[a.agent_type] += _DESC_WEIGHT * frac
 
