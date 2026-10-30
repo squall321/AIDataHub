@@ -50,6 +50,13 @@ class ConversionFailedError(APIError):
     code = "CONVERSION_FAILED"
 
 
+class DrmProtectedError(APIError):
+    """DRM 으로 암호화된(또는 암호 · 구형 형식) 문서 — 서버가 열 수 없다."""
+
+    status_code = 422
+    code = "DRM_PROTECTED"
+
+
 # ---------------------------------------------------------------------------
 # 포맷 enum / 매핑
 # ---------------------------------------------------------------------------
@@ -147,6 +154,45 @@ def _excel_sheets_to_dict(sheets: list[Any], options: Any) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# DRM 머리 판정 — 변환기에 넣기 전에 앞 바이트로 암호화 문서를 가른다
+# ---------------------------------------------------------------------------
+# 표는 HWAX 포털 ``frontend/src/components/chat/docAttach.ts`` 의 ``DRM_HEAD`` ·
+# ``isEncryptedOffice`` 와 같다(10-27 요청 AD-03 · 포털 HP-14). 언어가 달라 코드를
+# 나눠 쓰지 못하므로 표를 같게 둔다.
+#   50 4B                        "PK"        → zip(정상 OOXML) = 평문
+#   D0 CF 11 E0                  OLE 복합문서 → 암호화(또는 구형 .ppt · .doc · .xls)
+#   3C 23 23 20 4E 41 53 43 41   "<## NASCA" → 사내 DRM 머리 = 암호화
+#                                              (10-25 PC 시험 파일 앞 34바이트)
+#   25 50 44 46                  "%PDF"      → 평문
+# 평문과 모르는 머리는 변환기에 맡긴다 — 깨진 파일은 종전대로 변환 실패로 간다.
+_OLE_HEAD = bytes([0xD0, 0xCF, 0x11, 0xE0])
+_DRM_HEAD = bytes([0x3C, 0x23, 0x23, 0x20, 0x4E, 0x41, 0x53, 0x43, 0x41])
+
+_DRM_WHY = {
+    "NASCA": "사내 DRM(NASCA)으로 암호화된 문서라 서버가 열 수 없습니다.",
+    "OLE": "암호화(DRM · 암호)돼 있거나 구형 형식(.ppt · .doc · .xls)이라 서버가 열 수 없습니다.",
+}
+# 할 일 — 포털이 같은 파일에 띄우는 안내(DocExtractHint · docs/chat-ppt B)와 같은 길이다.
+# PC 도우미는 PPT · Word · PDF 만 연다.
+_DRM_HINT = (
+    "사내 DRM 문서는 그 PC · 그 계정에서만 풀립니다. "
+    "PPT · Word · PDF 는 HWAX 포털 챗에 붙이면 뜨는 "
+    "'PC 의 PowerPoint(또는 Word) 로 열어 가져오기'(PC 도우미)로 글을 뽑아 올리세요."
+)
+
+
+def _encrypted_head(file_path: Path) -> str | None:
+    """앞 바이트로 본 암호화 판정 — ``"NASCA"`` · ``"OLE"``, 평문이거나 모르면 ``None``."""
+    with file_path.open("rb") as fh:
+        b = fh.read(16)
+    if b.startswith(_OLE_HEAD):
+        return "OLE"
+    if b.startswith(_DRM_HEAD):
+        return "NASCA"
+    return None
+
+
+# ---------------------------------------------------------------------------
 # 메인 디스패처
 # ---------------------------------------------------------------------------
 def convert_file(
@@ -161,6 +207,12 @@ def convert_file(
             f"입력 파일이 존재하지 않습니다: {file_path}",
             details={"path": str(file_path)},
         )
+
+    # 암호화 문서는 변환기에 넣지 않는다 — 넣으면 '손상' 으로만 답한다(AD-03).
+    # 임시 폴더를 만들기 전에 거른다.
+    head = _encrypted_head(file_path)
+    if head is not None:
+        raise DrmProtectedError(f"{_DRM_WHY[head]} {_DRM_HINT}", details={"header": head})
 
     output_dir = req.resolved_output_dir()
 
@@ -349,6 +401,7 @@ def _augment_data_payload(
 __all__ = [
     "ConversionFailedError",
     "ConvertRequest",
+    "DrmProtectedError",
     "EXTENSION_MAP",
     "PdfNotAvailableError",
     "SourceFormat",

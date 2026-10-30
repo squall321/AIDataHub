@@ -463,7 +463,7 @@ async def run_convert(
     반환:
         - ``converted``: record 초안 (Claude 가 검토 후 import_record 로 저장)
         - ``auto_save=true`` 면 변환 직후 바로 import_record 까지 (dry_run 권장)
-        - ``error``: inbox 밖 / 미지원 포맷 / 변환 실패
+        - ``error``: inbox 밖 / 미지원 포맷 / DRM 암호화 문서(drm_protected) / 변환 실패
     """
     from datetime import datetime, timezone
 
@@ -491,6 +491,7 @@ async def run_convert(
 
     from .converter_dispatch import (
         ConvertRequest,
+        DrmProtectedError,
         UnsupportedFormatError,
         convert_file,
         detect_format,
@@ -509,6 +510,11 @@ async def run_convert(
     )
     try:
         payload = await asyncio.to_thread(convert_file, path, fmt, req)
+    except DrmProtectedError as exc:
+        # 암호화 문서는 '손상' 이 아니다 — 따로 알리고 할 일을 준다(AD-03).
+        # 서버 inbox 경로는 싣지 않는다.
+        return {"status": "error", "error": f"drm protected: {exc.details.get('header')} header",
+                "code": "drm_protected", "recoverable": False, "suggestion": exc.message}
     except Exception as exc:  # noqa: BLE001 — 변환 실패 전반
         return {"status": "error", "error": f"conversion failed: {exc}"[:200],
                 "code": "convert_failed", "recoverable": False,
