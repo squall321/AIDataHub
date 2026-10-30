@@ -64,6 +64,10 @@ def _assert_stored(out: dict, want: dict) -> None:
     assert {k: out.get(k) for k in want} == want
 
 
+def _index_state(out: dict) -> tuple:
+    return out["samples_indexed_count"], out["samples_stale"]
+
+
 @pytest.fixture
 def reject_sample_rows():
     """표본 임베딩 행 INSERT 를 flush 에서 거절한다. 돌려준 dict 의 times 만큼(None — 늘)."""
@@ -100,9 +104,10 @@ async def test_operator_payload_post_then_patch_round_trips(db_client) -> None:
     resp = await db_client.post("/api/agents", json=body)
     assert resp.status_code == 201, resp.text
     _assert_stored(resp.json(), body)
+    assert _index_state(resp.json()) == (len(body["sample_queries"]), False)
     got = (await db_client.get(f"/api/agents/{_KEY}")).json()
     _assert_stored(got, body)
-    assert got["samples_indexed_count"] == len(body["sample_queries"])
+    assert _index_state(got) == (len(body["sample_queries"]), False)
 
     # 동기화는 바뀐 칸만 PATCH 한다(MANAGED 중 셋).
     patch = {
@@ -113,25 +118,53 @@ async def test_operator_payload_post_then_patch_round_trips(db_client) -> None:
     resp = await db_client.patch(f"/api/agents/{_KEY}", json=patch)
     assert resp.status_code == 200, resp.text
     _assert_stored(resp.json(), {**body, **patch})
-    _assert_stored((await db_client.get(f"/api/agents/{_KEY}")).json(), {**body, **patch})
+    # 바뀐 표본은 다시 색인된다 — 응답과 GET 이 같은 상태를 말한다.
+    assert _index_state(resp.json()) == (len(patch["sample_queries"]), False)
+    got = (await db_client.get(f"/api/agents/{_KEY}")).json()
+    _assert_stored(got, {**body, **patch})
+    assert _index_state(got) == (len(patch["sample_queries"]), False)
 
 
 async def test_save_answers_after_sample_sync_fails(db_client, reject_sample_rows) -> None:
-    """표본 행이 거듭 거절돼도 저장한 값으로 2xx 를 낸다 — 색인 실패는 samples_stale 로 드러난다."""
+    """표본 행이 거듭 거절돼도 저장한 값으로 2xx 를 낸다.
+
+    색인 실패는 저장 응답과 GET 의 samples_stale 로 드러난다.
+    """
     body = _operator()
     resp = await db_client.post("/api/agents", json=body)
     assert resp.status_code == 201, resp.text
     _assert_stored(resp.json(), body)
+    assert _index_state(resp.json()) == (0, True)
 
     patch = {"sample_queries": ["다른 질문"], "system_prompt": "# 고친 프롬프트"}
     resp = await db_client.patch(f"/api/agents/{_KEY}", json=patch)
     assert resp.status_code == 200, resp.text
     _assert_stored(resp.json(), {**body, **patch})
+    assert _index_state(resp.json()) == (0, True)
 
     got = (await db_client.get(f"/api/agents/{_KEY}")).json()
     _assert_stored(got, {**body, **patch})
-    assert got["samples_indexed_count"] == 0
-    assert got["samples_stale"] is True
+    assert _index_state(got) == (0, True)
+
+
+async def test_failed_reindex_with_same_count_is_stale(db_client, reject_sample_rows) -> None:
+    """표본 글만 바꾸고 수는 그대로인 저장의 재색인이 실패하면 롤백이 옛 행을 남긴다.
+
+    수는 맞지만 옛 글이 색인돼 있으므로 낡음이다 — 수로 견주던 판정은 거짓이라 했다.
+    """
+    reject_sample_rows["times"] = 0  # 처음 색인은 붙고, 아래부터 늘 거절
+    body = _operator()
+    assert (await db_client.post("/api/agents", json=body)).status_code == 201
+    reject_sample_rows["times"] = None
+    new = [f"{q} (고침)" for q in body["sample_queries"]]
+    resp = await db_client.patch(f"/api/agents/{_KEY}", json={"sample_queries": new})
+    assert resp.status_code == 200, resp.text
+    assert _index_state(resp.json()) == (len(new), True)
+    got = (await db_client.get(f"/api/agents/{_KEY}")).json()
+    assert got["sample_queries"] == new
+    assert _index_state(got) == (len(new), True)
+    listed = {a["agent_type"]: a for a in (await db_client.get("/api/agents")).json()}
+    assert _index_state(listed[_KEY]) == (len(new), True)
 
 
 async def test_save_answers_when_retry_recovers(db_client, reject_sample_rows) -> None:
@@ -144,10 +177,10 @@ async def test_save_answers_when_retry_recovers(db_client, reject_sample_rows) -
     resp = await db_client.post("/api/agents", json=body)
     assert resp.status_code == 201, resp.text
     _assert_stored(resp.json(), body)
+    assert _index_state(resp.json()) == (len(body["sample_queries"]), False)
 
     got = (await db_client.get(f"/api/agents/{_KEY}")).json()
-    assert got["samples_indexed_count"] == len(body["sample_queries"])
-    assert got["samples_stale"] is False
+    assert _index_state(got) == (len(body["sample_queries"]), False)
 
 
 async def test_invalid_value_rejected_before_saving(db_client) -> None:
@@ -195,7 +228,7 @@ async def test_mcp_write_checks_values_like_rest(db_client, mcp_db) -> None:
     body = {k: v for k, v in _operator().items() if k != "name"}
     made = await mcp_db.create_agent(agent=body)
     assert made == {"status": "created", "agent_type": _KEY,
-                    "samples_indexed": len(body["sample_queries"])}, made
+                    "samples_indexed": len(body["sample_queries"]), "samples_stale": False}, made
 
     bad = await mcp_db.patch_agent(agent_type=_KEY, patch={"retrieval_config": ""})
     assert (bad["code"], bad["fields"]) == ("invalid_field", ["retrieval_config"]), bad
@@ -204,6 +237,18 @@ async def test_mcp_write_checks_values_like_rest(db_client, mcp_db) -> None:
     _assert_stored(resp.json(), {**body, "name": _KEY, "description": "고친 설명",
                                  "retrieval_config": {}})
     assert (await db_client.get("/api/agents")).status_code == 200
+
+
+async def test_mcp_write_reports_real_index_state(mcp_db, reject_sample_rows) -> None:
+    """표본 색인이 실패하면 MCP 결과도 그렇게 말한다.
+
+    예전에는 samples_indexed 가 len(sample_queries) 였다.
+    """
+    made = await mcp_db.create_agent(agent=_operator())
+    assert (made["status"], made["samples_indexed"], made["samples_stale"]) == ("created", 0, True)
+    patched = await mcp_db.patch_agent(agent_type=_KEY, patch={"sample_queries": ["다른 질문"]})
+    assert (patched["status"], patched["samples_indexed"], patched["samples_stale"]) == (
+        "patched", 0, True)
 
 
 async def test_resync_all_collects_failures_and_goes_on(db_client, reject_sample_rows) -> None:

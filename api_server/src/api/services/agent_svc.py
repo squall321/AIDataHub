@@ -188,24 +188,31 @@ async def _sync_samples_safely(
     )
 
 
-async def fetch_samples_indexed_counts(
+async def fetch_sample_index_state(
     session: AsyncSession,
-    agent_types: list[str] | None = None,
-) -> dict[str, int]:
-    """agent_type → indexed sample 행 수 매핑. UI 의 'samples_stale' 판정용.
+    agents: list[Agent],
+) -> dict[str, tuple[int, bool]]:
+    """agent_type → (색인된 표본 행 수, samples_stale). UI 의 'stale' 배지 · 저장 응답용.
 
-    agent_types 가 주어지면 그 agent 들로 한정 (성능). None 이면 전체.
+    낡음은 수가 아니라 글로 판정한다. 표본 글만 바꾸고 수는 그대로인 저장의 재색인이 실패하면
+    롤백이 옛 행을 남겨, 수로는 맞아 보이는데 옛 글이 색인돼 있었다(10-30 AD-21 검토). 수가
+    다르면 글도 다르므로 예전 판정이 잡던 것은 그대로 잡는다.
     """
-    from sqlalchemy import func as _func
-
     from api.db.models import AgentSampleEmbedding
 
-    stmt = select(AgentSampleEmbedding.agent_type, _func.count(AgentSampleEmbedding.id))
-    if agent_types is not None:
-        stmt = stmt.where(AgentSampleEmbedding.agent_type.in_(agent_types))
-    stmt = stmt.group_by(AgentSampleEmbedding.agent_type)
-    rows = (await session.execute(stmt)).all()
-    return {r[0]: int(r[1] or 0) for r in rows}
+    if not agents:
+        return {}
+    stmt = select(AgentSampleEmbedding.agent_type, AgentSampleEmbedding.sample_text).where(
+        AgentSampleEmbedding.agent_type.in_([a.agent_type for a in agents])
+    )
+    indexed: dict[str, list[str]] = {}
+    for agent_type, sample in (await session.execute(stmt)).all():
+        indexed.setdefault(agent_type, []).append(sample)
+    out: dict[str, tuple[int, bool]] = {}
+    for a in agents:
+        texts = indexed.get(a.agent_type, [])
+        out[a.agent_type] = (len(texts), sorted(texts) != sorted(a.sample_queries or []))
+    return out
 
 
 async def delete_agent(

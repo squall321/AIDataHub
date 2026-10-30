@@ -106,7 +106,7 @@ class AgentOut(_Base):
     sample_queries: list[str] = Field(default_factory=list)
     # ---- Sample-embedding routing index (Migration 0016) ----
     # samples_indexed_count: 실제 agent_sample_embeddings 행 수.
-    # samples_stale: sample_queries 길이 ≠ indexed 면 True — UI 가 경고 배지.
+    # samples_stale: 색인된 표본 글이 sample_queries 와 다르면 True(수가 같아도) — UI 가 경고 배지.
     samples_indexed_count: int = 0
     samples_stale: bool = False
     created_at: datetime | None = None

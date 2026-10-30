@@ -321,8 +321,11 @@ async def create_agent(*, agent: dict[str, Any], api_key: str | None = None) -> 
         except ValueError as exc:  # 이미 존재
             return {"status": "error", "error": str(exc), "code": "duplicate",
                     "recoverable": True, "suggestion": "patch_agent 로 기존 agent 를 수정하세요."}
+        # 색인 수는 실제 행에서 센다. 표본 색인이 실패해도 len(sample_queries) 를 냈다
+        # (10-30 AD-21 검토).
+        indexed, stale = (await agent_svc.fetch_sample_index_state(session, [row]))[row.agent_type]
         return {"status": "created", "agent_type": row.agent_type,
-                "samples_indexed": len(row.sample_queries or [])}
+                "samples_indexed": indexed, "samples_stale": stale}
 
 
 async def patch_agent(*, agent_type: str, patch: dict[str, Any], api_key: str | None = None) -> dict[str, Any]:
@@ -348,7 +351,9 @@ async def patch_agent(*, agent_type: str, patch: dict[str, Any], api_key: str | 
             return {"status": "error", "error": f"agent not found: {agent_type}",
                     "code": "not_found", "recoverable": True,
                     "suggestion": "create_agent 로 새로 만들거나 list_agents 로 확인하세요."}
-        return {"status": "patched", "agent_type": row.agent_type}
+        indexed, stale = (await agent_svc.fetch_sample_index_state(session, [row]))[row.agent_type]
+        return {"status": "patched", "agent_type": row.agent_type,
+                "samples_indexed": indexed, "samples_stale": stale}
 
 
 async def bind_records_to_agent(*, agent_type: str, api_key: str | None = None) -> dict[str, Any]:

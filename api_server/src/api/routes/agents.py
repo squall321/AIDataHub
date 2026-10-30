@@ -36,6 +36,17 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 
+def _agent_out(agent, state: dict[str, tuple[int, bool]]) -> AgentOut:
+    """AgentOut + 표본 색인 상태(agent_svc.fetch_sample_index_state).
+
+    저장(POST · PATCH) 응답에도 싣는다. 예전에는 기본값(0 · 거짓)이 그대로 나가, 저장 뒤 표본
+    색인이 실패해도 응답이 성공처럼 보였다(10-30 AD-21 검토).
+    """
+    out = AgentOut.model_validate(agent)
+    out.samples_indexed_count, out.samples_stale = state[agent.agent_type]
+    return out
+
+
 @router.get(
     "",
     response_model=list[AgentOut],
@@ -51,15 +62,8 @@ async def list_agents(
     session: AsyncSession = Depends(get_session),
 ) -> list[AgentOut]:
     rows = await agent_svc.list_agents(session)
-    types = [r.agent_type for r in rows]
-    counts = await agent_svc.fetch_samples_indexed_counts(session, types) if types else {}
-    out: list[AgentOut] = []
-    for r in rows:
-        m = AgentOut.model_validate(r)
-        m.samples_indexed_count = int(counts.get(r.agent_type, 0))
-        m.samples_stale = bool(len(list(r.sample_queries or [])) != m.samples_indexed_count)
-        out.append(m)
-    return out
+    state = await agent_svc.fetch_sample_index_state(session, rows)
+    return [_agent_out(r, state) for r in rows]
 
 
 @router.get(
@@ -72,11 +76,7 @@ async def get_agent(
     agent = await agent_svc.get_agent(session, agent_type)
     if agent is None:
         raise HTTPException(status_code=404, detail=f"agent not found: {agent_type}")
-    counts = await agent_svc.fetch_samples_indexed_counts(session, [agent_type])
-    out = AgentOut.model_validate(agent)
-    out.samples_indexed_count = int(counts.get(agent_type, 0))
-    out.samples_stale = bool(len(list(agent.sample_queries or [])) != out.samples_indexed_count)
-    return out
+    return _agent_out(agent, await agent_svc.fetch_sample_index_state(session, [agent]))
 
 
 @router.get(
@@ -182,7 +182,7 @@ async def create_agent(
     except ValueError as exc:
         log.info("create_agent conflict: %s", payload.agent_type)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return AgentOut.model_validate(agent)
+    return _agent_out(agent, await agent_svc.fetch_sample_index_state(session, [agent]))
 
 
 @router.patch(
@@ -202,7 +202,7 @@ async def patch_agent(
     )
     if agent is None:
         raise HTTPException(status_code=404, detail=f"agent not found: {agent_type}")
-    return AgentOut.model_validate(agent)
+    return _agent_out(agent, await agent_svc.fetch_sample_index_state(session, [agent]))
 
 
 @router.delete("/{agent_type}", status_code=status.HTTP_204_NO_CONTENT)
