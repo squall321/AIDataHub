@@ -19,6 +19,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from pydantic import ValidationError
+
 from ..auth.dependencies import resolve_principal
 from ..db.base import SessionLocal
 from ..errors import AuthenticationError
@@ -279,12 +281,35 @@ async def draft_agent(
                 "note": "검토 후 create_agent 로 저장하세요. system_prompt/sample_queries 를 다듬으면 검색 품질↑."}
 
 
+def _invalid_agent(exc: ValidationError) -> dict[str, Any]:
+    """입력 모델(AgentIn · AgentPatch)이 거른 칸 → 에러 봉투.
+
+    REST 의 422 처럼 어느 칸이 왜 틀렸는지 적는다.
+    """
+    errs = exc.errors()
+    detail = "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in errs)
+    return {"status": "error", "error": f"agent 칸 값이 틀렸다 — {detail}", "code": "invalid_field",
+            "fields": sorted({str(e["loc"][0]) for e in errs if e["loc"]}), "recoverable": True,
+            "suggestion": ("describe_agent_schema 의 형으로 고쳐 보내세요"
+                           "(*_config 는 dict, 목록 칸은 글 목록).")}
+
+
 async def create_agent(*, agent: dict[str, Any], api_key: str | None = None) -> dict[str, Any]:
     """agent(검색 챗봇 페르소나) 신규 등록."""
     if not isinstance(agent, dict) or not agent.get("agent_type"):
         return {"status": "error", "error": "agent.agent_type required",
                 "code": "missing_field", "recoverable": True,
                 "suggestion": "agent_type(고유 식별자)을 포함하세요. describe_agent_schema 참고."}
+    # REST(POST /api/agents)와 같은 입력 모델로 저장 전에 거른다. 거르지 않던 때는 응답
+    # 모델이 못 읽는 값(None 이 든 태그 목록 등)이 그대로 저장돼, 그 agent 의 REST 조회 ·
+    # 수정이 500 을 냈다 — 수정은 저장한 뒤에(10-30 AD-21 검토). name 생략은 종전처럼
+    # agent_type 으로 채운다.
+    from ..routes._schemas import AgentIn
+
+    try:
+        agent = AgentIn.model_validate({"name": agent["agent_type"], **agent}).model_dump()
+    except ValidationError as exc:
+        return _invalid_agent(exc)
     async with SessionLocal() as session:
         principal, err = await _authed(api_key, session)
         if err:
@@ -305,13 +330,20 @@ async def patch_agent(*, agent_type: str, patch: dict[str, Any], api_key: str | 
     if not agent_type:
         return {"status": "error", "error": "agent_type required",
                 "code": "missing_field", "recoverable": True, "suggestion": "수정할 agent_type 을 지정하세요."}
+    # REST(PATCH)와 같은 입력 모델로 저장 전에 거른다 — create_agent 의 주석.
+    from ..routes._schemas import AgentPatch
+
+    try:
+        patch = AgentPatch.model_validate(patch or {}).model_dump(exclude_unset=True)
+    except ValidationError as exc:
+        return _invalid_agent(exc)
     async with SessionLocal() as session:
         principal, err = await _authed(api_key, session)
         if err:
             return err
         from . import agent_svc
         actor = f"mcp:{principal.name}" if not principal.is_anonymous else "mcp:anonymous"
-        row = await agent_svc.update_agent(session, agent_type, patch or {}, changed_by=actor)
+        row = await agent_svc.update_agent(session, agent_type, patch, changed_by=actor)
         if row is None:
             return {"status": "error", "error": f"agent not found: {agent_type}",
                     "code": "not_found", "recoverable": True,

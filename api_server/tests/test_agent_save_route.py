@@ -86,6 +86,15 @@ def reject_sample_rows():
         event.remove(AgentSampleEmbedding, "before_insert", _reject)
 
 
+@pytest.fixture
+def mcp_db(test_session_maker, monkeypatch):
+    """MCP 쓰기 도구(mcp_write_svc)가 시험 SQLite 세션을 쓰게 한다."""
+    from api.services import mcp_write_svc
+
+    monkeypatch.setattr(mcp_write_svc, "SessionLocal", test_session_maker)
+    return mcp_write_svc
+
+
 async def test_operator_payload_post_then_patch_round_trips(db_client) -> None:
     body = _operator()
     resp = await db_client.post("/api/agents", json=body)
@@ -153,13 +162,48 @@ async def test_invalid_value_rejected_before_saving(db_client) -> None:
     assert any(e["loc"][:2] == ["body", "sample_queries"] for e in errors)
     assert (await db_client.get(f"/api/agents/{_KEY}")).status_code == 404
 
+    # DB 칸 길이를 넘는 값 — PG 에서는 저장이 DataError 로 500 이었다(SQLite 는 길이를 안 본다).
+    resp = await db_client.post("/api/agents", json={**_operator(), "agent_type": "he-" + "x" * 48})
+    assert resp.status_code == 422, resp.text  # 51자 — agents.agent_type 은 VARCHAR(50)
+    errors = resp.json()["error"]["details"]["errors"]
+    assert any(e["loc"][:2] == ["body", "agent_type"] for e in errors)
+
     body = _operator()
     assert (await db_client.post("/api/agents", json=body)).status_code == 201
     resp = await db_client.patch(f"/api/agents/{_KEY}", json={"response_config": "mcp_operator"})
     assert resp.status_code == 422, resp.text
     errors = resp.json()["error"]["details"]["errors"]
     assert any(e["loc"][:2] == ["body", "response_config"] for e in errors)
+    resp = await db_client.patch(f"/api/agents/{_KEY}", json={"required_doc_type": "d" * 41})
+    assert resp.status_code == 422, resp.text  # required_doc_type 은 VARCHAR(40)
+    errors = resp.json()["error"]["details"]["errors"]
+    assert any(e["loc"][:2] == ["body", "required_doc_type"] for e in errors)
     _assert_stored((await db_client.get(f"/api/agents/{_KEY}")).json(), body)
+
+
+async def test_mcp_write_checks_values_like_rest(db_client, mcp_db) -> None:
+    """MCP create_agent · patch_agent 도 REST 와 같은 입력 모델로 저장 전에 거른다.
+
+    거르지 않던 때는 None 이 든 태그 목록 · 빈 글 retrieval_config 가 저장돼, 그 agent 의
+    REST 조회는 500 이고 REST 수정은 저장한 뒤 500 이었다(목록 GET /api/agents 도 500).
+    """
+    bad = await mcp_db.create_agent(agent={**_operator(), "common_tags": ["HE팀", None]})
+    assert (bad["code"], bad["fields"]) == ("invalid_field", ["common_tags"]), bad
+    assert (await db_client.get(f"/api/agents/{_KEY}")).status_code == 404
+
+    # name 생략은 MCP 만 받는다 — agent_type 으로 채운다(종전과 같다).
+    body = {k: v for k, v in _operator().items() if k != "name"}
+    made = await mcp_db.create_agent(agent=body)
+    assert made == {"status": "created", "agent_type": _KEY,
+                    "samples_indexed": len(body["sample_queries"])}, made
+
+    bad = await mcp_db.patch_agent(agent_type=_KEY, patch={"retrieval_config": ""})
+    assert (bad["code"], bad["fields"]) == ("invalid_field", ["retrieval_config"]), bad
+    resp = await db_client.patch(f"/api/agents/{_KEY}", json={"description": "고친 설명"})
+    assert resp.status_code == 200, resp.text
+    _assert_stored(resp.json(), {**body, "name": _KEY, "description": "고친 설명",
+                                 "retrieval_config": {}})
+    assert (await db_client.get("/api/agents")).status_code == 200
 
 
 async def test_resync_all_collects_failures_and_goes_on(db_client, reject_sample_rows) -> None:

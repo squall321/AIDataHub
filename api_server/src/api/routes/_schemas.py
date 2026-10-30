@@ -113,13 +113,15 @@ class AgentOut(_Base):
 
 
 class AgentIn(_Base):
-    agent_type: str
+    # 길이 상한은 DB 칸(agent_type VARCHAR(50) · required_doc_type VARCHAR(40))과 같다.
+    # 넘으면 저장에서 DataError 로 500 이었다(10-30 AD-21 검토). 422 가 칸을 밝힌다.
+    agent_type: str = Field(max_length=50)
     name: str
     description: str = ""
     common_tags: list[str] = Field(default_factory=list)
     data_types: list[str] = Field(default_factory=list)
     # ---- Expected-schema validation (Migration 0011) ----
-    required_doc_type: str | None = None
+    required_doc_type: str | None = Field(None, max_length=40)
     required_tags: list[str] = Field(default_factory=list)
     excluded_tags: list[str] = Field(default_factory=list)
     # ---- RAG recipe (Migration 0014) ----
@@ -154,7 +156,7 @@ class AgentPatch(_Base):
     description: str | None = None
     common_tags: list[str] | None = None
     data_types: list[str] | None = None
-    required_doc_type: str | None = None
+    required_doc_type: str | None = Field(None, max_length=40)  # DB 칸 길이 — AgentIn 의 주석
     required_tags: list[str] | None = None
     excluded_tags: list[str] | None = None
     # ---- RAG recipe (Migration 0014) ----
