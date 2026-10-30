@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from datetime import date, datetime
 from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
@@ -451,7 +452,13 @@ async def get_agent_session(agent_type: str) -> dict[str, Any]:
         "top_k (optional): how many hits — default is the seat's retrieval_config.top_k (10 if "
         "unset). Raise it to read more of the seat's cards; `more_available` says whether more "
         "matched than were returned, `applied_config.agent_record_scope` is how many records "
-        "the seat owns. Each hit's `snippet` is the whole section body."
+        "the seat owns. Each hit's `snippet` is the whole section body. "
+        "as_of (optional): ISO date 'YYYY-MM-DD' or datetime (its calendar date as written is "
+        "used) — excludes the seat's cards whose valid_from (the source's date) is after that "
+        "day; cards with no valid_from are kept unchecked. With as_of, applied_config echoes "
+        "`as_of` plus the counts `as_of_excluded_later` and `as_of_undated_kept`, and "
+        "`agent_record_scope` counts only the cards searched. An empty as_of means none; a "
+        "malformed one is an error, never a silent no-filter."
     ),
 )
 async def agent_search(
@@ -459,12 +466,13 @@ async def agent_search(
     q: str,
     mode: SearchMode = "semantic",
     top_k: int | None = None,
+    as_of: str | None = None,
 ) -> dict[str, Any]:
     """Agent retrieval_config 를 자동 적용하는 agent-scoped 검색.
 
     동작:
         1. agent 의 retrieval_config (top_k / score_threshold / data_type_filter / tag_boost) 로드
-        2. agent 소속 record_ids 로 검색 범위 제한
+        2. agent 소속 record_ids 로 검색 범위 제한 (as_of 면 valid_from 이 그 날 뒤인 카드는 뺀다)
         3. required_tags / excluded_tags 후필터
         4. score_threshold 미달 결과 제거
         5. tag_boost 가중치 적용 후 재정렬
@@ -474,6 +482,10 @@ async def agent_search(
     from .db.models import Agent, Record
     from .services import search_svc
     from .services.recommend_svc import expand_query
+
+    # 날짜가 틀리면 DB 를 열기 전에 오류로 돌려준다 — 거르지 못한 결과를 거른 것처럼 주면
+    # 소급 심의가 그 날 뒤의 카드를 모른 채 근거로 쓴다.
+    as_of_date = _parse_as_of(as_of)
 
     # 구어로 물으면 **전문가가 거절한다** — 자료는 있는데 말이 안 맞아 점수가 임계 밑으로 떨어진다
     # (실측: pwr-swelling 에 '배터리가 부풀어 올랐어요' → hits 0 · refused=true, 같은 사람에게
@@ -516,22 +528,38 @@ async def agent_search(
         # ⚠ `x = ANY(col)` 로 쓰면 GIN 인덱스(idx_records_agents)를 **못 쓴다**. 실측 —
         # `= ANY` Seq Scan 13.9ms vs `@> ARRAY[x]` Bitmap Index Scan 3.8ms. 인덱스는 처음부터
         # 있었고 쿼리 모양이 그것을 죽여 놓고 있었다(2026-09-09). 되돌리지 말 것.
+        # valid_from 을 함께 받는다(as_of 거름 · 셈용) — 같은 행에서 읽으니 조회는 늘지 않는다.
         try:
-            id_stmt = select(Record.id).where(
+            id_stmt = select(Record.id, Record.valid_from).where(
                 Record.agents.op("@>")([agent_type])  # type: ignore[attr-defined]
             )
             if max_depth is not None:
                 id_stmt = id_stmt.where(Record.depth <= max_depth)
-            agent_record_ids = list((await session.execute(id_stmt)).scalars().all())
+            seat_rows = list((await session.execute(id_stmt)).all())
         except Exception:
             # 폴백 — 파이썬 후필터
             from .services.sql_compat import array_overlap
             pred = array_overlap(Record.agents, [agent_type], session)
-            fb_stmt = select(Record.id).where(pred.where_clause)
+            fb_stmt = select(Record.id, Record.valid_from).where(pred.where_clause)
             if max_depth is not None:
                 fb_stmt = fb_stmt.where(Record.depth <= max_depth)
-            all_recs = (await session.execute(fb_stmt)).scalars().all()
-            agent_record_ids = list(all_recs)
+            seat_rows = list((await session.execute(fb_stmt)).all())
+        agent_record_ids = [rid for rid, _vf in seat_rows]
+
+        # as_of — 그 날까지 있던 카드만 찾는다. 믿을 날짜는 valid_from(동기화가 원천 날짜로
+        # 채운다 — sync_svc transform_record 10.)이고, created_at 은 허브에 적재한 날이라
+        # 쓰지 않는다. 날짜 없는 카드는 **남기고 센다** — 업로드 · 가져오기 카드는 올린 쪽이
+        # 날짜를 줄 때만 차고 논문 카드 길은 주지 않아, 빼면 지식만 가진 좌석이 통째로
+        # 빈다(HWAXPortal docs/delib-engine-feedback D-15 — 그래서 as_of 를 미뤘었다).
+        # 그 날 뒤로 날짜가 찍힌 카드만 뺀다.
+        as_of_cfg: dict[str, Any] = {}
+        if as_of_date is not None:
+            as_of_cfg = {
+                "as_of": as_of_date.isoformat(),
+                "as_of_excluded_later": sum(
+                    1 for _rid, vf in seat_rows if vf is not None and vf > as_of_date),
+                "as_of_undated_kept": sum(1 for _rid, vf in seat_rows if vf is None),
+            }
 
         # ⚠ 빈 목록을 None(=범위 제한 없음)으로 접으면 안 된다. 이 도구는 agent_type 이
         #   **필수**라 빈 목록은 언제나 '이 좌석에 바인딩된 문서가 0건'이라는 뜻이지
@@ -540,8 +568,21 @@ async def agent_search(
         #   MMS 문서 10건을 받았다). 같은 상황의 올바른 처리가 preview_svc.py:67-83 에 있다.
         if not agent_record_ids:
             return _refused_result(
-                agent_type, q, mode, refusal_message, f"agent '{agent_type}' has 0 mapped records"
+                agent_type, q, mode, refusal_message, f"agent '{agent_type}' has 0 mapped records",
+                as_of_cfg,
             )
+        if as_of_date is not None:
+            agent_record_ids = [rid for rid, vf in seat_rows if vf is None or vf <= as_of_date]
+            if not agent_record_ids:
+                # '0 mapped' 와 다른 말이어야 한다 — HWAXAgentServer card_review
+                # (_EMPTY_SCOPE_RE)가 그 낱말을 '묶인 자료 0건 — 역할만으로 답한다' 로 읽는다.
+                # 여기는 묶인 카드가 다 그 날 뒤다.
+                return _refused_result(
+                    agent_type, q, mode, refusal_message,
+                    f"agent '{agent_type}' has no records dated on or before as_of "
+                    f"{as_of_cfg['as_of']} ({as_of_cfg['as_of_excluded_later']} later excluded)",
+                    as_of_cfg,
+                )
         scope_record_ids = agent_record_ids
 
         # --- 검색 실행 ---
@@ -561,7 +602,7 @@ async def agent_search(
             # q = 콤마 구분 태그
             tags_list = [t.strip() for t in q.split(",") if t.strip()]
             if not tags_list:
-                return _refused_result(agent_type, q, mode, refusal_message, "태그 없음")
+                return _refused_result(agent_type, q, mode, refusal_message, "태그 없음", as_of_cfg)
             # 범위를 SQL 로 넘긴다 — fts·hybrid 와 같은 규율. 전역으로 뽑고 파이썬에서
             # 거르면 상위 N 이 범위 밖에서 정해져 좌석 결과가 거의 항상 0건이 된다.
             rows, tag_total = await search_svc.tag_search(
@@ -713,6 +754,7 @@ async def agent_search(
                 "required_tags": required_tags,
                 "excluded_tags": excluded_tags,
                 "agent_record_scope": len(agent_record_ids) if agent_record_ids else "all",
+                **as_of_cfg,
             },
         }
 
@@ -751,7 +793,8 @@ async def _agent_record_ids(session, agent_type: str) -> list[str]:
 
 
 def _refused_result(
-    agent_type: str, q: str, mode: str, refusal_message: str, reason: str
+    agent_type: str, q: str, mode: str, refusal_message: str, reason: str,
+    as_of_cfg: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "agent_type": agent_type,
@@ -762,8 +805,28 @@ def _refused_result(
         "refused": True,
         "refusal_message": refusal_message,
         "near_miss": [],
-        "applied_config": {"reason": reason},
+        # as_of 를 받았으면 거절에도 싣는다 — 부른 쪽이 '거름이 걸렸다' 를 응답마다 확인한다.
+        "applied_config": {"reason": reason, **(as_of_cfg or {})},
     }
+
+
+def _parse_as_of(raw: str | None) -> date | None:
+    """agent_search 의 as_of → 날짜. 없거나 빈 글이면 None(거르지 않는다 — 종전 그대로).
+
+    ISO 날짜('2025-06-01')와 일시('2025-06-01T09:30:00+09:00' · 끝 Z)를 받는다. 일시는
+    **적힌 그대로의 날짜**로 센다(시간대를 바꾸지 않는다) — valid_from 이 원천 시각 글의
+    앞 10자라(sync_svc transform_record 10.) 같은 셈이다. 그 밖의 글은 오류다.
+    """
+    s = "" if raw is None else str(raw).strip()
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s).date()
+    except ValueError as exc:
+        raise ValueError(
+            "as_of must be an ISO date 'YYYY-MM-DD' or datetime 'YYYY-MM-DDTHH:MM:SS[+HH:MM]', "
+            f"got {raw!r} ({exc})"
+        ) from None
 
 
 @mcp.tool(
