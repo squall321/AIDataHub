@@ -628,6 +628,30 @@ async def write_record(
     )
 
 
+def _section_rows(
+    content: dict[str, Any], dropped: dict[str, int] | None = None
+) -> list[dict[str, Any]]:
+    """DOC 의 ``content.sections`` 를 record_sections 행으로 펼친다.
+
+    적재(``_resync_sections``)와 색인 다시 짓기(``api.scripts.reindex_sections``)가
+    같은 행을 얻도록 한곳에 둔다.
+    """
+    sections = content.get("sections") or []
+    if not isinstance(sections, list):
+        return []
+
+    # content.tables[] 를 id 로 인덱싱 — table 블록 (ref 만 보유) 평문화용.
+    tables_index: dict[str, dict[str, Any]] = {}
+    for tab in content.get("tables") or []:
+        if isinstance(tab, dict):
+            for key_field in ("id", "ref", "number"):
+                kv = str(tab.get(key_field) or "")
+                if kv:
+                    tables_index.setdefault(kv, tab)
+
+    return _flatten_sections(sections, max_level=3, tables=tables_index, dropped=dropped)
+
+
 async def _resync_sections(
     session: AsyncSession,
     record: Any,
@@ -645,21 +669,8 @@ async def _resync_sections(
     if record_in.data_type != "DOC":
         return
 
-    sections = record_in.content.get("sections") or []
-    if not isinstance(sections, list):
-        return
-
-    # content.tables[] 를 id 로 인덱싱 — table 블록 (ref 만 보유) 평문화용.
-    tables_index: dict[str, dict[str, Any]] = {}
-    for tab in record_in.content.get("tables") or []:
-        if isinstance(tab, dict):
-            for key_field in ("id", "ref", "number"):
-                kv = str(tab.get(key_field) or "")
-                if kv:
-                    tables_index.setdefault(kv, tab)
-
     dropped: dict[str, int] = {}
-    flattened = _flatten_sections(sections, max_level=3, tables=tables_index, dropped=dropped)
+    flattened = _section_rows(record_in.content, dropped)
     if dropped.get("deep") or dropped.get("dup") or dropped.get("noid"):
         # 색인 단위(3단계까지·section_id 하나에 본문 하나)는 재색인이 걸린 결정이라 두고, 빠진
         # 본문을 말없이 두지 않는다 — 이 절들은 검색과 get_record_sections 로는 안 보인다.
