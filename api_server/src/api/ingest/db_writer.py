@@ -73,7 +73,10 @@ def _flatten_sections(
     tables: dict[str, dict[str, Any]] | None = None,
     dropped: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
-    """중첩된 sections (children 트리) 를 평탄 리스트로 펼친다.
+    """중첩된 sections (children · subsections 트리) 를 평탄 리스트로 펼친다.
+
+    하위 절은 ``children``(우리 변환기) 또는 ``subsections``(MX 백서 DocumentJSON)에 있다 —
+    둘 다 내려간다.
 
     ``dropped`` 를 주면 색인에서 빠진 본문 있는 절을 센다 — ``deep``(``max_level`` 보다 깊다)·
     ``dup``(같은 section_id 의 두 번째 등장)·``noid``(식별자 없음)와 각 ``*_chars``. 그 본문은
@@ -198,7 +201,12 @@ def _flatten_sections(
                         "chunk_index": None,
                     }
                 )
-        for child in node.get("children") or []:
+        # 예전엔 children 만 내려가 MX 백서 카드의 하위 절 글이 record_sections 에 없었다
+        # (챗 · 심의 근거에서 빠짐). 두 키가 같은 절을 함께 들고 있으면 한 번만 걷는다 —
+        # 두 번째를 '중복 section_id' 로 세지 않게.
+        kids = list(node.get("children") or [])
+        kids += [s for s in node.get("subsections") or [] if s not in kids]
+        for child in kids:
             walk(child, depth + 1, next_path)
 
     for top in sections:
