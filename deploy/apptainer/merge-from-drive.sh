@@ -120,12 +120,24 @@ UPDATE public.$t AS r SET $_s = m.$_s, ${_s}_at = m.${_s}_at, ${_s}_model = m.${
   fi
 
   # 읽기만 — upsert 가 '운영이 더 새롭다' 로 건너뛸 행 가운데 content_hash 가 덤프와 다른 것을 upsert 앞에서 센다(병합 판단은 그대로다).
-  # 예전 병합은 운영 updated_at 을 병합 시각으로 올렸다 — 그 덤프 뒤에 dev 에서 바뀐 레코드는 dev 에서 다시 바뀔 때까지 여기서
-  # 건너뛰어진다. 이 박스의 진짜 편집과 가를 수 없어 고치지 않고 크기만 끝 요약에 한 줄로 알린다(HWAXPortal followups-1017 FU-D7).
-  local newer="" out
+  # 운영 updated_at 이 덤프보다 새로운 까닭은 셋이다. ① 이 박스의 편집. ② 예전 병합 — 운영 updated_at 을 병합 시각으로 올렸다.
+  # ③ 이 박스의 조회 — 조회 수 갱신(api/routes/records.py _bump_usage_in_session, GET /api/records/{id} · /api/data?agent=)은
+  # keep_updated_at 을 켜지 않아 열 onupdate 와 트리거(set_updated_at)가 updated_at 도 now() 로 올린다. ② ③ 은 dev 에서 바뀐 내용을
+  # dev 에서 다시 바뀔 때까지 막고, ③ 은 이 병합이 updated_at 을 dev 값 그대로 두어도 조회마다 새로 생긴다. 거꾸로 dev 에서의 조회는
+  # dev 를 더 새롭게 만들어 이 박스의 편집을 덮는다 — 그 수는 여기서 세지 않는다. 조회가 updated_at 을 움직이지 않게 할지는 따로 정할
+  # 일이고, 그렇게 바꾸면 아래 가름도 함께 바꾼다(HWAXPortal followups-1017 FU-D7). ③ 은 따로 센다 — 조회는 last_accessed_at 과
+  # updated_at 을 한 UPDATE 에서 쓰므로 updated_at 이 last_accessed_at 보다 1초 넘게 뒤가 아니면 updated_at 을 마지막으로 올린 것이
+  # 조회다. last_accessed_at >= updated_at 로는 모자라다 — get_record 는 앞의 SELECT 가 트랜잭션을 열어 last_accessed_at(앱 시각)이
+  # 뒤지만, /api/data 의 백그라운드 갱신은 앱 시각을 잡은 뒤에 BEGIN 이라 updated_at 이 몇 ms 뒤다(dev 10-31 — updated_at 을 마지막으로
+  # 올린 것이 조회인 47건 중 43건이 3 ~ 74ms 뒤). 조회 1초 안에 뒤따른 편집은 조회로, 풀을 1초 넘게 기다린 조회는 조회가 아닌 쪽으로
+  # 센다. ① ② 는 가를 수 없어 고치지 않고 크기만 끝 요약에 한 줄로 알린다.
+  local newer="" viewed="" out
   if [ -n "$upd" ] && printf '%s\n' "$_pc" | grep -qx content_hash && printf '%s\n' "$_sc" | grep -qx content_hash; then
+    # 운영 표에 last_accessed_at 이 없으면 조회 몫은 세지 않는다 — 없는 열을 부르면 ON_ERROR_STOP 으로 이 표의 병합까지 멈춘다.
+    printf '%s\n' "$_pc" | grep -qx last_accessed_at \
+      && viewed=", count(*) FILTER (WHERE r.$upd - r.last_accessed_at < interval '1 second')"
     newer="
-SELECT count(*) FROM _mg m JOIN public.$t r ON $_onpk WHERE r.$upd > m.$upd AND r.content_hash IS DISTINCT FROM m.content_hash;"
+SELECT count(*)$viewed FROM _mg m JOIN public.$t r ON $_onpk WHERE r.$upd > m.$upd AND r.content_hash IS DISTINCT FROM m.content_hash;"
   fi
 
   local before after
@@ -147,7 +159,9 @@ SQL
 )"
   then after="$(PSQL -d "$DB" -tA -c "SELECT count(*) FROM $t;")"; echo "    ✓ $t: +$((after-before)) (총 $after)"
     if [ -n "$newer" ]; then
-      case "$out" in ''|*[!0-9]*) out="세지 못함" ;; *) out="${out}건" ;; esac
+      local _n _v; IFS='|' read -r _n _v <<<"$out"
+      case "$_v" in *[!0-9]*) _v="" ;; esac
+      case "$_n" in ''|*[!0-9]*) out="세지 못함" ;; *) out="${_n}건${_v:+(그중 조회로 올라간 것 ${_v}건)}" ;; esac
       NEWER_DIFF="${NEWER_DIFF:-}${NEWER_DIFF:+ · }$t $out"
     fi
   else echo "    ✗ $t: merge 실패 — /tmp/aidh-merge.log 확인"; apptainer exec "instance://$INST" rm -f "$CFILE" 2>/dev/null; return 1; fi
@@ -246,7 +260,7 @@ try_merge mcp_upstreams          "alias"                ""
 # 5) staging 정리 (실패해도 반드시 수행 — 남으면 다음 실행이 이름 충돌로 막힌다)
 PSQL -d postgres -c "DROP DATABASE IF EXISTS $STAGE_DB WITH (FORCE);" >/dev/null
 # 읽기만 — merge_table 이 upsert 앞에서 센 수다. 크기를 보고 사람이 정한다(HWAXPortal followups-1017 FU-D7).
-[ -z "${NEWER_DIFF:-}" ] || echo "· 운영이 더 새롭다며 건너뛴 행 중 content_hash 가 덤프와 다른 것 — $NEWER_DIFF(이 박스의 편집이거나 예전 병합이 올려 둔 updated_at — 병합은 이 박스 판을 그대로 두었다, 셈만 한다)"
+[ -z "${NEWER_DIFF:-}" ] || echo "· 운영이 더 새롭다며 건너뛴 행 중 content_hash 가 덤프와 다른 것 — $NEWER_DIFF. 운영 updated_at 이 더 새로운 까닭은 이 박스의 편집 · 예전 병합이 올려 둔 시각 · 이 박스의 조회다(조회 수를 올리는 갱신이 updated_at 도 올린다). 조회로 올라간 행은 updated_at 이 마지막 조회 시각이라 내용이 언제 바뀌었는지 알 수 없다. 병합은 이 박스 판을 그대로 두었다(셈만 한다)."
 if [ -n "$FAILED" ]; then
   echo "✗ merge 일부 실패:$FAILED — /tmp/aidh-merge.log 확인 (나머지 테이블은 반영됨)"
   exit 1
