@@ -1,7 +1,9 @@
-# merge-from-drive.sh 의 표본 임베딩 병합을 폐기용 PostgreSQL 에서 — 이 박스의 행을 덮지 않고 순번을 앞에 두는지(10-30 요청 AD-21 후속)
+# merge-from-drive.sh 의 표본 임베딩 병합을 폐기용 PostgreSQL 에서 — 이 박스의 행을 덮지 않고 순번을 앞에 두는지(10-30 요청 AD-21 후속), '운영이 더 새롭다' 셈과 그중 조회 몫(FU-D7)
 """예전 병합은 agent_sample_embeddings 를 dev 의 대리 키(id)로 맞췄다(ON CONFLICT (id) DO UPDATE). 그래서 이 박스의 다른 agent 행을
 덮고(he-x 의 표본이 he-y 로 바뀐다), dev 의 id 를 그대로 넣으면서 순번은 올리지 않아 이 박스의 다음 표본 INSERT 가 겹친 id 로
 거절됐다 — cae00 의 '저장 뒤 500' · 표본 색인 실패(AD-21)의 원인 후보다. 이 파일은 진짜 스크립트를 진짜 PostgreSQL 에 대고 돌린다.
+레코드 병합이 '운영이 더 새롭다' 며 건너뛴 행 가운데 content_hash 가 덤프와 다른 것을 세어 끝 요약에 알리는지(셈만 — 병합 결과는
+그대로), 그중 이 박스의 조회가 updated_at 을 올린 것을 따로 세는지도 여기서 본다(HWAXPortal followups-1017 FU-D7).
 
 opt-in: ``AIDH_TEST_PG_BIN`` — initdb · pg_ctl · psql · pg_dump 가 있는 폴더(PostgreSQL 14 이상, 그 서버에 pgvector 0.7 이상).
 없으면 skip 이다.
@@ -164,10 +166,10 @@ def _ok(r: subprocess.CompletedProcess) -> str:
 
 @pytest.fixture()
 def boxes(pg, tmp_path):
-    """box(aidh) · dev(aidh_dev) DB 를 스키마 + 씨앗으로 짓고 dev 덤프를 만든 뒤, 병합 사본을 돌리는 함수를 준다."""
+    """box(aidh) · dev(aidh_dev) DB 를 스키마 + 씨앗(dev 는 주지 않으면 _DEV)으로 짓고 dev 덤프를 만든 뒤, 병합 사본을 돌리는 함수를 준다."""
 
-    def build(box_seed: str) -> Path:
-        for db, seed in (("aidh", box_seed), ("aidh_dev", _DEV)):
+    def build(box_seed: str, dev_seed: str = _DEV) -> Path:
+        for db, seed in (("aidh", box_seed), ("aidh_dev", dev_seed)):
             _ok(_psql(pg, "postgres", f"DROP DATABASE IF EXISTS {db} WITH (FORCE);"))
             _ok(_psql(pg, "postgres", f"CREATE DATABASE {db};"))
             _ok(_psql(pg, db, pg["schema"]))
@@ -257,3 +259,109 @@ def test_예전_병합이_남긴_겹침을_걷고_덤프로_못_고친_agent_는
     assert "지우기만 1 · 순번을 9 로 올림" in r.stdout, r.stdout
     warn = next(line for line in r.stdout.splitlines() if "⚠ agent_sample_embeddings" in line)
     assert "agent 1개" in warn and "he-x" in warn and "/api/agents/resync-samples-all" in warn, warn
+
+
+def _records(rows: list[tuple[str, int, str | None, str]]) -> str:
+    """(id, seq, content_hash, updated_at 날짜) → records INSERT. 본문(content)은 해시에서 지어 해시가 같으면 본문도 같다."""
+    q = lambda h: "NULL::text" if h is None else f"'{h}'"  # noqa: E731
+    values = ", ".join(f"('{rid}', 'report', 'HE', 'G1', 2026, {seq}, '{rid}', jsonb_build_object('h', {q(h)}), {q(h)}, "
+                       f"'{day} 00:00+00')" for rid, seq, h, day in rows)
+    return ('INSERT INTO records (id, data_type, team, "group", year, seq, title, content, content_hash, updated_at) '
+            f"VALUES {values};")
+
+
+# 레코드 — '운영이 더 새롭다' 셈(FU-D7). 같은 id 가 박스 · dev 에서 이렇게 갈린다.
+#   r1 박스가 더 새롭고 내용이 다르다(센다)        r2 박스가 더 새롭고 내용이 같다
+#   r3 dev 가 더 새롭다(병합이 dev 판으로)          r4 시각이 같고 내용이 다르다(더 새롭지는 않다)
+#   r5 박스에만 · r6 dev 에만                     r7 박스가 더 새롭고 박스의 해시가 비었다(센다 — IS DISTINCT FROM)
+_DEV_RECORDS = _records([("r1", 1, "h-dev-1", "2026-10-10"), ("r2", 2, "h-2", "2026-10-10"), ("r3", 3, "h-dev-3", "2026-10-20"),
+                         ("r4", 4, "h-dev-4", "2026-10-10"), ("r6", 6, "h-dev-6", "2026-10-10"), ("r7", 7, "h-dev-7", "2026-10-10")])
+_BOX_RECORDS = _records([("r1", 1, "h-box-1", "2026-10-20"), ("r2", 2, "h-2", "2026-10-20"), ("r3", 3, "h-box-3", "2026-10-10"),
+                         ("r4", 4, "h-box-4", "2026-10-10"), ("r5", 5, "h-box-5", "2026-10-10"), ("r7", 7, None, "2026-10-20")])
+
+
+def _record_rows(pg) -> dict[str, tuple[str, str, str]]:
+    out = _ok(_psql(pg, "aidh", "SELECT id, coalesce(content_hash, ''), to_char(updated_at AT TIME ZONE 'UTC', 'MM-DD'), xmin::text "
+                                "FROM records ORDER BY id;"))
+    return {rid: (h, day, xmin) for rid, h, day, xmin in (line.split("|") for line in out.splitlines())}
+
+
+def test_운영이_더_새롭다며_건너뛴_레코드_중_내용이_다른_수를_세고_병합은_그대로다(pg, boxes):
+    build, merge = boxes
+    dump = build(_BOX_RECORDS, _DEV_RECORDS)
+    r = merge(dump)
+    assert r.returncode == 0 and "✓ merge 완료" in r.stdout, r.stdout + r.stderr
+    # 병합의 판단은 예전 그대로다 — 박스가 더 새로우면(r1 · r2 · r7) 또는 시각이 같으면(r4) 박스 판, dev 가 더 새로우면 dev 판(시각째).
+    rows = _record_rows(pg)
+    assert {rid: (h, day) for rid, (h, day, _) in rows.items()} == {
+        "r1": ("h-box-1", "10-20"), "r2": ("h-2", "10-20"), "r3": ("h-dev-3", "10-20"), "r4": ("h-box-4", "10-10"),
+        "r5": ("h-box-5", "10-10"), "r6": ("h-dev-6", "10-10"), "r7": ("", "10-20")}, rows
+    # 박스가 더 새로운데 내용이 다른 것은 r1 · r7 둘이다 — 끝 요약에 한 줄.
+    summary = [line for line in r.stdout.splitlines() if "content_hash 가 덤프와 다른 것" in line]
+    assert len(summary) == 1 and "records 2건(그중 조회로 올라간 것 0건)" in summary[0], r.stdout
+
+    # 같은 덤프로 다시 — 건너뛴 둘은 그대로 건너뛰어 수도 그대로고, 셈은 읽기만이라 한 행도 다시 쓰지 않는다(xmin 같음).
+    r2 = merge(dump)
+    assert r2.returncode == 0 and "content_hash 가 덤프와 다른 것 — records 2건" in r2.stdout, r2.stdout + r2.stderr
+    assert _record_rows(pg) == rows
+
+
+class _Captured:
+    """세션 대역 — 조회 수 갱신이 실제로 만드는 문장을 받아 둔다."""
+
+    def __init__(self):
+        self.stmts = []
+
+    async def execute(self, stmt):
+        self.stmts.append(stmt)
+
+
+def _view_sql(rid: str) -> str:
+    """조회 한 번(api/routes/records.py _bump_usage_in_session)이 실제로 보내는 UPDATE — 앱 시각(last_accessed_at)을 리터럴로 굳힌다.
+    psql 이 그 뒤에 붙어 트랜잭션을 열므로 /api/data?agent= 의 백그라운드 갱신과 같은 꼴이다(updated_at 이 몇 ms 뒤)."""
+    import asyncio
+
+    from sqlalchemy.dialects import postgresql
+
+    from api.routes.records import _bump_usage_in_session
+
+    cap = _Captured()
+    asyncio.run(_bump_usage_in_session(cap, rid))
+    assert len(cap.stmts) == 1, cap.stmts
+    return str(cap.stmts[0].compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})) + ";"
+
+
+# 조회 몫 — 박스가 더 새롭고 내용이 다른 넷을 센다. 그중 updated_at 을 마지막으로 올린 것이 조회인 것은 v1 · v2 둘이다.
+#   v1 박스는 dev 보다 옛것이었는데 이 박스에서 한 번 조회돼(실제 갱신 문장) 더 새로워졌다 — dev 의 편집이 건너뛰어진다
+#   v2 get_record 꼴의 조회가 마지막(last_accessed_at 이 updated_at 3ms 뒤)
+#   e1 조회 한 시간 뒤의 편집이 마지막 · e2 조회된 적 없다(편집이거나 예전 병합)
+#   c1 조회 꼴이지만 내용이 같다(세지 않는다) · c2 조회 꼴이지만 dev 가 더 새롭다(dev 판으로 — 세지 않는다)
+_DEV_SEEN = _records([("v1", 11, "h-v1-dev", "2026-10-20"), ("v2", 12, "h-v2-dev", "2026-10-20"), ("e1", 13, "h-e1-dev", "2026-10-20"),
+                      ("e2", 14, "h-e2-dev", "2026-10-20"), ("c1", 15, "h-c1", "2026-10-20"), ("c2", 16, "h-c2-dev", "2026-10-25")])
+_BOX_SEEN = _records([("v1", 11, "h-v1-box", "2026-10-10"), ("v2", 12, "h-v2-box", "2026-10-21"), ("e1", 13, "h-e1-box", "2026-10-21"),
+                      ("e2", 14, "h-e2-box", "2026-10-21"), ("c1", 15, "h-c1", "2026-10-21"), ("c2", 16, "h-c2-box", "2026-10-21")])
+# 조회 시각만 덧댄다 — keep_updated_at 이라 트리거가 updated_at 을 그대로 둔다.
+_BOX_SEEN_AT = """SET aidh.keep_updated_at = 'on';
+UPDATE records SET last_accessed_at = updated_at + interval '3 milliseconds' WHERE id = 'v2';
+UPDATE records SET last_accessed_at = updated_at - interval '1 hour' WHERE id = 'e1';
+UPDATE records SET last_accessed_at = updated_at - interval '5 milliseconds' WHERE id = 'c1';
+UPDATE records SET last_accessed_at = updated_at + interval '2 milliseconds' WHERE id = 'c2';"""
+
+
+def test_운영이_더_새롭다며_건너뛴_것_중_조회가_updated_at_을_올린_것을_따로_센다(pg, boxes):
+    build, merge = boxes
+    dump = build(_BOX_SEEN, _DEV_SEEN)
+    _ok(_psql(pg, "aidh", _BOX_SEEN_AT))
+    _ok(_psql(pg, "aidh", _view_sql("v1")))
+    # 조회가 updated_at 을 오늘로 올렸고, 그 값은 last_accessed_at 보다 몇 ms 뒤다 — last_accessed_at >= updated_at 로는 못 센다.
+    gap = float(_ok(_psql(pg, "aidh", "SELECT extract(epoch FROM updated_at - last_accessed_at) FROM records "
+                                      "WHERE id = 'v1' AND updated_at > '2026-10-20' AND read_count = 1;")).strip() or "nan")
+    assert 0 < gap < 1, gap
+
+    r = merge(dump)
+    assert r.returncode == 0 and "✓ merge 완료" in r.stdout, r.stdout + r.stderr
+    hashes = {rid: h for rid, (h, _, _) in _record_rows(pg).items()}
+    # 판단은 예전 그대로다 — 조회로 더 새로워진 v1 도 박스 판으로 남는다(dev 의 편집 h-v1-dev 가 오지 않는다). dev 가 더 새로운 c2 만 dev 판.
+    assert hashes == {"v1": "h-v1-box", "v2": "h-v2-box", "e1": "h-e1-box", "e2": "h-e2-box", "c1": "h-c1", "c2": "h-c2-dev"}, hashes
+    line = next(x for x in r.stdout.splitlines() if "content_hash 가 덤프와 다른 것" in x)
+    assert "— records 4건(그중 조회로 올라간 것 2건)." in line, line
