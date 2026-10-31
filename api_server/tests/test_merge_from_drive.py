@@ -1,4 +1,4 @@
-# merge-from-drive.sh — 운영에 없는 열을 알리고(3), m3 슬롯은 updated_at 과 상관없이 비어 있을 때 채우는지(10-17 cae00 리뷰 H1 · H1-b), 표본은 id 로 덮지 않는지(10-30 AD-21 후속), '운영이 더 새롭다' 며 건너뛴 레코드 중 내용이 다른 수와 그중 조회로 올라간 수를 끝 요약에 알리는지(FU-D7)
+# merge-from-drive.sh — 운영에 없는 열을 알리고(3), m3 슬롯은 updated_at 과 상관없이 비어 있을 때 채우는지(10-17 cae00 리뷰 H1 · H1-b), 표본은 id 로 덮지 않는지(10-30 AD-21 후속), '운영이 더 새롭다' 며 건너뛴 레코드 중 내용이 다른 수와 그중 조회로 올라간 수를 끝 요약에 알리는지(FU-D7), 레코드의 조회 수 · 조회 시각은 덮지 않는지(10-31 검토 후속)
 from __future__ import annotations
 
 import json
@@ -224,6 +224,22 @@ def test_운영이_더_새롭다며_건너뛴_레코드_중_내용이_다른_수
     assert summary[0] == len(lines) - 2 and lines[-1].startswith("✓ merge 완료"), "끝 요약(판정 바로 앞)에 한 줄"
     assert "이 박스의 예전 조회" in lines[summary[0]], "까닭에 조회를 적는다 — 편집 · 예전 병합만이 아니다"
     assert "고친 판의 조회는 올리지 않는다" in lines[summary[0]], "새 조회는 updated_at 을 올리지 않는다고 적는다"
+
+
+def test_레코드의_조회_수와_조회_시각은_덮지_않고_새_행에만_넣는다(merge):
+    """사용 통계(read_count · last_accessed_at)는 그 박스의 것이다 — dev 판이 더 새로워 행을 덮을 때도 이 박스 값을 둔다. 2026-10-31
+    고침 뒤의 조회는 updated_at 을 올리지 않아 이 박스에서 조회된 행도 dev 가 더 새로우면 덮이고, 열을 통째로 덮으면 조회 수 · 조회
+    시각이 dev 값으로 바뀐다(HWAX 10-31 사용자 결정의 검토 후속). 새 행은 dev 값을 받는다. 값은 실 PostgreSQL 시험
+    (test_merge_samples_pg, opt-in)이 본다 — 여기서는 기본 시험으로 꼴을 지킨다."""
+    cols = _RECORDS + ["read_count"]
+    r, sessions = merge({"records": cols}, {"records": cols})
+    assert r.returncode == 0 and "✓ merge 완료" in r.stdout, r.stdout + r.stderr
+    m = re.search(r"INSERT INTO public\.records \((.*?)\) SELECT .*? ON CONFLICT \(id\) DO UPDATE SET (.*?) WHERE ", sessions["records"])
+    assert m, sessions["records"]
+    inserted, updated = m.group(1).split(","), m.group(2)
+    assert {"read_count", "last_accessed_at"} <= set(inserted), inserted
+    assert "read_count" not in updated and "last_accessed_at" not in updated, updated
+    assert "content_hash=EXCLUDED.content_hash" in updated and "updated_at=EXCLUDED.updated_at" in updated, updated
 
 
 def test_운영_표에_last_accessed_at_이_없으면_조회_몫은_세지_않고_병합은_그대로다(merge):

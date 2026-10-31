@@ -220,6 +220,14 @@ dev 전체로 다시 재려면 `scripts/embed_calibrate.py`(절차 5).
      (`updated_at` 과 `last_accessed_at` 이 1초 안)로 바꿨다. 한쪽 가름은 고친 뒤의 조회가 편집된 행까지 조회로 세게 한다
      (`deploy/apptainer/merge-from-drive.sh` 주석). 시험 — `tests/test_view_keeps_updated_at.py`(기본) ·
      `tests/test_view_keeps_updated_at_pg.py` · `tests/test_merge_samples_pg.py`(실 PG, `AIDH_TEST_PG_BIN`).
+   - **2026-10-31 덧붙임(같은 날 검토 후속) — merge 는 cae00 의 조회 수 · 조회 시각을 덮지 않는다.** 고친 조회는 `updated_at` 을 그대로
+     두므로 cae00 에서 조회된 행도 dev 판이 더 새로우면 덮인다(위 고침이 dev 의 편집을 들여보내려고 연 행이다). 그때 열을 통째로 덮으면
+     cae00 의 `read_count` · `last_accessed_at` 이 dev 값으로 바뀌어 `/api/analytics/usage` 가 운영 조회 기록을 잃는다. 예전 조회는 그 행을
+     건너뛰게 해 통계가 남았고, cae00 에서 조회되지 않은 행은 예전에도 dev 값으로 바뀌었다. 그래서 records 병합은 이 두 열을 덮을 때(SET)
+     빼고 INSERT 열에는 남긴다(`merge_table` 의 여섯째 인자) — 덮이는 행은 cae00 값 그대로고 새 행은 dev 값이다. 두 박스 값 중 큰 쪽
+     (GREATEST)을 고르지 않은 것은 dev 의 조회(개발 · 시험)를 운영 통계에 섞지 않으려서다. 시험 — `tests/test_merge_from_drive.py`(기본,
+     꼴) · `tests/test_merge_samples_pg.py`(실 PG — 여기서 세 번 조회된 행이 dev 판으로 덮여도 3 · 새 행은 dev 값 · dev 에서만 조회된
+     행은 0).
 3. **스윕이 겹치지 않는다.** 예전에는 앞 스윕이 돌아도 30분마다 새 잡을 띄웠고, 빈 절 21만 개를 ORM 객체로 올려 RSS 16GB · 한 트랜잭션
    이었다. 지금은 프로세스 안에서는 앞 잡을 보고, 프로세스 밖(CLI)과는 (슬롯, 표)마다 advisory lock 이 막는다.
 4. **부팅 때 풀의 첫 연결은 버려진다.** import 때 `mcp_uploads` 적재가 `asyncio.run` 으로 맺은 연결이 풀에 남아 lifespan 의 첫 연결이

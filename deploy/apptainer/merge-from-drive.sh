@@ -3,6 +3,7 @@
 # cae00 에서 자체 등록한 에이전트·레코드는 유지하고, dev 신규는 추가, 양쪽에 있으면
 # updated_at 최신 우선(없으면 dev 로 갱신). staging DB 로 로드 후 테이블별 upsert(FK 순서).
 # 에이전트 표본 임베딩만은 행이 아니라 agent 단위로 맞춘다(아래 merge_samples).
+# 레코드의 조회 수 · 조회 시각은 dev 판이 행을 덮어도 이 박스 것을 둔다(아래 try_merge records).
 #
 #   bash deploy/apptainer/merge-from-drive.sh            # Drive 최신 덤프로 merge
 #   AIDH_MERGE_DUMP=/path/to.sql.gz bash ... merge-from-drive.sh   # 로컬 덤프 지정
@@ -56,14 +57,14 @@ mkdir -p "$(dirname "$BK")" 2>/dev/null && \
 STAGE_SQL() { apptainer exec "instance://$INST" psql -h 127.0.0.1 -p "$PORT" -U "$USER" -d "$STAGE_DB" "$@"; }
 CFILE="/tmp/aidh_mg.bin"   # 컨테이너 내부 경로(서버 COPY 대상)
 
-merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외컬럼(csv, 옵션) $5=m3 슬롯 채움 — 양쪽이 같아야 하는 열(csv, 옵션)
+merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외컬럼(csv, 옵션) $5=m3 슬롯 채움 — 양쪽이 같아야 하는 열(csv, 옵션) $6=덮지 않는 열 — 새 행에만 dev 값(csv, 옵션)
   # 충돌키는 **자연키**여야 한다. id 가 nextval() 대리키인 테이블(record_sections,
   # external_id_map 등)은 박스마다 값이 독립 생성돼, dev 의 id 가 운영에 없더라도
   # (record_id, section_id) 같은 자연키 유니크에 걸려 INSERT 전체가 죽는다
   # (실제로 cae00 에서 "record_sections: merge 실패" → set -e 로 뒤 4개 테이블과
   #  staging 정리까지 통째로 스킵됐다). 그런 테이블은 $4 로 id 를 제외해 운영 시퀀스가
   # 새 id 를 부여하게 하고, 자연키로 충돌 판정한다.
-  local t="$1" pk="$2" upd="${3:-}" drop="${4:-}" same="${5:-}"
+  local t="$1" pk="$2" upd="${3:-}" drop="${4:-}" same="${5:-}" keep="${6:-}"
   # psql 이 접속·인증 실패로 죽으면 stdout 이 빈 문자열이라 '테이블 없음'과 구별되지 않는다.
   # 그러면 전 테이블이 skip 되는데 FAILED 에도 안 잡혀 '✓ merge 완료' 로 끝난다 —
   # 한 행도 안 들어왔는데 성공으로 보고된다. 'f' 만 진짜 '없음'이고 빈 값은 조회 실패다.
@@ -94,6 +95,8 @@ merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외�
   fi
   local cols; cols="$(PSQL -d "$DB" -tA -c "SELECT string_agg(quote_ident(column_name),',' ORDER BY ordinal_position) FROM information_schema.columns WHERE table_schema='public' AND table_name='$t' AND column_name <> ALL (string_to_array('$drop',','));")"
   local skip="$pk"; [ -n "$drop" ] && skip="$pk,$drop"
+  # $6 은 이 박스의 값을 두는 열이다 — 덮을 때(SET)만 빼고 INSERT 열 목록에는 남겨 새 행은 dev 값을 받는다.
+  [ -n "$keep" ] && skip="$skip,$keep"
   local setclause; setclause="$(PSQL -d "$DB" -tA -c "
     SELECT string_agg(quote_ident(column_name)||'=EXCLUDED.'||quote_ident(column_name),', ')
     FROM information_schema.columns
@@ -249,7 +252,12 @@ try_merge org_groups             "team_code,code"       ""
 try_merge doc_types              "code"                 ""
 try_merge agents                 "agent_type"           "updated_at"
 # 레코드 시그니처(m3)는 제목 · 본문이 양쪽에서 같을 때만 채운다(시그니처 = 제목 + 본문의 caption · headers · notes).
-try_merge records                "id"                   "updated_at" ""         "title,content_hash"
+# 조회 수 · 조회 시각(read_count · last_accessed_at)은 이 박스의 사용 통계라 dev 판이 행을 덮을 때도 그대로 둔다(새 행만 dev 값).
+# 2026-10-31 고침 뒤의 조회는 updated_at 을 올리지 않아 이 박스에서 조회된 행도 dev 가 더 새로우면 덮이는데, 열을 통째로 덮으면
+# 이 박스의 조회 수 · 조회 시각이 dev 값이 된다(/api/analytics/usage 의 조회 수 상위 목록이 운영 조회 기록을 잃는다). 예전 조회는
+# 그 행을 '운영이 더 새롭다' 로 건너뛰게 해 통계가 남았고, 여기서 조회되지 않은 행은 예전에도 dev 값이 들었다(HWAX 10-31 사용자
+# 결정의 검토 후속).
+try_merge records                "id"                   "updated_at" ""         "title,content_hash" "read_count,last_accessed_at"
 try_merge agent_records          "agent_type,record_id" ""
 # ↓ id 가 대리키(nextval)라 자연키로 충돌 판정하고 id 는 운영 시퀀스에 맡긴다.
 try_merge record_sections        "record_id,section_id" ""          "id"

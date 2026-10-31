@@ -1,10 +1,11 @@
-# merge-from-drive.sh 의 표본 임베딩 병합을 폐기용 PostgreSQL 에서 — 이 박스의 행을 덮지 않고 순번을 앞에 두는지(10-30 요청 AD-21 후속), '운영이 더 새롭다' 셈과 그중 조회 몫(FU-D7)
+# merge-from-drive.sh 의 표본 임베딩 병합을 폐기용 PostgreSQL 에서 — 이 박스의 행을 덮지 않고 순번을 앞에 두는지(10-30 요청 AD-21 후속), '운영이 더 새롭다' 셈과 그중 조회 몫(FU-D7), 이 박스의 조회 수 · 조회 시각을 덮지 않는지(10-31 검토 후속)
 """예전 병합은 agent_sample_embeddings 를 dev 의 대리 키(id)로 맞췄다(ON CONFLICT (id) DO UPDATE). 그래서 이 박스의 다른 agent 행을
 덮고(he-x 의 표본이 he-y 로 바뀐다), dev 의 id 를 그대로 넣으면서 순번은 올리지 않아 이 박스의 다음 표본 INSERT 가 겹친 id 로
 거절됐다 — cae00 의 '저장 뒤 500' · 표본 색인 실패(AD-21)의 원인 후보다. 이 파일은 진짜 스크립트를 진짜 PostgreSQL 에 대고 돌린다.
 레코드 병합이 '운영이 더 새롭다' 며 건너뛴 행 가운데 content_hash 가 덤프와 다른 것을 세어 끝 요약에 알리는지(셈만 — 병합 결과는
 그대로), 그중 이 박스의 예전 조회(2026-10-31 고침 전)가 updated_at 을 올린 것을 따로 세는지, 고친 뒤의 조회는 updated_at 을 올리지
 않아 dev 의 편집을 막지도 조회 몫을 늘리지도 않는지도 여기서 본다(HWAXPortal followups-1017 FU-D7 · HWAX 10-31 사용자 결정).
+그렇게 dev 판으로 덮이는 행도 조회 수 · 조회 시각은 이 박스 것으로 남는지(새 행만 dev 값)도 본다(같은 결정의 검토 후속).
 
 opt-in: ``AIDH_TEST_PG_BIN`` — initdb · pg_ctl · psql · pg_dump 가 있는 폴더(PostgreSQL 14 이상, 그 서버에 pgvector 0.7 이상).
 없으면 skip 이다.
@@ -399,3 +400,42 @@ def test_운영이_더_새롭다며_건너뛴_것_중_조회가_updated_at_을_�
                       "n1": "h-n1-dev", "n2": "h-n2-box"}, hashes
     line = next(x for x in r.stdout.splitlines() if "content_hash 가 덤프와 다른 것" in x)
     assert "— records 5건(그중 조회로 올라간 것 2건)." in line, line
+
+
+# 이 박스의 사용 통계 — 병합이 내용을 dev 판으로 바꿔도 조회 수 · 조회 시각(read_count · last_accessed_at)은 이 박스 것을 둔다
+# (HWAX 10-31 사용자 결정의 검토 후속). 고친 조회는 updated_at 을 그대로 두므로 이 박스에서 조회된 행도 dev 가 더 새로우면 덮인다.
+# 예전 조회는 박스를 더 새롭게 만들어 그 행을 건너뛰게 했고(내용은 낡은 채) 조회 수는 남았다. 열을 통째로 덮으면 dev 값이 든다.
+#   k1 박스 10-10 편집 · 여기서 고친 조회 세 번, dev 10-20 편집 · dev 에서 일곱 번 조회 — 내용은 dev 판, 조회 수 · 조회 시각은 박스 것
+#   k2 dev 에만 있다 — 새 행은 dev 의 조회 수 · 조회 시각을 받는다(예전 그대로)
+#   k3 여기서 조회된 적 없고 dev 가 더 새롭다 — 이 박스의 0 · 빈 칸 그대로다(dev 의 조회는 이 박스의 통계가 아니다)
+_DEV_USAGE = _records([("k1", 21, "h-k1-dev", "2026-10-20"), ("k2", 22, "h-k2-dev", "2026-10-20"),
+                       ("k3", 23, "h-k3-dev", "2026-10-20")]) + """
+SET aidh.keep_updated_at = 'on';
+UPDATE records SET read_count = 7, last_accessed_at = '2026-10-21 00:00+00' WHERE id = 'k1';
+UPDATE records SET read_count = 2, last_accessed_at = '2026-10-22 00:00+00' WHERE id = 'k2';
+UPDATE records SET read_count = 4, last_accessed_at = '2026-10-24 00:00+00' WHERE id = 'k3';"""
+_BOX_USAGE = _records([("k1", 21, "h-k1-box", "2026-10-10"), ("k3", 23, "h-k3-box", "2026-10-10")])
+
+
+def _usage(pg) -> dict[str, tuple[str, str, str, str]]:
+    """id → (content_hash, read_count, updated_at 날짜, last_accessed_at — UTC 마이크로초까지, 없으면 빈 글)."""
+    out = _ok(_psql(pg, "aidh", "SELECT id, content_hash, read_count, to_char(updated_at AT TIME ZONE 'UTC', 'MM-DD'), "
+                                "coalesce(to_char(last_accessed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US'), '') "
+                                "FROM records ORDER BY id;"))
+    return {rid: (h, n, day, seen) for rid, h, n, day, seen in (line.split("|") for line in out.splitlines())}
+
+
+def test_dev_판으로_덮는_행도_이_박스의_조회_수와_조회_시각은_그대로_둔다(pg, boxes):
+    build, merge = boxes
+    dump = build(_BOX_USAGE, _DEV_USAGE)
+    for _ in range(3):
+        _ok(_psql(pg, "aidh", _view_sql("k1")))
+    h, n, day, seen = _usage(pg)["k1"]
+    assert (h, n, day) == ("h-k1-box", "3", "10-10") and seen, (h, n, day, seen)   # 고친 조회 — updated_at 은 씨앗 그대로
+
+    r = merge(dump)
+    assert r.returncode == 0 and "✓ merge 완료" in r.stdout, r.stdout + r.stderr
+    after = _usage(pg)
+    assert after == {"k1": ("h-k1-dev", "3", "10-20", seen),                          # 덮였다 — 조회 수 · 조회 시각만 이 박스 것
+                     "k2": ("h-k2-dev", "2", "10-20", "2026-10-22 00:00:00.000000"),  # 새 행은 dev 값
+                     "k3": ("h-k3-dev", "0", "10-20", "")}, after                     # dev 의 조회는 오지 않는다
