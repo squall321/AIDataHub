@@ -53,22 +53,37 @@ def _request_id(request: Request) -> str | None:
 async def _bump_usage_in_session(
     session: AsyncSession, record_id: str
 ) -> None:
-    """현재 세션에서 ``read_count`` 와 ``last_accessed_at`` 증가.
+    """현재 세션에서 ``read_count`` 와 ``last_accessed_at`` 만 올린다 — ``updated_at`` 은 그대로다.
+
+    조회는 내용을 바꾸지 않는다(HWAX 2026-10-31 사용자 결정). 예전에는 열의 onupdate(now())와 records 의
+    BEFORE UPDATE 트리거(set_updated_at)가 ``updated_at`` 도 조회 시각으로 올려, 박스 사이 병합
+    (deploy/apptainer/merge-from-drive.sh — ``updated_at`` 이 더 새 쪽을 고른다)이 조회만 된 판을 더 새 편집으로 봤다.
+    임베딩 백필(services/embed_backfill.py)과 같은 길이다 — onupdate 는 자기 값으로 막고, 트리거는
+    ``aidh.keep_updated_at`` 으로 건너뛴다(이행 0032). 설정은 이 UPDATE 하나에만 켠다 — 같은 트랜잭션의 뒤 편집은
+    예전처럼 ``updated_at`` 을 올린다(부르는 두 곳은 이 설정을 켜지 않으므로 끝에 'off' 로 돌린다).
 
     트랜잭션 격리 안전한 짧은 UPDATE 를 수행한다. best-effort — 실패는
     로깅만 한다.
     """
     try:
-        from sqlalchemy import update
+        from sqlalchemy import text, update
 
+        from api.services.sql_compat import is_postgres
+
+        pg = is_postgres(session)
+        if pg:
+            await session.execute(text("SET LOCAL aidh.keep_updated_at = 'on'"))
         await session.execute(
             update(Record)
             .where(Record.id == record_id)
             .values(
                 read_count=Record.read_count + 1,
                 last_accessed_at=datetime.now(timezone.utc),
+                updated_at=Record.updated_at,
             )
         )
+        if pg:
+            await session.execute(text("SET LOCAL aidh.keep_updated_at = 'off'"))
     except Exception as exc:  # pragma: no cover - best-effort
         log.debug("usage bump (in-session) failed for %s: %s", record_id, exc)
 

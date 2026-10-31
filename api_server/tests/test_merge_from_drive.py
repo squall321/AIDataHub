@@ -196,16 +196,19 @@ def test_병합_실패는_열_빠짐보다_먼저_1로_끝난다(merge):
 
 
 _NEWER_COUNT = "FROM _mg m JOIN public."   # '운영이 더 새롭다' 셈에만 있는 꼴
-_NEWER_DIFF = ("SELECT count(*), count(*) FILTER (WHERE r.updated_at - r.last_accessed_at < interval '1 second')"
+# 조회 몫은 updated_at 과 last_accessed_at 이 양쪽 1초 안인 것 — 한쪽(updated_at - last_accessed_at < 1초)만 보면 2026-10-31 고침 뒤의
+# 조회가 편집된 행의 last_accessed_at 만 앞으로 밀어 그 행을 조회로 센다.
+_NEWER_DIFF = ("SELECT count(*), count(*) FILTER (WHERE r.updated_at - r.last_accessed_at < interval '1 second'"
+               " AND r.last_accessed_at - r.updated_at < interval '1 second')"
                " FROM _mg m JOIN public.records r ON r.id = m.id"
                " WHERE r.updated_at > m.updated_at AND r.content_hash IS DISTINCT FROM m.content_hash;")
 
 
 def test_운영이_더_새롭다며_건너뛴_레코드_중_내용이_다른_수를_끝_요약에_한_줄로_알린다(merge):
-    """예전 병합이 운영 updated_at 을 병합 시각으로 올려 둔 레코드, 그리고 이 박스에서 조회된 레코드(조회 수 갱신이 updated_at 도
-    올린다)는 dev 에서 다시 바뀌어도 '운영이 더 새롭다' 로 건너뛰어진다(HWAXPortal followups-1017 FU-D7). 고치지 않고 크기를 세며
-    그중 updated_at 을 마지막으로 올린 것이 조회인 수를 따로 싣는다 — upsert 앞의 읽기 한 줄이고 upsert 의 조건은 그대로다. 셈의 값은
-    실 PostgreSQL 시험(test_merge_samples_pg, opt-in)이 본다 — 여기서는 꼴과 끝 요약의 자리를 지킨다."""
+    """예전 병합이 운영 updated_at 을 병합 시각으로 올려 둔 레코드, 그리고 이 박스에서 예전에 조회된 레코드(2026-10-31 고침 전에는
+    조회 수 갱신이 updated_at 도 올렸다)는 dev 에서 다시 바뀌어도 '운영이 더 새롭다' 로 건너뛰어진다(HWAXPortal followups-1017 FU-D7).
+    고치지 않고 크기를 세며 그중 updated_at 을 마지막으로 올린 것이 조회인 수를 따로 싣는다 — upsert 앞의 읽기 한 줄이고 upsert 의
+    조건은 그대로다. 셈의 값은 실 PostgreSQL 시험(test_merge_samples_pg, opt-in)이 본다 — 여기서는 꼴과 끝 요약의 자리를 지킨다."""
     agents = ["agent_type", "updated_at"]
     r, sessions = merge({"records": _RECORDS, "agents": agents}, {"records": _RECORDS, "agents": agents},
                         FAKE_NEWER_DIFF="7|2")
@@ -219,7 +222,8 @@ def test_운영이_더_새롭다며_건너뛴_레코드_중_내용이_다른_수
     summary = [i for i, line in enumerate(lines) if "content_hash 가 덤프와 다른 것 — records 7건(그중 조회로 올라간 것 2건)" in line]
     assert len(summary) == 1, r.stdout
     assert summary[0] == len(lines) - 2 and lines[-1].startswith("✓ merge 완료"), "끝 요약(판정 바로 앞)에 한 줄"
-    assert "이 박스의 조회" in lines[summary[0]], "까닭에 조회를 적는다 — 편집 · 예전 병합만이 아니다"
+    assert "이 박스의 예전 조회" in lines[summary[0]], "까닭에 조회를 적는다 — 편집 · 예전 병합만이 아니다"
+    assert "고친 판의 조회는 올리지 않는다" in lines[summary[0]], "새 조회는 updated_at 을 올리지 않는다고 적는다"
 
 
 def test_운영_표에_last_accessed_at_이_없으면_조회_몫은_세지_않고_병합은_그대로다(merge):

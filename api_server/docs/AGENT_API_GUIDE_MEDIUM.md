@@ -984,7 +984,8 @@ LOG / FORM / OTHER: free-form.
   없으면 풀 스캔.
 - `read_count` / `last_accessed_at` 은 GET 시마다 fire-and-forget UPDATE
   (BackgroundTasks). 트랜잭션 안전하지만 best-effort — 실패해도 응답에는
-  영향 없음.
+  영향 없음. `updated_at` 은 움직이지 않는다 — 조회는 내용을 바꾸지 않는다
+  (2026-10-31 사용자 결정, 그 전에는 조회가 `updated_at` 도 올렸다).
 
 ---
 

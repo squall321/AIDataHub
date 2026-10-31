@@ -208,8 +208,18 @@ dev 전체로 다시 재려면 `scripts/embed_calibrate.py`(절차 5).
    임베더마다 잠금 하나, 묶음마다 놓는다. 질의 인코딩은 스레드로 옮겨 잠금을 기다리는 동안 이벤트 루프가 서지 않는다.
 2. **임베딩 쓰기는 `updated_at` 을 움직이지 않는다.** records 의 BEFORE UPDATE 트리거(0002)는 어떤 UPDATE 든 `updated_at` 을 now() 로
    덮는다 — 그대로면 m3 시그니처 백필이 레코드 5만 9천 건을 오늘로 바꿔 cae00 merge 가 cae00 의 최근 편집을 덮고 `updated_at` 순 목록이
-   뒤섞인다. 트리거 함수가 `SET LOCAL aidh.keep_updated_at = 'on'` 인 트랜잭션은 건너뛴다(백필만 쓴다). 예전 v1 시그니처 백필은 이
-   트리거로 `updated_at` 을 늘 바꿨다.
+   뒤섞인다. 트리거 함수가 `SET LOCAL aidh.keep_updated_at = 'on'` 인 트랜잭션은 건너뛴다(처음엔 백필만 썼다 — 아래 덧붙임). 예전 v1
+   시그니처 백필은 이 트리거로 `updated_at` 을 늘 바꿨다.
+   - **2026-10-31 덧붙임 — 조회도 `updated_at` 을 움직이지 않는다(HWAX 사용자 결정).** 조회 수 갱신(`routes/records.py`
+     `_bump_usage_in_session` — `GET /api/records/{id}` · `/api/data?agent=`)은 `read_count` · `last_accessed_at` 만 올린다. 백필과 같은
+     길이다 — onupdate 는 자기 값으로 막고, 트리거 설정은 그 UPDATE 하나에만 켰다가 끈다(같은 트랜잭션의 뒤 편집은 그대로 올린다).
+     예전에는 조회가 `updated_at` 을 조회 시각으로 올려, merge 가 조회만 된 판을 더 새 편집으로 보고 다른 박스의 편집을 건너뛰거나 덮었다.
+     이미 그렇게 올라간 행은 고치지 않는다(데이터 이행 없음 — dev 읽기 전용 셈 10-31: 레코드 59,055건 중 조회된 83건, 그중 47건의
+     `updated_at` 이 조회 시각이고 모두 10-17 이전이다). 다음 병합도 그 행을 예전처럼 다룬다 — 엄격히 더 새로울 때만 덮으므로 이미 받은
+     cae00 판은 그대로고, cae00 판이 그 조회 시각보다 옛것이면 dev 판이 덮는다. merge 끝 요약의 '그중 조회로 올라간 것' 은 이 옛 행을 센다 — 가름을 양쪽 1초
+     (`updated_at` 과 `last_accessed_at` 이 1초 안)로 바꿨다. 한쪽 가름은 고친 뒤의 조회가 편집된 행까지 조회로 세게 한다
+     (`deploy/apptainer/merge-from-drive.sh` 주석). 시험 — `tests/test_view_keeps_updated_at.py`(기본) ·
+     `tests/test_view_keeps_updated_at_pg.py` · `tests/test_merge_samples_pg.py`(실 PG, `AIDH_TEST_PG_BIN`).
 3. **스윕이 겹치지 않는다.** 예전에는 앞 스윕이 돌아도 30분마다 새 잡을 띄웠고, 빈 절 21만 개를 ORM 객체로 올려 RSS 16GB · 한 트랜잭션
    이었다. 지금은 프로세스 안에서는 앞 잡을 보고, 프로세스 밖(CLI)과는 (슬롯, 표)마다 advisory lock 이 막는다.
 4. **부팅 때 풀의 첫 연결은 버려진다.** import 때 `mcp_uploads` 적재가 `asyncio.run` 으로 맺은 연결이 풀에 남아 lifespan 의 첫 연결이
