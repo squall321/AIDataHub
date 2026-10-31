@@ -107,16 +107,25 @@ merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외�
   # 움직이고(keep_updated_at), 예전 병합이 운영 updated_at 을 병합 시각으로 올려 둔 행이 많아 위 upsert 가 건너뛰었다(10-17 cae00 리뷰 H1-b
   # — 레코드 시그니처 59,032건 전부). 있는 값은 덮지 않는다. $5 의 열(시그니처의 재료)이 양쪽에서 같을 때만 채운다 — 운영에서 고친 레코드는
   # 시그니처를 비워 그 박스의 스윕이 새 내용으로 다시 계산하는데(db_writer), 그 사이 병합이 dev 의 옛 내용 벡터를 넣으면 스윕이 다시 하지 않는다.
-  local fill="" _s _on
+  local fill="" _s _on _onpk
+  _onpk="$(printf '%s' "$pk" | tr ',' '\n' | sed 's/.*/r.& = m.&/' | paste -sd'&' - | sed 's/&/ AND /g')"
   if [ -n "$upd" ] && [ -n "$same" ]; then
-    _on="$(printf '%s' "$pk" | tr ',' '\n' | sed 's/.*/r.& = m.&/' | paste -sd'&' - | sed 's/&/ AND /g')"
-    _on="$_on$(printf '%s' "$same" | tr ',' '\n' | sed 's/.*/ AND r.& IS NOT DISTINCT FROM m.&/' | paste -sd'\0' -)"
+    _on="$_onpk$(printf '%s' "$same" | tr ',' '\n' | sed 's/.*/ AND r.& IS NOT DISTINCT FROM m.&/' | paste -sd'\0' -)"
     for _s in $(printf '%s\n' "$_pc" | grep -E '_m3$' || true); do
       printf '%s\n' "$_sc" | grep -qx "$_s" || continue
       fill="$fill
 UPDATE public.$t AS r SET $_s = m.$_s, ${_s}_at = m.${_s}_at, ${_s}_model = m.${_s}_model FROM _mg m
  WHERE $_on AND r.$_s IS NULL AND m.$_s IS NOT NULL;"
     done
+  fi
+
+  # 읽기만 — upsert 가 '운영이 더 새롭다' 로 건너뛸 행 가운데 content_hash 가 덤프와 다른 것을 upsert 앞에서 센다(병합 판단은 그대로다).
+  # 예전 병합은 운영 updated_at 을 병합 시각으로 올렸다 — 그 덤프 뒤에 dev 에서 바뀐 레코드는 dev 에서 다시 바뀔 때까지 여기서
+  # 건너뛰어진다. 이 박스의 진짜 편집과 가를 수 없어 고치지 않고 크기만 끝 요약에 한 줄로 알린다(HWAXPortal followups-1017 FU-D7).
+  local newer="" out
+  if [ -n "$upd" ] && printf '%s\n' "$_pc" | grep -qx content_hash && printf '%s\n' "$_sc" | grep -qx content_hash; then
+    newer="
+SELECT count(*) FROM _mg m JOIN public.$t r ON $_onpk WHERE r.$upd > m.$upd AND r.content_hash IS DISTINCT FROM m.content_hash;"
   fi
 
   local before after
@@ -127,14 +136,20 @@ UPDATE public.$t AS r SET $_s = m.$_s, ${_s}_at = m.${_s}_at, ${_s}_model = m.${
     || { echo "    ✗ $t: staging COPY 실패"; return 1; }
   # ② 운영 단일 세션: TEMP → COPY FROM 파일 → upsert
   # aidh.keep_updated_at — 운영 updated_at 을 병합 시각으로 올리지 않는다(트리거가 이 설정을 본다, 이행 0032). 세션 단위라 이 psql 하나에만 든다.
-  if PSQL -d "$DB" -v ON_ERROR_STOP=1 -q >>/tmp/aidh-merge.log 2>&1 <<SQL
+  # 표준출력으로는 위 셈 한 줄만 온다(-q 라 명령 꼬리표는 찍히지 않는다) — 오류는 예전처럼 로그로 간다.
+  if out="$(PSQL -d "$DB" -v ON_ERROR_STOP=1 -qtA 2>>/tmp/aidh-merge.log <<SQL
 SET aidh.keep_updated_at = 'on';
 CREATE TEMP TABLE _mg (LIKE public.$t INCLUDING DEFAULTS);
-COPY _mg ($cols) FROM '$CFILE' (FORMAT binary);
+COPY _mg ($cols) FROM '$CFILE' (FORMAT binary);$newer
 INSERT INTO public.$t ($cols) SELECT $cols FROM _mg ON CONFLICT ($pk) $action;$fill
 DROP TABLE _mg;
 SQL
+)"
   then after="$(PSQL -d "$DB" -tA -c "SELECT count(*) FROM $t;")"; echo "    ✓ $t: +$((after-before)) (총 $after)"
+    if [ -n "$newer" ]; then
+      case "$out" in ''|*[!0-9]*) out="세지 못함" ;; *) out="${out}건" ;; esac
+      NEWER_DIFF="${NEWER_DIFF:-}${NEWER_DIFF:+ · }$t $out"
+    fi
   else echo "    ✗ $t: merge 실패 — /tmp/aidh-merge.log 확인"; apptainer exec "instance://$INST" rm -f "$CFILE" 2>/dev/null; return 1; fi
   apptainer exec "instance://$INST" rm -f "$CFILE" 2>/dev/null
 }
@@ -230,6 +245,8 @@ try_merge mcp_upstreams          "alias"                ""
 
 # 5) staging 정리 (실패해도 반드시 수행 — 남으면 다음 실행이 이름 충돌로 막힌다)
 PSQL -d postgres -c "DROP DATABASE IF EXISTS $STAGE_DB WITH (FORCE);" >/dev/null
+# 읽기만 — merge_table 이 upsert 앞에서 센 수다. 크기를 보고 사람이 정한다(HWAXPortal followups-1017 FU-D7).
+[ -z "${NEWER_DIFF:-}" ] || echo "· 운영이 더 새롭다며 건너뛴 행 중 content_hash 가 덤프와 다른 것 — $NEWER_DIFF(이 박스의 편집이거나 예전 병합이 올려 둔 updated_at — 병합은 이 박스 판을 그대로 두었다, 셈만 한다)"
 if [ -n "$FAILED" ]; then
   echo "✗ merge 일부 실패:$FAILED — /tmp/aidh-merge.log 확인 (나머지 테이블은 반영됨)"
   exit 1

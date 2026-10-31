@@ -1,4 +1,4 @@
-# merge-from-drive.sh — 운영에 없는 열을 알리고(3), m3 슬롯은 updated_at 과 상관없이 비어 있을 때 채우는지(10-17 cae00 리뷰 H1 · H1-b), 표본은 id 로 덮지 않는지(10-30 AD-21 후속)
+# merge-from-drive.sh — 운영에 없는 열을 알리고(3), m3 슬롯은 updated_at 과 상관없이 비어 있을 때 채우는지(10-17 cae00 리뷰 H1 · H1-b), 표본은 id 로 덮지 않는지(10-30 AD-21 후속), '운영이 더 새롭다' 며 건너뛴 레코드 중 내용이 다른 수를 끝 요약에 알리는지(FU-D7)
 from __future__ import annotations
 
 import json
@@ -27,7 +27,8 @@ INST_POSTGRES=stubpg
 """
 
 # 대역 apptainer — `exec instance://… psql|pg_dump|rm …` 만 받는다. psql 은 진짜처럼 -tA 한 칸 한 줄로 답하고,
-# -c 없이 표준입력으로 온 SQL(병합 세션)은 그대로 적는다. 열 목록은 FAKE_SCHEMA(JSON: prod/stage → 표 → 열)에서 읽는다.
+# -c 없이 표준입력으로 온 SQL(병합 세션)은 그대로 적는다 — 세션에 '운영이 더 새롭다' 셈이 있으면 FAKE_NEWER_DIFF(기본 0)를 답한다.
+# 열 목록은 FAKE_SCHEMA(JSON: prod/stage → 표 → 열)에서 읽는다.
 _FAKE_APPTAINER = r'''
 import json, os, re, sys
 
@@ -45,6 +46,8 @@ with open(os.environ["FAKE_LOG"], "a") as log:
     if sql is None:
         body = sys.stdin.read()
         log.write(json.dumps({"db": db, "stdin": body}) + "\n")
+        if "SELECT count(*) FROM _mg" in body:
+            print(os.environ.get("FAKE_NEWER_DIFF", "0"))
         m = re.search(r"INSERT INTO public\.(\w+)", body)
         if m and m.group(1) == os.environ.get("FAKE_FAIL_TABLE"):
             sys.exit(3)
@@ -189,3 +192,35 @@ def test_병합_실패는_열_빠짐보다_먼저_1로_끝난다(merge):
                  {"records": _RECORDS + _RECORDS_M3, "agents": ["agent_type", "updated_at"]},
                  FAKE_FAIL_TABLE="agents")
     assert r.returncode == 1 and "merge 일부 실패: agents" in r.stdout, r.stdout + r.stderr
+
+
+_NEWER_DIFF = ("SELECT count(*) FROM _mg m JOIN public.records r ON r.id = m.id"
+               " WHERE r.updated_at > m.updated_at AND r.content_hash IS DISTINCT FROM m.content_hash;")
+
+
+def test_운영이_더_새롭다며_건너뛴_레코드_중_내용이_다른_수를_끝_요약에_한_줄로_알린다(merge):
+    """예전 병합이 운영 updated_at 을 병합 시각으로 올려 둔 레코드는 dev 에서 다시 바뀌어도 '운영이 더 새롭다' 로 건너뛰어진다
+    (HWAXPortal followups-1017 FU-D7). 이 박스의 진짜 편집과 가를 수 없어 고치지 않고 크기만 센다 — upsert 앞의 읽기 한 줄이고
+    upsert 의 조건은 그대로다. 셈의 값은 실 PostgreSQL 시험(test_merge_samples_pg, opt-in)이 본다 — 여기서는 꼴과 끝 요약의 자리를 지킨다."""
+    agents = ["agent_type", "updated_at"]
+    r, sessions = merge({"records": _RECORDS, "agents": agents}, {"records": _RECORDS, "agents": agents},
+                        FAKE_NEWER_DIFF="7")
+    assert r.returncode == 0 and "✓ merge 완료" in r.stdout, r.stdout + r.stderr
+    s = sessions["records"]
+    assert _NEWER_DIFF in s, s
+    assert s.index("COPY _mg") < s.index(_NEWER_DIFF) < s.index("INSERT INTO public.records"), "upsert 가 행을 바꾸기 전에 센다"
+    assert "WHERE records.updated_at IS NULL OR EXCLUDED.updated_at > records.updated_at" in s, "병합 판단이 바뀌었다"
+    assert "SELECT count(*) FROM _mg" not in sessions["agents"], "content_hash 가 없는 표는 세지 않는다"
+    lines = r.stdout.splitlines()
+    summary = [i for i, line in enumerate(lines) if "content_hash 가 덤프와 다른 것 — records 7건" in line]
+    assert len(summary) == 1, r.stdout
+    assert summary[0] == len(lines) - 2 and lines[-1].startswith("✓ merge 완료"), "끝 요약(판정 바로 앞)에 한 줄"
+
+
+def test_내용_해시가_한쪽에만_있으면_세지_않고_요약도_없다(merge):
+    """셈은 양쪽 덤프에 content_hash 가 있을 때만 뜻이 있다 — 한쪽에 없으면 세지 않고 요약 줄도 찍지 않는다."""
+    no_hash = [c for c in _RECORDS if c != "content_hash"]
+    r, sessions = merge({"records": no_hash}, {"records": _RECORDS})
+    assert r.returncode == 3, r.stdout + r.stderr       # dev 에만 있는 열(content_hash) — 그대로 알린다
+    assert "SELECT count(*) FROM _mg" not in sessions["records"], sessions["records"]
+    assert "content_hash 가 덤프와 다른" not in r.stdout, r.stdout
