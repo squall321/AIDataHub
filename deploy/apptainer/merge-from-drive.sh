@@ -104,6 +104,12 @@ merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외�
   # 엄격히 더 새로울 때만 덮는다 — 아래 세션은 aidh.keep_updated_at 으로 운영 updated_at 을 dev 값 그대로 두므로(병합 시각으로 올리지 않는다),
   # >= 이면 바뀌지 않은 행도 매번 다시 써 m3 색인까지 갱신한다.
   local where=""; [ -n "$upd" ] && where="WHERE $t.$upd IS NULL OR EXCLUDED.$upd > $t.$upd"
+  # 바뀐 시각 칸이 없는 표는 값이 같은 줄을 다시 쓰지 않는다 — 예전엔 절 109만 줄을 조건 없이 다시 써 HNSW 색인까지 매번 갱신했다(docs/aidh-parts-sync).
+  # 비교 열은 덮는 열(SET 절) 그대로다 — 조회를 더 하지 않는다.
+  local _setcols; _setcols="$(printf '%s' "$setclause" | sed 's/=EXCLUDED\.[^,]*//g' | tr -d ' ')"
+  if [ -z "$upd" ] && [ -n "$_setcols" ]; then
+    where="WHERE ($(printf '%s' "$_setcols" | tr ',' '\n' | sed "s/.*/$t.&/" | paste -sd',' -)) IS DISTINCT FROM ($(printf '%s' "$_setcols" | tr ',' '\n' | sed 's/.*/EXCLUDED.&/' | paste -sd',' -))"
+  fi
   local action="DO UPDATE SET $setclause $where"; [ -n "$setclause" ] || action="DO NOTHING"
 
   # m3 슬롯 열(<열>_m3 · _m3_at · _m3_model)은 운영 값이 비었으면 updated_at 과 상관없이 채운다 — dev 의 m3 백필은 updated_at 을 일부러 안
