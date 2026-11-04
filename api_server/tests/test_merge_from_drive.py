@@ -167,11 +167,29 @@ def test_같아야_할_열을_안_준_표는_슬롯을_따로_채우지_않는�
 
 
 def test_updated_at_조건이_없는_표는_슬롯을_따로_채우지_않는다(merge):
-    """절 · 표본은 조건 없이 전부 덮으므로 m3 도 이미 온다 — 덧붙인 UPDATE 는 같은 행을 한 번 더 쓰기만 한다."""
+    """절 · 표본은 값이 다르면 줄째 덮으므로 m3 도 함께 온다 — 덧붙인 UPDATE 는 같은 행을 한 번 더 쓰기만 한다. 덮는 조건은 '값이 다를
+    때'(IS DISTINCT FROM — docs/aidh-parts-sync) 하나뿐이고 updated_at 조건은 없다."""
     r, sessions = merge({"record_sections": _SECTIONS + _SECTIONS_M3}, {"record_sections": _SECTIONS + _SECTIONS_M3})
     assert r.returncode == 0, r.stdout + r.stderr
     s = sessions["record_sections"]
-    assert "UPDATE public.record_sections" not in s and " WHERE " not in s.split("ON CONFLICT", 1)[1], s
+    tail = s.split("ON CONFLICT", 1)[1]
+    assert "UPDATE public.record_sections" not in s and "updated_at" not in tail.split("IS DISTINCT FROM", 1)[0], s
+    assert ") IS DISTINCT FROM (EXCLUDED." in tail, s
+
+
+def test_updated_at_이_없는_표는_값이_같은_줄을_다시_쓰지_않는다(merge):
+    """절 109만 줄을 조건 없이 다시 써 HNSW 색인까지 매번 갱신했다(docs/aidh-parts-sync) — 덮는 열 전부를 견줘 다를 때만 덮는다.
+    키 · 대리 id 는 견주지 않는다(덮지 않는 열이다)."""
+    cols = _SECTIONS + _SECTIONS_M3
+    r, sessions = merge({"record_sections": cols}, {"record_sections": cols})
+    assert r.returncode == 0, r.stdout + r.stderr
+    s = sessions["record_sections"]
+    set_part = s.split("DO UPDATE SET ", 1)[1].split(" WHERE ", 1)[0]
+    set_cols = [c.split("=", 1)[0].strip() for c in set_part.split(",")]
+    guard = s.split(" WHERE (", 1)[1].split(") IS DISTINCT FROM (", 1)
+    assert guard[0].split(",") == [f"record_sections.{c}" for c in set_cols], (guard[0], set_cols)
+    assert guard[1].split(")", 1)[0].split(",") == [f"EXCLUDED.{c}" for c in set_cols], guard[1]
+    assert not {"id", "record_id", "section_id"} & set(set_cols), set_cols
 
 
 def test_표본은_id_로_덮지_않고_agent_단위로_맞춘다(merge):

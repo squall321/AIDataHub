@@ -7,6 +7,12 @@
 #
 #   bash deploy/apptainer/merge-from-drive.sh            # Drive 최신 덤프로 merge
 #   AIDH_MERGE_DUMP=/path/to.sql.gz bash ... merge-from-drive.sh   # 로컬 덤프 지정
+#   AIDH_MERGE_PARTS=1 bash ... merge-from-drive.sh   # 조각 길 — fetch-parts.sh 가 받은 바뀐 조각만(캐시는 fetch-parts.sh 와 같은 자리)
+#   AIDH_MERGE_PARTS_PLAN=<캐시>/plan.json bash ... merge-from-drive.sh   # 조각 길 — 계획 파일을 직접
+#
+# 조각 길(HWAXPortal docs/aidh-parts-sync) — 스테이징을 색인 · 제약 없는 스키마로 비워 만들고 계획의 조각만 싣는다. 병합 규칙은 같은
+# 함수다(merge_table · merge_samples) — 계획에 든 표만 돈다. 운영 전체 스냅숏 대신 덮을 줄의 앞 모습과 새로 든 키만 남긴다
+# (rollback-parts.sh 로 되돌린다).
 #
 # restore-db.sh(DROP+통짜)와의 차이: 이건 비파괴 merge — 운영 DB가 순간도 비지 않는다.
 set -euo pipefail
@@ -21,9 +27,18 @@ PSQL() { apptainer exec "instance://$INST" psql -h 127.0.0.1 -p "$PORT" -U "$USE
 # 1) 덤프 확보 — 로컬 지정 우선, 아니면 Drive 최신(sync-from-drive 의 다운로드 부분 재사용은
 #    피하고 여기서 직접 받는다 — merge 는 restore 와 독립 경로).
 DUMP="${AIDH_MERGE_DUMP:-}"
+PARTS_PLAN="${AIDH_MERGE_PARTS_PLAN:-}"
+# 캐시 자리는 fetch-parts.sh 와 같은 셈이다(같은 .env 를 읽는다) — 부르는 쪽(포털 update-all)이 자리를 몰라도 된다.
+[ -z "$PARTS_PLAN" ] && [ "${AIDH_MERGE_PARTS:-0}" = 1 ] && PARTS_PLAN="${AIDH_PARTS_CACHE:-$APPT_DIR/backups/parts-cache}/plan.json"
+PARTS_TABLES=""
+if [ -n "$PARTS_PLAN" ]; then
+  [ -f "$PARTS_PLAN" ] || { echo "[ERROR] 조각 계획 없음: $PARTS_PLAN"; exit 1; }
+  PARTS_FILES="$(dirname "$PARTS_PLAN")/files"
+  PARTS_TABLES=" $(python3 -c 'import json,sys; print(" ".join(t["name"] for t in json.load(open(sys.argv[1]))["tables"]))' "$PARTS_PLAN") "
+fi
 # AIDH_MERGE_DUMP 미지정이거나, 지정됐어도 그 파일이 없으면(§3 의 --dry-run sync 가 latest.sql.gz
 # 심링크만 만들고 실제 덤프는 안 받은 경우 — '덤프 없음'으로 죽던 원인) Drive 최신을 직접 받는다.
-if [ -z "$DUMP" ] || [ ! -f "$DUMP" ]; then
+if [ -z "$PARTS_PLAN" ] && { [ -z "$DUMP" ] || [ ! -f "$DUMP" ]; }; then
   REMOTE="${AIDH_DRIVE_REMOTE:-}"; [ -n "$REMOTE" ] || { echo "[ERROR] AIDH_DRIVE_REMOTE 미설정"; exit 1; }
   command -v rclone >/dev/null || { echo "[ERROR] rclone 미설치"; exit 1; }
   LATEST="$(rclone lsf "$REMOTE/" 2>/dev/null | grep -E '\.sql\.gz$' | sort | tail -1)"
@@ -32,23 +47,57 @@ if [ -z "$DUMP" ] || [ ! -f "$DUMP" ]; then
   echo "→ Drive 덤프 다운로드: $LATEST"
   rclone copy "$REMOTE/$LATEST" "$TMP/"; DUMP="$TMP/$LATEST"
 fi
-[ -f "$DUMP" ] || { echo "[ERROR] 덤프 없음: $DUMP"; exit 1; }
-echo "→ merge 소스: $DUMP ($(du -h "$DUMP" | cut -f1))"
+if [ -n "$PARTS_PLAN" ]; then
+  echo "→ merge 소스: 조각 계획 $PARTS_PLAN — 표$PARTS_TABLES"
+else
+  [ -f "$DUMP" ] || { echo "[ERROR] 덤프 없음: $DUMP"; exit 1; }
+  echo "→ merge 소스: $DUMP ($(du -h "$DUMP" | cut -f1))"
+fi
 
 # 2) staging DB 생성 + 덤프 로드(운영 DB 무손상)
 echo "→ staging DB '$STAGE_DB' 생성 후 덤프 로드"
 PSQL -d postgres -c "DROP DATABASE IF EXISTS $STAGE_DB WITH (FORCE);" >/dev/null
 PSQL -d postgres -c "CREATE DATABASE $STAGE_DB;" >/dev/null
 PSQL -d "$STAGE_DB" -c "CREATE EXTENSION IF NOT EXISTS vector;" >/dev/null 2>&1 || true
+if [ -n "$PARTS_PLAN" ]; then
+  # 스키마는 pre-data(표 · 타입 · 순번 — 색인 · 제약 · 트리거 없음)라 싣는 동안 색인을 짓지 않고 조각 일부만 실어도 외래키에 걸리지 않는다.
+  _schema="$PARTS_FILES/$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["schema"]["file"])' "$PARTS_PLAN")"
+  gunzip -c "$_schema" | apptainer exec "instance://$INST" \
+    psql -h 127.0.0.1 -p "$PORT" -U "$USER" -d "$STAGE_DB" >/tmp/aidh-merge-load.log 2>&1 \
+    || { echo "[ERROR] staging 스키마 로드 실패 — /tmp/aidh-merge-load.log"; tail -5 /tmp/aidh-merge-load.log; PSQL -d postgres -c "DROP DATABASE IF EXISTS $STAGE_DB WITH (FORCE);" >/dev/null; exit 1; }
+  _nparts=0
+  while IFS=$'\t' read -r _t _cols _f; do
+    gunzip -c "$PARTS_FILES/$_f" | apptainer exec "instance://$INST" \
+      psql -h 127.0.0.1 -p "$PORT" -U "$USER" -d "$STAGE_DB" -v ON_ERROR_STOP=1 -q -c "COPY public.$_t ($_cols) FROM STDIN (FORMAT binary);" \
+      >>/tmp/aidh-merge-load.log 2>&1 \
+      || { echo "[ERROR] 조각 싣기 실패 — $_f(/tmp/aidh-merge-load.log)"; tail -5 /tmp/aidh-merge-load.log; PSQL -d postgres -c "DROP DATABASE IF EXISTS $STAGE_DB WITH (FORCE);" >/dev/null; exit 1; }
+    _nparts=$((_nparts + 1))
+  done < <(python3 -c '
+import json, sys
+for t in json.load(open(sys.argv[1]))["tables"]:
+    cols = ",".join(chr(34) + c + chr(34) for c in t["columns"])
+    for p in t["parts"]:
+        print(t["name"], cols, p["file"], sep="\t")' "$PARTS_PLAN")
+  echo "→ staging 에 조각 ${_nparts}개를 실었다"
+else
 gunzip -c "$DUMP" | apptainer exec "instance://$INST" \
   psql -h 127.0.0.1 -p "$PORT" -U "$USER" -d "$STAGE_DB" >/tmp/aidh-merge-load.log 2>&1 \
   || { echo "[ERROR] staging 로드 실패 — /tmp/aidh-merge-load.log"; tail -5 /tmp/aidh-merge-load.log; PSQL -d postgres -c "DROP DATABASE IF EXISTS $STAGE_DB WITH (FORCE);" >/dev/null; exit 1; }
+fi
 
-# 3) 운영 직전 스냅샷(롤백용, 로컬)
+# 3) 운영 직전 스냅샷(롤백용, 로컬) — 조각 길은 전체 대신 덮을 줄의 앞 모습 · 새로 든 키만(merge_table · merge_samples 가 표마다 남긴다)
+BEFORE_DIR=""
+if [ -n "$PARTS_PLAN" ]; then
+  BEFORE_DIR="/data/backups/aidh/pre-parts-$(date +%Y%m%d-%H%M%S)"
+  if mkdir -p "$BEFORE_DIR" 2>/dev/null; then echo "→ 덮을 줄의 앞 모습: $BEFORE_DIR (rollback-parts.sh 로 되돌린다)"
+  else echo "  ⚠ 앞 모습 자리를 못 만들었다($BEFORE_DIR) — 되돌릴 자료 없이 병합한다"; BEFORE_DIR=""; fi
+  BK="$BEFORE_DIR"
+else
 BK="/data/backups/aidh/pre-merge-$(date +%Y%m%d-%H%M%S).sql.gz"
 mkdir -p "$(dirname "$BK")" 2>/dev/null && \
   apptainer exec "instance://$INST" pg_dump -h 127.0.0.1 -p "$PORT" -U "$USER" -d "$DB" 2>/dev/null | gzip -c > "$BK" \
   && echo "→ 운영 직전 스냅샷: $BK (롤백용)" || echo "  ⚠ 사전 스냅샷 생략(디스크/권한)"
+fi
 
 # 4) 테이블별 MERGE — dev 실증 완료 방식(vector/배열/jsonb 무손실, 38967행 검증):
 #    ① staging 서버 COPY → 컨테이너 내부 바이너리 파일(두 DB 가 같은 인스턴스라 /tmp 공유)
@@ -104,6 +153,12 @@ merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외�
   # 엄격히 더 새로울 때만 덮는다 — 아래 세션은 aidh.keep_updated_at 으로 운영 updated_at 을 dev 값 그대로 두므로(병합 시각으로 올리지 않는다),
   # >= 이면 바뀌지 않은 행도 매번 다시 써 m3 색인까지 갱신한다.
   local where=""; [ -n "$upd" ] && where="WHERE $t.$upd IS NULL OR EXCLUDED.$upd > $t.$upd"
+  # 바뀐 시각 칸이 없는 표는 값이 같은 줄을 다시 쓰지 않는다 — 예전엔 절 109만 줄을 조건 없이 다시 써 HNSW 색인까지 매번 갱신했다(docs/aidh-parts-sync).
+  # 비교 열은 덮는 열(SET 절) 그대로다 — 조회를 더 하지 않는다.
+  local _setcols; _setcols="$(printf '%s' "$setclause" | sed 's/=EXCLUDED\.[^,]*//g' | tr -d ' ')"
+  if [ -z "$upd" ] && [ -n "$_setcols" ]; then
+    where="WHERE ($(printf '%s' "$_setcols" | tr ',' '\n' | sed "s/.*/$t.&/" | paste -sd',' -)) IS DISTINCT FROM ($(printf '%s' "$_setcols" | tr ',' '\n' | sed 's/.*/EXCLUDED.&/' | paste -sd',' -))"
+  fi
   local action="DO UPDATE SET $setclause $where"; [ -n "$setclause" ] || action="DO NOTHING"
 
   # m3 슬롯 열(<열>_m3 · _m3_at · _m3_model)은 운영 값이 비었으면 updated_at 과 상관없이 채운다 — dev 의 m3 백필은 updated_at 을 일부러 안
@@ -145,6 +200,14 @@ UPDATE public.$t AS r SET $_s = m.$_s, ${_s}_at = m.${_s}_at, ${_s}_model = m.${
 SELECT count(*)$viewed FROM _mg m JOIN public.$t r ON $_onpk WHERE r.$upd > m.$upd AND r.content_hash IS DISTINCT FROM m.content_hash;"
   fi
 
+  # 조각 길 — 덮을 줄의 앞 모습(이 박스 행 전체 — 대리 id 째)과 새로 들 키를 upsert 앞에서 남긴다(rollback-parts.sh).
+  local keep_before="" _bf="/tmp/aidh_bf_$t.bin" _nk="/tmp/aidh_nk_$t.csv"
+  if [ -n "${BEFORE_DIR:-}" ]; then
+    keep_before="
+COPY (SELECT r.* FROM public.$t r WHERE EXISTS (SELECT 1 FROM _mg m WHERE $_onpk)) TO '$_bf' (FORMAT binary);
+COPY (SELECT $(printf '%s' "$pk" | tr ',' '\n' | sed 's/.*/m.&/' | paste -sd',' -) FROM _mg m WHERE NOT EXISTS (SELECT 1 FROM public.$t r WHERE $_onpk)) TO '$_nk' (FORMAT csv);"
+  fi
+
   local before after
   before="$(PSQL -d "$DB" -tA -c "SELECT count(*) FROM $t;")"
   apptainer exec "instance://$INST" rm -f "$CFILE" 2>/dev/null
@@ -157,12 +220,18 @@ SELECT count(*)$viewed FROM _mg m JOIN public.$t r ON $_onpk WHERE r.$upd > m.$u
   if out="$(PSQL -d "$DB" -v ON_ERROR_STOP=1 -qtA 2>>/tmp/aidh-merge.log <<SQL
 SET aidh.keep_updated_at = 'on';
 CREATE TEMP TABLE _mg (LIKE public.$t INCLUDING DEFAULTS);
-COPY _mg ($cols) FROM '$CFILE' (FORMAT binary);$newer
+COPY _mg ($cols) FROM '$CFILE' (FORMAT binary);$newer$keep_before
 INSERT INTO public.$t ($cols) SELECT $cols FROM _mg ON CONFLICT ($pk) $action;$fill
 DROP TABLE _mg;
 SQL
 )"
   then after="$(PSQL -d "$DB" -tA -c "SELECT count(*) FROM $t;")"; echo "    ✓ $t: +$((after-before)) (총 $after)"
+    if [ -n "$keep_before" ]; then
+      apptainer exec "instance://$INST" cat "$_bf" | gzip -c > "$BEFORE_DIR/$t.before.bin.gz" \
+        && apptainer exec "instance://$INST" cat "$_nk" | gzip -c > "$BEFORE_DIR/$t.new.csv.gz" \
+        || echo "    ⚠ $t: 앞 모습을 옮기지 못했다"
+      apptainer exec "instance://$INST" rm -f "$_bf" "$_nk" 2>/dev/null
+    fi
     if [ -n "$newer" ]; then
       local _n _v; IFS='|' read -r _n _v <<<"$out"
       case "$_v" in *[!0-9]*) _v="" ;; esac
@@ -224,6 +293,7 @@ CREATE TEMP TABLE _fix ON COMMIT DROP AS
   SELECT w.agent_type, COALESCE(d.t = w.t, false) AS take
     FROM want w LEFT JOIN have h USING (agent_type) LEFT JOIN dev d USING (agent_type)
    WHERE COALESCE(h.t, '{}') IS DISTINCT FROM w.t AND (w.t = '{}' OR d.t = w.t);
+$( [ -n "${BEFORE_DIR:-}" ] && printf '%s\n' "COPY (SELECT e.* FROM public.$t e WHERE e.agent_type IN (SELECT agent_type FROM _fix)) TO '/tmp/aidh_bf_$t.bin' (FORMAT binary);" "COPY (SELECT agent_type FROM _fix) TO '/tmp/aidh_nk_$t.csv' (FORMAT csv);" || true )
 DELETE FROM public.$t e USING _fix f WHERE e.agent_type = f.agent_type;
 INSERT INTO public.$t ($cols) SELECT $cols FROM _mg WHERE agent_type IN (SELECT agent_type FROM _fix WHERE take);
 SELECT count(*) FILTER (WHERE take), count(*) FILTER (WHERE NOT take), (SELECT max(v) FROM _seq) FROM _fix;
@@ -233,6 +303,12 @@ SQL
     echo "    ✗ $t: merge 실패 — /tmp/aidh-merge.log 확인"; apptainer exec "instance://$INST" rm -f "$CFILE" 2>/dev/null; return 1
   fi
   apptainer exec "instance://$INST" rm -f "$CFILE" 2>/dev/null
+  if [ -n "${BEFORE_DIR:-}" ]; then
+    apptainer exec "instance://$INST" cat "/tmp/aidh_bf_$t.bin" | gzip -c > "$BEFORE_DIR/$t.before.bin.gz" \
+      && apptainer exec "instance://$INST" cat "/tmp/aidh_nk_$t.csv" | gzip -c > "$BEFORE_DIR/$t.agents.csv.gz" \
+      || echo "    ⚠ $t: 앞 모습을 옮기지 못했다"
+    apptainer exec "instance://$INST" rm -f "/tmp/aidh_bf_$t.bin" "/tmp/aidh_nk_$t.csv" 2>/dev/null
+  fi
   IFS='|' read -r n_take n_drop seqv <<<"$out"
   echo "    ✓ $t: 덤프 판으로 다시 지은 agent ${n_take} · 지우기만 ${n_drop}${seqv:+ · 순번을 $seqv 로 올림} (총 $(PSQL -d "$DB" -tA -c "SELECT count(*) FROM $t;")행)"
   if ! stale="$(PSQL -d "$DB" -tA -c "WITH $SAMPLE_WANT_HAVE SELECT w.agent_type FROM want w LEFT JOIN have h USING (agent_type) WHERE COALESCE(h.t, '{}') IS DISTINCT FROM w.t ORDER BY 1;")"; then
@@ -245,7 +321,10 @@ echo "→ 테이블 merge (부모→자식 순)"
 : > /tmp/aidh-merge.log
 # 한 테이블 실패가 나머지와 staging 정리까지 막지 않게 실패를 모아 마지막에 판정한다.
 FAILED=""
-try_merge() { merge_table "$@" || FAILED="$FAILED $1"; }
+try_merge() {
+  if [ -n "$PARTS_TABLES" ] && [[ "$PARTS_TABLES" != *" $1 "* ]]; then return 0; fi   # 조각 길 — 바뀐 조각이 없는 표
+  merge_table "$@" || FAILED="$FAILED $1"
+}
 
 try_merge org_teams              "code"                 ""
 try_merge org_groups             "team_code,code"       ""
@@ -263,9 +342,12 @@ try_merge agent_records          "agent_type,record_id" ""
 try_merge record_sections        "record_id,section_id" ""          "id"
 try_merge record_attachments     "id"                   ""
 # ↓ 파생 표 — 행의 id 가 아니라 agent 단위로(agents 다음이어야 한다 — 병합된 sample_queries 를 본다).
-merge_samples || FAILED="$FAILED agent_sample_embeddings"
+if [ -z "$PARTS_TABLES" ] || [[ "$PARTS_TABLES" == *" agent_sample_embeddings "* ]]; then
+  merge_samples || FAILED="$FAILED agent_sample_embeddings"
+fi
 try_merge external_id_map        "source,external_id"   ""          "id"
-try_merge mcp_upstreams          "alias"                ""
+# 상류 상태 점검 칸(last_health_*)은 이 박스가 점검한 값이다 — 덮지 않는다(새 행만 dev 값). 조각에는 아예 내지 않는다(aidh_parts.py).
+try_merge mcp_upstreams          "alias"                ""          ""         ""                   "last_health_check_at,last_health_status,last_tool_count"
 
 # 5) staging 정리 (실패해도 반드시 수행 — 남으면 다음 실행이 이름 충돌로 막힌다)
 PSQL -d postgres -c "DROP DATABASE IF EXISTS $STAGE_DB WITH (FORCE);" >/dev/null
@@ -279,4 +361,8 @@ if [ -n "${COLS_MISSING:-}" ]; then
   echo "⚠ merge 는 됐지만 dev 에만 있는 열이 빠졌다:$COLS_MISSING — 운영 DB 이행(start_api.sh 의 alembic) 뒤 이 스크립트를 한 번 더 돌린다"
   exit 3
 fi
-echo "✓ merge 완료 — 운영 DB 유지 + dev 신규 반영. 롤백: restore-db.sh $BK"
+if [ -n "$PARTS_PLAN" ]; then
+  echo "✓ merge 완료(조각 길) — 운영 DB 유지 + dev 바뀐 조각 반영. 되돌리기: rollback-parts.sh $BK"
+else
+  echo "✓ merge 완료 — 운영 DB 유지 + dev 신규 반영. 롤백: restore-db.sh $BK"
+fi
