@@ -96,3 +96,20 @@ cd deploy/apptainer && ( set -a; . ./.env; set +a
     -c "ALTER DATABASE \"$POSTGRES_DB\" SET idle_in_transaction_session_timeout = '30min';" )
 # 확인(새 연결): ... -tAc 'SHOW idle_in_transaction_session_timeout'  → 30min
 ```
+
+## dev → cae00 데이터 동기화 — 조각 스냅숏
+
+전체 덤프(`backup-to-drive.sh`, 압축 10 GB 남짓)를 통째로 받아 병합하면 바뀐 줄이 하나여도 한 시간을 넘긴다(받기 · 스테이징 색인 · 전체
+스냅숏). 조각 스냅숏은 바뀐 조각만 오간다(HWAXPortal `docs/aidh-parts-sync`).
+
+| 박스 | 명령 | 무엇 |
+|---|---|---|
+| dev(하루 한 번, 전체 덤프 뒤) | `bash parts-to-drive.sh` | 표를 이진 COPY 로 내되 레코드에 딸린 큰 표는 레코드 id 해시로 64 조각 · 한 시점(pg_export_snapshot). 조각 이름은 내용 해시라 안 바뀐 조각은 다시 올리지 않는다 |
+| cae00(update-all §3) | `bash fetch-parts.sh` | 최신 목록을 지난번 병합한 목록과 견줘 다른 조각만 받는다 — 끝 코드 0 받음 · 10 바뀐 것 없음 · 4 목록 없음(전체 덤프 길로) |
+| cae00 | `AIDH_MERGE_PARTS=1 bash merge-from-drive.sh` | 스키마로 빈 스테이징(색인 없음) → 받은 조각만 싣기 → 지금의 병합 규칙 그대로. 끝나면 `bash fetch-parts.sh --commit` |
+| cae00 | `bash rollback-parts.sh /data/backups/aidh/pre-parts-<시각>` | 그 병합이 덮은 줄의 앞 모습 · 새로 든 키로 병합 앞으로 되돌린다(병합 뒤 이 박스에서 같은 줄을 고쳤으면 그것도 앞 모습으로 간다) |
+
+조회 통계(`records.read_count` · `last_accessed_at`)와 상류 점검 칸은 조각에 내지 않는다 — 그 박스의 것이고, dev 의 조회가 조각을 매일
+바꾸지 않게. 그래서 새 행은 이 박스의 기본값(0 · 비움)으로 든다. 시험은 `api_server/tests/test_parts_sync_pg.py`(실 PostgreSQL ·
+`AIDH_TEST_PG_BIN`).
+
