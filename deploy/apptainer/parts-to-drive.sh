@@ -38,20 +38,25 @@ if [ "${AIDH_PARTS_UPLOAD:-1}" = 1 ]; then
   rclone copy "$OUT/files" "$REMOTE/files" --ignore-existing --transfers 4 --checkers 8
   rclone copyto "$MANIFEST" "$REMOTE/$(basename "$MANIFEST")"
   echo "  올림 → $REMOTE · $(( $(date +%s) - t1 ))초"
-  # Drive 정리 — 목록은 최근 $KEEP 판만, 남은 목록이 가리키지 않는 조각은 지운다(가장 새 목록의 조각은 늘 남는다).
+  # Drive 정리 — 목록은 최근 $KEEP 판만, 남은 목록이 가리키지 않는 조각은 지운다(가장 새 목록의 조각은 늘 남는다). 목록을 다 읽었고 방금 올린
+  # 목록이 보일 때만 지운다 — 일부만 읽힌 목록으로 지우면 남은 목록이 가리키는 조각까지 지운다(프로세스 치환은 rclone 의 실패를 놓친다).
   tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
-  mapfile -t mans < <(rclone lsf "$REMOTE/" --files-only --include 'manifest-*.json' | sort)
-  if [ "${#mans[@]}" -gt "$KEEP" ]; then
-    for m in "${mans[@]:0:${#mans[@]}-$KEEP}"; do rclone deletefile "$REMOTE/$m"; done
-    mans=("${mans[@]: -$KEEP}")
-  fi
-  for m in "${mans[@]}"; do rclone copyto "$REMOTE/$m" "$tmp/$m"; done
-  python3 "$APPT_DIR/aidh_parts.py" referenced "$tmp"/manifest-*.json | sort > "$tmp/live"
-  rclone lsf "$REMOTE/files/" --files-only | sort > "$tmp/remote"
-  comm -23 "$tmp/remote" "$tmp/live" > "$tmp/gone"
-  if [ -s "$tmp/gone" ]; then
-    rclone delete "$REMOTE/files/" --files-from "$tmp/gone"
-    echo "  Drive 에서 안 가리키는 조각 $(wc -l < "$tmp/gone")개를 지웠다"
+  if rclone lsf "$REMOTE/" --files-only --include 'manifest-*.json' > "$tmp/mans" 2>/dev/null && grep -qxF "$(basename "$MANIFEST")" "$tmp/mans"; then
+    mapfile -t mans < <(sort "$tmp/mans")
+    if [ "${#mans[@]}" -gt "$KEEP" ]; then
+      for m in "${mans[@]:0:${#mans[@]}-$KEEP}"; do rclone deletefile "$REMOTE/$m"; done
+      mans=("${mans[@]: -$KEEP}")
+    fi
+    for m in "${mans[@]}"; do rclone copyto "$REMOTE/$m" "$tmp/$m"; done
+    python3 "$APPT_DIR/aidh_parts.py" referenced "$tmp"/manifest-*.json | sort > "$tmp/live"
+    rclone lsf "$REMOTE/files/" --files-only | sort > "$tmp/remote"
+    comm -23 "$tmp/remote" "$tmp/live" > "$tmp/gone"
+    if [ -s "$tmp/gone" ]; then
+      rclone delete "$REMOTE/files/" --files-from "$tmp/gone"
+      echo "  Drive 에서 안 가리키는 조각 $(wc -l < "$tmp/gone")개를 지웠다"
+    fi
+  else
+    echo "  ⚠ Drive 목록을 다 읽지 못했다(또는 방금 올린 목록이 안 보인다) — 이번엔 Drive 정리를 건너뛴다(다음 내기가 한다)"
   fi
 fi
 gone_local="$(python3 "$APPT_DIR/aidh_parts.py" gc --dir "$OUT" --keep-manifests "$KEEP" | wc -l)"

@@ -160,8 +160,11 @@ class _World:
         (self.fakebin / "apptainer").write_text(_FAKE_APPTAINER_CAT, encoding="utf-8")
         (self.fakebin / "apptainer").chmod(0o755)
         # rclone 은 진짜를 부르되 부른 인자를 적는다 — Drive 에서 무엇을 받는지(조각 전부를 받는 실수)를 본다.
-        (self.fakebin / "rclone").write_text(f'#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$RCLONE_LOG"\nexec {shutil.which("rclone")} "$@"\n',
-                                             encoding="utf-8")
+        # FAKE_LSF_FAIL=<자리> 면 그 자리의 목록 읽기(lsf)만 실패한다 — 네트워크 · 인증 실패의 대역.
+        (self.fakebin / "rclone").write_text(
+            '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$RCLONE_LOG"\n'
+            'if [ "${1:-}" = lsf ] && [ -n "${FAKE_LSF_FAIL:-}" ] && [ "${2%/}" = "${FAKE_LSF_FAIL%/}" ]; then echo "fake lsf failure" >&2; exit 1; fi\n'
+            f'exec {shutil.which("rclone")} "$@"\n', encoding="utf-8")
         (self.fakebin / "rclone").chmod(0o755)
         self.rclone_log = root / "rclone.log"
         (root / "rclone.conf").write_text("", encoding="utf-8")
@@ -211,8 +214,8 @@ class _World:
         assert r.returncode == 0 and "✓ 조각 스냅숏" in r.stdout, r.stdout + r.stderr
         return r
 
-    def fetch(self, *args: str) -> subprocess.CompletedProcess:
-        return self._run("aidh_seed", "fetch-parts.sh", *args)
+    def fetch(self, *args: str, **env: str) -> subprocess.CompletedProcess:
+        return self._run("aidh_seed", "fetch-parts.sh", *args, **env)
 
     def merge_parts(self, db: str, **env: str) -> subprocess.CompletedProcess:
         """update-all 처럼 AIDH_MERGE_PARTS=1(계획은 fetch-parts.sh 와 같은 캐시 자리) — 계획 파일을 직접 줄 수도 있다."""
@@ -469,3 +472,15 @@ def test_내기는_한_시점이다(world, pg, monkeypatch, tmp_path):
         _, seen, _ = mod._write_part("SELECT id FROM public.records WHERE id = 'r30'", out, "a", snap)
         _, empty, _ = mod._write_part("SELECT id FROM public.records WHERE false", out, "b", snap)
         assert seen == empty
+
+
+def test_Drive_목록을_못_읽으면_받기는_실패고_내기는_정리를_건너뛴다(world):
+    """목록 읽기 실패(네트워크 · 인증)는 '목록 없음'(4)이 아니다 — update-all 이 원인을 잘못 말한다. 내기 쪽은 목록을 다 못 읽으면 지우지 않는다."""
+    world.export()
+    world.sql("aidh_dev", "UPDATE records SET content_hash = 'h1-x', updated_at = '2026-11-02 00:00+00' WHERE id = 'r01';")
+    r = world.export(AIDH_PARTS_KEEP="1", FAKE_LSF_FAIL=str(world.remote))
+    assert "⚠ Drive 목록을 다 읽지 못했다" in r.stdout and "Drive 에서 안 가리키는 조각" not in r.stdout, r.stdout
+    assert len(world.manifests()) == 2, "목록을 못 읽은 정리는 한 판도 지우지 않는다"
+    f = world.fetch(FAKE_LSF_FAIL=str(world.remote))
+    assert f.returncode == 1 and "Drive 목록을 못 읽었다(rclone rc 1)" in f.stdout, f.stdout + f.stderr
+
