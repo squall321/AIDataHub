@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # AI Data Hub — 조각 스냅숏 내기(dev): 표를 조각으로 내고 Drive 에 새 조각 · 목록만 올린다 — cae00 은 바뀐 조각만 받는다(HWAXPortal docs/aidh-parts-sync)
 #
-#   bash deploy/apptainer/parts-to-drive.sh             # 내기 → 새 조각 · 목록 올리기 → 목록 7판만 두고 안 가리키는 조각 지우기(Drive · 로컬)
+#   bash deploy/apptainer/parts-to-drive.sh             # 내기 → 새 조각 · 목록 올리기 → 목록 3판만 두고 안 가리키는 조각 지우기(Drive · 로컬)
 #   AIDH_PARTS_UPLOAD=0 bash … parts-to-drive.sh       # 내기만(로컬 $AIDH_PARTS_DIR)
 #
 # 전체 덤프(backup-to-drive.sh)는 그대로다 — 재해 복구와 조각이 없을 때 cae00 의 전체 병합 길이다. 조각 파일은 같은 데이터면 같은
@@ -16,7 +16,7 @@ PORT="${POSTGRES_PORT:?}"; USER="${POSTGRES_USER:?}"; DB="${POSTGRES_DB:?}"; INS
 OUT="${AIDH_PARTS_DIR:-$APPT_DIR/backups/parts}"
 REMOTE="${AIDH_PARTS_REMOTE:-}"
 [ -n "$REMOTE" ] || { [ -n "${AIDH_DRIVE_REMOTE:-}" ] && REMOTE="${AIDH_DRIVE_REMOTE%/*}/db-parts"; }
-KEEP="${AIDH_PARTS_KEEP:-7}"
+KEEP="${AIDH_PARTS_KEEP:-3}"   # cae00 은 늘 최신 목록의 조각만 받는다 — 옛 판은 받는 도중 새 내기가 든 때를 넘길 만큼만
 N="${AIDH_PARTS_N:-64}"
 # python 은 bash 함수(_common.sh 의 apptainer)를 못 부른다 — 핀으로 고른 실행 파일을 넘긴다.
 APPT_BIN="${_AIDH_APPT:-$(command -v apptainer || echo apptainer)}"
@@ -38,20 +38,25 @@ if [ "${AIDH_PARTS_UPLOAD:-1}" = 1 ]; then
   rclone copy "$OUT/files" "$REMOTE/files" --ignore-existing --transfers 4 --checkers 8
   rclone copyto "$MANIFEST" "$REMOTE/$(basename "$MANIFEST")"
   echo "  올림 → $REMOTE · $(( $(date +%s) - t1 ))초"
-  # Drive 정리 — 목록은 최근 $KEEP 판만, 남은 목록이 가리키지 않는 조각은 지운다(가장 새 목록의 조각은 늘 남는다).
+  # Drive 정리 — 목록은 최근 $KEEP 판만, 남은 목록이 가리키지 않는 조각은 지운다(가장 새 목록의 조각은 늘 남는다). 목록을 다 읽었고 방금 올린
+  # 목록이 보일 때만 지운다 — 일부만 읽힌 목록으로 지우면 남은 목록이 가리키는 조각까지 지운다(프로세스 치환은 rclone 의 실패를 놓친다).
   tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
-  mapfile -t mans < <(rclone lsf "$REMOTE/" --files-only --include 'manifest-*.json' | sort)
-  if [ "${#mans[@]}" -gt "$KEEP" ]; then
-    for m in "${mans[@]:0:${#mans[@]}-$KEEP}"; do rclone deletefile "$REMOTE/$m"; done
-    mans=("${mans[@]: -$KEEP}")
-  fi
-  for m in "${mans[@]}"; do rclone copyto "$REMOTE/$m" "$tmp/$m"; done
-  python3 "$APPT_DIR/aidh_parts.py" referenced "$tmp"/manifest-*.json | sort > "$tmp/live"
-  rclone lsf "$REMOTE/files/" --files-only | sort > "$tmp/remote"
-  comm -23 "$tmp/remote" "$tmp/live" > "$tmp/gone"
-  if [ -s "$tmp/gone" ]; then
-    rclone delete "$REMOTE/files/" --files-from "$tmp/gone"
-    echo "  Drive 에서 안 가리키는 조각 $(wc -l < "$tmp/gone")개를 지웠다"
+  if rclone lsf "$REMOTE/" --files-only --include 'manifest-*.json' > "$tmp/mans" 2>/dev/null && grep -qxF "$(basename "$MANIFEST")" "$tmp/mans"; then
+    mapfile -t mans < <(sort "$tmp/mans")
+    if [ "${#mans[@]}" -gt "$KEEP" ]; then
+      for m in "${mans[@]:0:${#mans[@]}-$KEEP}"; do rclone deletefile "$REMOTE/$m"; done
+      mans=("${mans[@]: -$KEEP}")
+    fi
+    for m in "${mans[@]}"; do rclone copyto "$REMOTE/$m" "$tmp/$m"; done
+    python3 "$APPT_DIR/aidh_parts.py" referenced "$tmp"/manifest-*.json | sort > "$tmp/live"
+    rclone lsf "$REMOTE/files/" --files-only | sort > "$tmp/remote"
+    comm -23 "$tmp/remote" "$tmp/live" > "$tmp/gone"
+    if [ -s "$tmp/gone" ]; then
+      rclone delete "$REMOTE/files/" --files-from "$tmp/gone"
+      echo "  Drive 에서 안 가리키는 조각 $(wc -l < "$tmp/gone")개를 지웠다"
+    fi
+  else
+    echo "  ⚠ Drive 목록을 다 읽지 못했다(또는 방금 올린 목록이 안 보인다) — 이번엔 Drive 정리를 건너뛴다(다음 내기가 한다)"
   fi
 fi
 gone_local="$(python3 "$APPT_DIR/aidh_parts.py" gc --dir "$OUT" --keep-manifests "$KEEP" | wc -l)"

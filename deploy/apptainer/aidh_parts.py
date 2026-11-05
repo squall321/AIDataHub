@@ -304,7 +304,7 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--cache", type=Path, required=True)
     g = sub.add_parser("gc")
     g.add_argument("--dir", type=Path, required=True)
-    g.add_argument("--keep-manifests", type=int, default=7)
+    g.add_argument("--keep-manifests", type=int, default=3)
     r = sub.add_parser("referenced")
     r.add_argument("manifests", type=Path, nargs="+")
     a = ap.parse_args(argv)

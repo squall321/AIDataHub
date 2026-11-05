@@ -30,7 +30,11 @@ fi
 
 [ -n "$REMOTE" ] || { echo "[ERROR] AIDH_PARTS_REMOTE · AIDH_DRIVE_REMOTE 둘 다 비었다"; exit 1; }
 command -v rclone >/dev/null || { echo "[ERROR] rclone 없음"; exit 1; }
-latest="$(rclone lsf "$REMOTE/" --files-only --include 'manifest-*.json' 2>/dev/null | sort | tail -1 || true)"
+# rclone 끝 코드 3 은 '자리 없음'(dev 가 아직 한 번도 안 냈다) — 목록 없음과 같다. 그 밖의 실패(네트워크 · 인증)는 받기 실패다 — 4 로 읽으면
+# update-all 이 '목록이 없다' 고 말해 원인이 가려진다.
+lrc=0; listing="$(rclone lsf "$REMOTE/" --files-only --include 'manifest-*.json' 2>/dev/null)" || lrc=$?
+[ "$lrc" = 0 ] || [ "$lrc" = 3 ] || { echo "[ERROR] Drive 목록을 못 읽었다(rclone rc $lrc) — $REMOTE"; exit 1; }
+latest="$(printf '%s\n' "$listing" | grep -E '^manifest-.*\.json$' | sort | tail -1 || true)"
 [ -n "$latest" ] || { echo "조각 목록 없음($REMOTE) — 전체 덤프 길로"; exit 4; }
 rclone copyto "$REMOTE/$latest" "$CACHE/$latest"
 

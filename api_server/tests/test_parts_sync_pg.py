@@ -24,7 +24,10 @@ from pathlib import Path
 
 import pytest
 
-from tests.test_merge_samples_pg import _BOX, _DEV, _FAKE_APPTAINER, _PORT, _VEC, _ok, _psql, pg  # noqa: F401  (pg 는 픽스처)
+from tests.test_merge_samples_pg import _BOX, _DEV, _FAKE_APPTAINER, _PORT, _VEC, _ok, _psql
+from tests.test_merge_samples_pg import (
+    pg as _pg_cluster,  # noqa: F401  (클러스터 픽스처 — 시험은 world.pg 로 쓴다)
+)
 
 APPT = Path(__file__).resolve().parents[2] / "deploy" / "apptainer"
 N = 8
@@ -160,8 +163,11 @@ class _World:
         (self.fakebin / "apptainer").write_text(_FAKE_APPTAINER_CAT, encoding="utf-8")
         (self.fakebin / "apptainer").chmod(0o755)
         # rclone 은 진짜를 부르되 부른 인자를 적는다 — Drive 에서 무엇을 받는지(조각 전부를 받는 실수)를 본다.
-        (self.fakebin / "rclone").write_text(f'#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$RCLONE_LOG"\nexec {shutil.which("rclone")} "$@"\n',
-                                             encoding="utf-8")
+        # FAKE_LSF_FAIL=<자리> 면 그 자리의 목록 읽기(lsf)만 실패한다 — 네트워크 · 인증 실패의 대역.
+        (self.fakebin / "rclone").write_text(
+            '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$RCLONE_LOG"\n'
+            'if [ "${1:-}" = lsf ] && [ -n "${FAKE_LSF_FAIL:-}" ] && [ "${2%/}" = "${FAKE_LSF_FAIL%/}" ]; then echo "fake lsf failure" >&2; exit 1; fi\n'
+            f'exec {shutil.which("rclone")} "$@"\n', encoding="utf-8")
         (self.fakebin / "rclone").chmod(0o755)
         self.rclone_log = root / "rclone.log"
         (root / "rclone.conf").write_text("", encoding="utf-8")
@@ -211,8 +217,8 @@ class _World:
         assert r.returncode == 0 and "✓ 조각 스냅숏" in r.stdout, r.stdout + r.stderr
         return r
 
-    def fetch(self, *args: str) -> subprocess.CompletedProcess:
-        return self._run("aidh_seed", "fetch-parts.sh", *args)
+    def fetch(self, *args: str, **env: str) -> subprocess.CompletedProcess:
+        return self._run("aidh_seed", "fetch-parts.sh", *args, **env)
 
     def merge_parts(self, db: str, **env: str) -> subprocess.CompletedProcess:
         """update-all 처럼 AIDH_MERGE_PARTS=1(계획은 fetch-parts.sh 와 같은 캐시 자리) — 계획 파일을 직접 줄 수도 있다."""
@@ -257,10 +263,10 @@ class _World:
 
 
 @pytest.fixture()
-def world(pg, tmp_path):
+def world(_pg_cluster, tmp_path):  # noqa: F811  (가져온 픽스처를 받는 자리)
     if not shutil.which("rclone"):
         pytest.skip("rclone 없음 — 조각 스냅숏 시험 skip")
-    w = _World(pg, tmp_path)
+    w = _World(_pg_cluster, tmp_path)
     w.seed()
     return w
 
@@ -274,7 +280,8 @@ def _newer_line(out: str) -> str:
     return next((x for x in out.splitlines() if "content_hash 가 덤프와 다른 것" in x), "")
 
 
-def test_조각_병합은_전체_덤프_병합과_같은_결과다(world, pg):
+def test_조각_병합은_전체_덤프_병합과_같은_결과다(world):
+    pg = world.pg
     full, parts = world.clone("aidh_full"), world.clone("aidh_parts")
     rf = world.merge_full(full)
     assert rf.returncode == 0 and "✓ merge 완료 —" in rf.stdout, rf.stdout + rf.stderr
@@ -311,7 +318,8 @@ def test_조각_병합은_전체_덤프_병합과_같은_결과다(world, pg):
     assert oa["up:up2"] == "ok/4/2026-10-30" and ob["up:up2"] == "∅/∅/∅", (oa, ob)
 
 
-def test_바뀐_것이_없으면_목록만_받고_끝나며_조각은_같은_바이트다(world, pg):
+def test_바뀐_것이_없으면_목록만_받고_끝나며_조각은_같은_바이트다(world):
+    pg = world.pg
     db = world.clone("aidh_b")
     world.export()
     world.sync(db)
@@ -342,7 +350,8 @@ def test_바뀐_것이_없으면_목록만_받고_끝나며_조각은_같은_바
     assert all((world.out / "files" / n).read_bytes() == (other / "files" / n).read_bytes() for n in names)
 
 
-def test_레코드_하나가_바뀌면_그_조각만_받고_다른_줄은_다시_쓰지_않는다(world, pg):
+def test_레코드_하나가_바뀌면_그_조각만_받고_다른_줄은_다시_쓰지_않는다(world):
+    pg = world.pg
     db = world.clone("aidh_b")
     world.export()
     world.sync(db)
@@ -366,7 +375,7 @@ def test_레코드_하나가_바뀌면_그_조각만_받고_다른_줄은_다시
     assert got == "h5-new|r05 2절(고침)", got
 
 
-def test_전문가가_바뀌면_표본을_함께_싣는다(world, pg):
+def test_전문가가_바뀌면_표본을_함께_싣는다(world):
     db = world.clone("aidh_b")
     world.export()
     world.sync(db)
@@ -387,7 +396,7 @@ def test_전문가가_바뀌면_표본을_함께_싣는다(world, pg):
     assert "✓ agent_sample_embeddings" in m.stdout and "✓ agents" not in m.stdout, m.stdout
 
 
-def test_dev_에만_있는_열이면_3이고_다시_받으면_같은_계획이다(world, pg):
+def test_dev_에만_있는_열이면_3이고_다시_받으면_같은_계획이다(world):
     db = world.clone("aidh_b")
     world.export()
     world.sync(db)
@@ -404,7 +413,8 @@ def test_dev_에만_있는_열이면_3이고_다시_받으면_같은_계획이�
     assert f.returncode == 0 and (world.cache / "plan.json").read_text(encoding="utf-8") == plan1, f.stdout + f.stderr
 
 
-def test_되돌리기는_조각_병합_앞으로_돌린다(world, pg):
+def test_되돌리기는_조각_병합_앞으로_돌린다(world):
+    pg = world.pg
     db = world.clone("aidh_b")
     before = _state(pg, db, ids=True, own=True)
     world.export()
@@ -453,8 +463,9 @@ def test_Drive_에는_목록_KEEP_판과_그것이_가리키는_조각만_남는
     assert len(list(world.out.glob("manifest-*.json"))) == 2
 
 
-def test_내기는_한_시점이다(world, pg, monkeypatch, tmp_path):
+def test_내기는_한_시점이다(world, monkeypatch, tmp_path):
     """조각마다 따로 여는 psql 이 한 시점을 빌린다 — 내는 도중 든 레코드는 레코드 목록에도 조각에도 없다(전체 덤프와 같은 일관성)."""
+    pg = world.pg
     spec = importlib.util.spec_from_file_location("aidh_parts_under_test", APPT / "aidh_parts.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -469,3 +480,15 @@ def test_내기는_한_시점이다(world, pg, monkeypatch, tmp_path):
         _, seen, _ = mod._write_part("SELECT id FROM public.records WHERE id = 'r30'", out, "a", snap)
         _, empty, _ = mod._write_part("SELECT id FROM public.records WHERE false", out, "b", snap)
         assert seen == empty
+
+
+def test_Drive_목록을_못_읽으면_받기는_실패고_내기는_정리를_건너뛴다(world):
+    """목록 읽기 실패(네트워크 · 인증)는 '목록 없음'(4)이 아니다 — update-all 이 원인을 잘못 말한다. 내기 쪽은 목록을 다 못 읽으면 지우지 않는다."""
+    world.export()
+    world.sql("aidh_dev", "UPDATE records SET content_hash = 'h1-x', updated_at = '2026-11-02 00:00+00' WHERE id = 'r01';")
+    r = world.export(AIDH_PARTS_KEEP="1", FAKE_LSF_FAIL=str(world.remote))
+    assert "⚠ Drive 목록을 다 읽지 못했다" in r.stdout and "Drive 에서 안 가리키는 조각" not in r.stdout, r.stdout
+    assert len(world.manifests()) == 2, "목록을 못 읽은 정리는 한 판도 지우지 않는다"
+    f = world.fetch(FAKE_LSF_FAIL=str(world.remote))
+    assert f.returncode == 1 and "Drive 목록을 못 읽었다(rclone rc 1)" in f.stdout, f.stdout + f.stderr
+
