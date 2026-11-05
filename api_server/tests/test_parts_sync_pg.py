@@ -492,3 +492,23 @@ def test_Drive_목록을_못_읽으면_받기는_실패고_내기는_정리를_�
     f = world.fetch(FAKE_LSF_FAIL=str(world.remote))
     assert f.returncode == 1 and "Drive 목록을 못 읽었다(rclone rc 1)" in f.stdout, f.stdout + f.stderr
 
+
+def test_목록이_전체_덤프보다_하루_넘게_낡으면_5(world):
+    """dev 의 하루 한 번 내기가 멈추면 목록이 그대로라 '바뀐 것 없음' 으로 끝나며 새 덤프의 데이터를 받지 않는다 — 26시간 넘게 낡으면 5(전체 덤프 길)."""
+    from datetime import datetime, timedelta
+
+    world.export()
+    stamp = datetime.strptime(world.manifests()[-1]["created"], "%Y%m%d-%H%M%SZ")
+    dumps = world.root / "dumps"
+    dumps.mkdir()
+    name = lambda h: f"aidh-db-{(stamp + timedelta(hours=h)):%Y%m%d-%H%M%S}Z.sql.gz"  # noqa: E731
+    (dumps / name(20)).write_bytes(b"")              # 평소 — 오늘 내기 전에도 하루가 안 된다
+    (dumps / (name(40) + ".sha256")).write_bytes(b"")  # 덤프가 아닌 파일은 세지 않는다
+    f = world.fetch(AIDH_DRIVE_REMOTE=str(dumps))
+    assert f.returncode == 0 and "낡았다" not in f.stdout, f.stdout + f.stderr
+    (dumps / name(30)).write_bytes(b"")              # 하루치 내기를 빠뜨렸다
+    f = world.fetch(AIDH_DRIVE_REMOTE=str(dumps))
+    assert f.returncode == 5 and "30시간 낡았다" in f.stdout and "parts-to-drive.sh" in f.stdout, f.stdout + f.stderr
+    f = world.fetch(AIDH_DRIVE_REMOTE=str(world.root / "no-such-dumps"))
+    assert f.returncode == 0 and "낡음 검사를 건너뛴다" in f.stdout, f.stdout + f.stderr
+

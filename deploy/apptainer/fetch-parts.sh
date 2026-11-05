@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # AI Data Hub — 조각 스냅숏 받기(cae00): 최신 목록을 지난번 병합한 목록과 견줘 바뀐 조각만 받는다(HWAXPortal docs/aidh-parts-sync)
 #
-#   bash deploy/apptainer/fetch-parts.sh            # 끝 코드 0 받음(계획 $CACHE/plan.json) · 10 바뀐 것 없음 · 4 Drive 에 목록 없음 · 그 밖 실패
+#   bash deploy/apptainer/fetch-parts.sh            # 끝 코드 0 받음(계획 $CACHE/plan.json) · 10 바뀐 것 없음 · 4 Drive 에 목록 없음
+#                                                   # · 5 목록이 전체 덤프보다 하루 넘게 낡음(dev 의 하루 한 번 내기가 멈췄다) · 그 밖 실패
 #   bash deploy/apptainer/fetch-parts.sh --commit   # 병합(merge-from-drive.sh AIDH_MERGE_PARTS_PLAN=…)이 끝난 뒤 — 이번 목록을 '병합함' 으로 적는다
 #
 # 받은 조각은 sha256 으로 대조한다. 병합을 적기(--commit) 전까지는 같은 목록을 다시 받으면 같은 계획이 나온다(멱등).
@@ -36,6 +37,27 @@ lrc=0; listing="$(rclone lsf "$REMOTE/" --files-only --include 'manifest-*.json'
 [ "$lrc" = 0 ] || [ "$lrc" = 3 ] || { echo "[ERROR] Drive 목록을 못 읽었다(rclone rc $lrc) — $REMOTE"; exit 1; }
 latest="$(printf '%s\n' "$listing" | grep -E '^manifest-.*\.json$' | sort | tail -1 || true)"
 [ -n "$latest" ] || { echo "조각 목록 없음($REMOTE) — 전체 덤프 길로"; exit 4; }
+
+# 낡음 검사 — dev 의 하루 한 번 내기가 멈추면 목록이 그대로라 '바뀐 것 없음' 으로 끝나며 전체 덤프에 든 새 데이터를 받지 않는다. 목록이 가장 새
+# 전체 덤프보다 AIDH_PARTS_STALE_HOURS(26)시간 넘게 오래면 하루치 내기를 빠뜨린 것이다 — 5 로 끝내 부르는 쪽이 전체 덤프 길로 가게 한다.
+# 평소엔 내기가 덤프 1시간 남짓 뒤라, 오늘 내기 전에도 덤프와 어제 목록의 차이는 하루가 안 된다. 덤프 자리를 모르거나 못 읽으면 건너뛴다.
+STALE_H="${AIDH_PARTS_STALE_HOURS:-26}"
+if [ -n "${AIDH_DRIVE_REMOTE:-}" ]; then
+  drc=0; dumps="$(rclone lsf "$AIDH_DRIVE_REMOTE/" --files-only --include 'aidh-db-*.sql.gz' 2>/dev/null)" || drc=$?
+  newest_dump="$(printf '%s\n' "$dumps" | grep -E '^aidh-db-[0-9]{8}-[0-9]{6}Z\.sql\.gz$' | sort | tail -1 || true)"
+  if [ "$drc" != 0 ] || [ -z "$newest_dump" ]; then
+    echo "  · 전체 덤프 목록을 못 읽어 낡음 검사를 건너뛴다($AIDH_DRIVE_REMOTE)"
+  else
+    lag_h="$(python3 -c '
+import re, sys, datetime as dt
+t = lambda n: dt.datetime.strptime("".join(re.search(r"(\d{8})-(\d{6})Z", n).groups()), "%Y%m%d%H%M%S")
+print(int((t(sys.argv[2]) - t(sys.argv[1])).total_seconds() // 3600))' "$latest" "$newest_dump")"
+    if [ "$lag_h" -gt "$STALE_H" ]; then
+      echo "[WARN] 조각 목록($latest)이 전체 덤프($newest_dump)보다 ${lag_h}시간 낡았다 — dev 의 하루 한 번 내기(parts-to-drive.sh)가 멈췄다. 전체 덤프 길로"
+      exit 5
+    fi
+  fi
+fi
 rclone copyto "$REMOTE/$latest" "$CACHE/$latest"
 
 rc=0
