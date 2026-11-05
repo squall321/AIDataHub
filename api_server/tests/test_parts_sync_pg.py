@@ -81,9 +81,10 @@ INSERT INTO doc_types (code, name, expected_sections, created_at) VALUES ('repor
                 ("r07", 7, "h7", "2026-10-10", None, 0, None)] + _SAME) + _sections(
     [(r, "1", f"{r} 1절" + ("(dev)" if r == "r02" else ""), "m3-dev" if r == "r04" else None) for r in _DEV_IDS]
     + [(r, "2", f"{r} 2절", None) for r in _DEV_IDS]) + f"""
-INSERT INTO agent_records (agent_type, record_id, priority) VALUES ('he-a','r01',1), ('he-a','r02',1), ('he-c','r06',1);
+INSERT INTO agent_records (agent_type, record_id, priority) VALUES ('he-a','r01',1), ('he-a','r02',1), ('he-c','r06',1), ('he-a','r03',1);
 INSERT INTO record_attachments (id, record_id, number, kind, caption, created_at) VALUES
- ('att-r01-1','r01',1,'figure','그림 1(dev)',{_T0}), ('att-r06-1','r06',1,'table','표 1',{_T0});
+ ('att-r01-1','r01',1,'figure','그림 1(dev)',{_T0}), ('att-r06-1','r06',1,'table','표 1',{_T0}),
+ ('att-r03-1','r03',1,'figure','그림 r03(dev)',{_T0}), ('att-r03-2','r03',2,'table','표 r03(dev)',{_T0});
 INSERT INTO external_id_map (source, external_id, record_id, created_at, updated_at) VALUES
  ('plm','E1','r01',{_T0},'2026-10-01'), ('plm','E6','r06',{_T0},'2026-10-01');
 INSERT INTO mcp_upstreams (alias, transport, url, created_at, last_health_check_at, last_health_status, last_tool_count) VALUES
@@ -103,7 +104,8 @@ INSERT INTO doc_types (code, name, expected_sections, created_at) VALUES ('repor
                 ("r05", 5, "h5", "2026-10-10", None, 0, None), ("r20", 20, "h20", "2026-10-10", None, 0, None)] + _SAME) \
     + _sections(list(reversed(_BOX_SECTIONS))) + f"""
 INSERT INTO agent_records (agent_type, record_id, priority) VALUES ('he-a','r01',2), ('he-x','r20',1);
-INSERT INTO record_attachments (id, record_id, number, kind, caption, created_at) VALUES ('att-r01-1','r01',1,'figure','그림 1',{_T0});
+INSERT INTO record_attachments (id, record_id, number, kind, caption, created_at) VALUES ('att-r01-1','r01',1,'figure','그림 1',{_T0}),
+ ('att-r03-1','r03',1,'figure','그림 r03(box)',{_T0});
 INSERT INTO external_id_map (source, external_id, record_id, created_at, updated_at) VALUES
  ('plm','E20','r20',{_T0},'2026-10-01'), ('plm','E1','r01',{_T0},'2026-10-01');
 INSERT INTO mcp_upstreams (alias, transport, url, created_at, last_health_check_at, last_health_status, last_tool_count) VALUES
@@ -193,7 +195,8 @@ class _World:
         appt.mkdir()
         body = (APPT / script).read_text(encoding="utf-8")
         for real, fake in (("/tmp/aidh-merge-load.log", work / "load.log"), ("/tmp/aidh-merge.log", work / "merge.log"),
-                           ("/tmp/aidh_mg.bin", work / "mg.bin"), ("/tmp/aidh_bf_", f"{work}/bf_"), ("/tmp/aidh_nk_", f"{work}/nk_"),
+                           ("/tmp/aidh_mg.bin", work / "mg.bin"), ("/tmp/aidh_mg_rec.bin", work / "mg_rec.bin"),
+                           ("/tmp/aidh_bf_", f"{work}/bf_"), ("/tmp/aidh_nk_", f"{work}/nk_"),
                            ("/data/backups/aidh/", f"{work}/backups/")):
             body = body.replace(real, str(fake))
         assert "/tmp/aidh" not in body and "/data/" not in body, f"{script} 에 새 실경로가 생겼다 — 위 치환에 더한다"
@@ -304,6 +307,15 @@ def test_조각_병합은_전체_덤프_병합과_같은_결과다(world):
     assert "h2-dev" in rec["r02"] and "h3-box" in rec["r03"] and "m3-dev" in rec["r04"] and {"r06", "r07", "r20"} <= rec.keys(), b["records"]
     secs = b["record_sections"]
     assert any(s.startswith("r01|3|") for s in secs) and any("r02 1절(dev)" in s for s in secs), secs
+    # 이 박스가 이긴 레코드(r03)의 절 · 첨부 · 전문가 연결은 dev 판으로 덮지도 넣지도 않는다(docs/aidh-parts-sync AP-16) — dev 가 이긴 r02 는 dev 판.
+    assert [s.split("|")[4] for s in secs if s.startswith("r03|")] == ["r03 1절(box)", "r03 2절(box)"], secs
+    att = {s.split("|")[0]: s for s in b["record_attachments"]}
+    assert "그림 r03(box)" in att["att-r03-1"] and "att-r03-2" not in att and "그림 1(dev)" in att["att-r01-1"], att
+    assert not any(s.startswith("he-a|r03|") for s in b["agent_records"]) and "he-a|r02|1" in b["agent_records"], b["agent_records"]
+    for out in (rp.stdout, rf.stdout):
+        for t, n in (("record_sections", 2), ("record_attachments", 2), ("agent_records", 1)):
+            line = next(x for x in out.splitlines() if f"✓ {t}:" in x)
+            assert f"이 박스 판이 이긴 레코드 1건의 줄 {n}개는 그대로" in line, line
     assert any(s.startswith("he-c|") for s in b["agents"]) and any("http://up1.dev" in s for s in b["mcp_upstreams"]), b
     assert "덤프 판으로 다시 지은 agent 3 · 지우기만 0" in rp.stdout and "덤프 판으로 다시 지은 agent 3 · 지우기만 0" in rf.stdout
     # '운영이 더 새롭다' 셈도 같다(처음은 조각 전부를 실었다).
@@ -512,3 +524,26 @@ def test_목록이_전체_덤프보다_하루_넘게_낡으면_5(world):
     f = world.fetch(AIDH_DRIVE_REMOTE=str(world.root / "no-such-dumps"))
     assert f.returncode == 0 and "낡음 검사를 건너뛴다" in f.stdout, f.stdout + f.stderr
 
+
+
+
+def test_절만_바뀌어도_레코드_조각을_싣고_이_박스가_이긴_카드의_절은_그대로다(world):
+    """절은 바뀐 시각 칸이 없어 레코드의 시각으로 가린다 — 레코드가 안 바뀐 조각이어도 그 조각을 함께 실어야 '이 박스 판이 이긴 레코드' 를 안다
+    (docs/aidh-parts-sync AP-16). r03 은 이 박스가 더 새롭고(조각 6) r01 은 같은 판이다(조각 1)."""
+    pg = world.pg
+    db = world.clone("aidh_b")
+    world.export()
+    world.sync(db)
+    assert (_part("r01"), _part("r03")) == (1, 6), "시험 전제"
+    before = _xmins(pg, db)
+    world.sql("aidh_dev", "UPDATE record_sections SET content_text = content_text || ' — dev 고침' WHERE record_id IN ('r01', 'r03') AND section_id = '2';")
+    world.export()
+    assert world.fetch().returncode == 0
+    assert world.plan() == {"records": [1, 6], "record_sections": [1, 6]}, world.plan()   # 레코드 조각은 안 바뀌었어도 함께
+    m = world.sync(db)
+    line = next(x for x in m.stdout.splitlines() if "✓ record_sections:" in x)
+    assert "이 박스 판이 이긴 레코드 1건의 줄 2개는 그대로" in line, line
+    after = _xmins(pg, db)
+    assert {k for k in after if after[k] != before.get(k)} == {"sec:r01/2"}, "레코드는 다시 쓰지 않고 r03 의 절도 그대로다"
+    got = world.sql(db, "SELECT record_id || ':' || content_text FROM record_sections WHERE section_id = '2' AND record_id IN ('r01', 'r03') ORDER BY 1;").split("\n")
+    assert got[:2] == ["r01:r01 2절 — dev 고침", "r03:r03 2절(box)"], got

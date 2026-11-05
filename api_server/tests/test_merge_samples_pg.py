@@ -188,7 +188,8 @@ def boxes(pg, tmp_path):
         (work / "appt").mkdir()
         body = SCRIPT.read_text(encoding="utf-8")
         for real, fake in (("/tmp/aidh-merge-load.log", work / "load.log"), ("/tmp/aidh-merge.log", work / "merge.log"),
-                           ("/tmp/aidh_mg.bin", work / "mg.bin"), ("/tmp/aidh_bf_", f"{work}/bf_"), ("/tmp/aidh_nk_", f"{work}/nk_"),
+                           ("/tmp/aidh_mg.bin", work / "mg.bin"), ("/tmp/aidh_mg_rec.bin", work / "mg_rec.bin"),
+                           ("/tmp/aidh_bf_", f"{work}/bf_"), ("/tmp/aidh_nk_", f"{work}/nk_"),
                            ("/data/backups/aidh/", f"{work}/backups/")):
             body = body.replace(real, str(fake))
         assert "/tmp/aidh" not in body and "/data/" not in body, "새 실경로가 생겼다 — 위 치환에 더한다"

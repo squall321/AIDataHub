@@ -47,6 +47,8 @@ TABLES = [
     ("external_id_map", None, "source, external_id", ("id",)),
     ("mcp_upstreams", None, "alias", ("last_health_check_at", "last_health_status", "last_tool_count")),
 ]
+# 레코드에 딸린 표 — 레코드와 같은 조각 번호(record_id)로 나뉘고, 병합이 레코드를 이긴 쪽을 따른다.
+CHILDREN = ("agent_records", "record_sections", "record_attachments")
 GZ_LEVEL = 6
 CHUNK = 1 << 20
 
@@ -237,6 +239,17 @@ def plan(new: dict, old: dict | None) -> dict:
         need = [p for p in t["parts"] if prev_sha.get(p["k"]) != p["sha256"]]
         if need:
             out.append({"name": t["name"], "columns": t["columns"], "parts": need})
+    # 레코드에 딸린 표의 조각을 실으면 같은 k 의 레코드 조각도 싣는다 — 병합이 '이 박스 판이 이긴 레코드' 를 dev 의 updated_at 과 견줘 가린다
+    # (merge-from-drive.sh merge_table $7). 안 바뀐 레코드 조각이어도 그렇다 — 레코드 병합은 시각 조건이라 다시 쓰지 않는다.
+    child_k = {p["k"] for t in out if t["name"] in CHILDREN for p in t["parts"]}
+    rec_new = next((t for t in new["tables"] if t["name"] == "records"), None)
+    if child_k and rec_new:
+        rec_out = next((t for t in out if t["name"] == "records"), None)
+        if rec_out is None:
+            rec_out = {"name": "records", "columns": rec_new["columns"], "parts": []}
+            out.append(rec_out)
+        have = {p["k"] for p in rec_out["parts"]}
+        rec_out["parts"] = sorted(rec_out["parts"] + [p for p in rec_new["parts"] if p["k"] in child_k - have], key=lambda p: p["k"])
     names = {t["name"] for t in out}
     if "agents" in names and "agent_sample_embeddings" not in names:
         sample = next((t for t in new["tables"] if t["name"] == "agent_sample_embeddings"), None)
