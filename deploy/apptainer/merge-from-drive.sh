@@ -4,6 +4,7 @@
 # updated_at 최신 우선(없으면 dev 로 갱신). staging DB 로 로드 후 테이블별 upsert(FK 순서).
 # 에이전트 표본 임베딩만은 행이 아니라 agent 단위로 맞춘다(아래 merge_samples).
 # 레코드의 조회 수 · 조회 시각은 dev 판이 행을 덮어도 이 박스 것을 둔다(아래 try_merge records).
+# 레코드에 딸린 절 · 첨부 · 전문가 연결은 레코드를 이긴 쪽을 따른다 — 이 박스가 더 새로운 레코드의 자식 줄은 dev 판으로 덮지도 넣지도 않는다(merge_table $7).
 #
 #   bash deploy/apptainer/merge-from-drive.sh            # Drive 최신 덤프로 merge
 #   AIDH_MERGE_DUMP=/path/to.sql.gz bash ... merge-from-drive.sh   # 로컬 덤프 지정
@@ -106,14 +107,14 @@ fi
 STAGE_SQL() { apptainer exec "instance://$INST" psql -h 127.0.0.1 -p "$PORT" -U "$USER" -d "$STAGE_DB" "$@"; }
 CFILE="/tmp/aidh_mg.bin"   # 컨테이너 내부 경로(서버 COPY 대상)
 
-merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외컬럼(csv, 옵션) $5=m3 슬롯 채움 — 양쪽이 같아야 하는 열(csv, 옵션) $6=덮지 않는 열 — 새 행에만 dev 값(csv, 옵션)
+merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외컬럼(csv, 옵션) $5=m3 슬롯 채움 — 양쪽이 같아야 하는 열(csv, 옵션) $6=덮지 않는 열 — 새 행에만 dev 값(csv, 옵션) $7=레코드를 따르는 열(자식 표의 record_id, 옵션)
   # 충돌키는 **자연키**여야 한다. id 가 nextval() 대리키인 테이블(record_sections,
   # external_id_map 등)은 박스마다 값이 독립 생성돼, dev 의 id 가 운영에 없더라도
   # (record_id, section_id) 같은 자연키 유니크에 걸려 INSERT 전체가 죽는다
   # (실제로 cae00 에서 "record_sections: merge 실패" → set -e 로 뒤 4개 테이블과
   #  staging 정리까지 통째로 스킵됐다). 그런 테이블은 $4 로 id 를 제외해 운영 시퀀스가
   # 새 id 를 부여하게 하고, 자연키로 충돌 판정한다.
-  local t="$1" pk="$2" upd="${3:-}" drop="${4:-}" same="${5:-}" keep="${6:-}"
+  local t="$1" pk="$2" upd="${3:-}" drop="${4:-}" same="${5:-}" keep="${6:-}" follow="${7:-}"
   # psql 이 접속·인증 실패로 죽으면 stdout 이 빈 문자열이라 '테이블 없음'과 구별되지 않는다.
   # 그러면 전 테이블이 skip 되는데 FAILED 에도 안 잡혀 '✓ merge 완료' 로 끝난다 —
   # 한 행도 안 들어왔는데 성공으로 보고된다. 'f' 만 진짜 '없음'이고 빈 값은 조회 실패다.
@@ -208,24 +209,45 @@ COPY (SELECT r.* FROM public.$t r WHERE EXISTS (SELECT 1 FROM _mg m WHERE $_onpk
 COPY (SELECT $(printf '%s' "$pk" | tr ',' '\n' | sed 's/.*/m.&/' | paste -sd',' -) FROM _mg m WHERE NOT EXISTS (SELECT 1 FROM public.$t r WHERE $_onpk)) TO '$_nk' (FORMAT csv);"
   fi
 
+  # 레코드를 이긴 쪽을 따른다(HWAXPortal docs/aidh-parts-sync AP-16) — 레코드는 '이 박스가 더 새로우면 이 박스 판' 인데 자식 표(절 · 첨부 · 전문가
+  # 연결)는 바뀐 시각 칸이 없어 값이 다르면 dev 판이었다 — cae00 에서 고친 카드의 절이 dev 의 옛 절로 덮이고 지운 절이 되살아났다. 레코드 병합이 먼저
+  # 돈 뒤라 '운영 updated_at > dev updated_at' 이 곧 이 박스 판이 이긴 레코드다(dev 가 이겼으면 같은 값, 같은 판이어도 같은 값). 그 레코드의 dev 줄은
+  # _mg 에서 빼고(덮지도 넣지도 않는다) 나머지는 예전 그대로다. 앞 모습 · 새 키도 뺀 뒤에 남긴다.
+  local follow_sql="" _rf="/tmp/aidh_mg_rec.bin"
+  if [ -n "$follow" ]; then
+    follow_sql="
+CREATE TEMP TABLE _devrec AS SELECT id, updated_at FROM public.records WITH NO DATA;
+COPY _devrec FROM '$_rf' (FORMAT binary);
+WITH s AS (DELETE FROM _mg m USING _devrec d, public.records r WHERE m.$follow = d.id AND r.id = d.id AND r.updated_at > d.updated_at RETURNING m.$follow AS k)
+SELECT 'follow|' || count(*) || '|' || count(DISTINCT k) FROM s;"
+  fi
+
   local before after
   before="$(PSQL -d "$DB" -tA -c "SELECT count(*) FROM $t;")"
   apptainer exec "instance://$INST" rm -f "$CFILE" 2>/dev/null
   # ① staging → 파일(서버 COPY)
   STAGE_SQL -v ON_ERROR_STOP=1 -q -c "COPY (SELECT $cols FROM public.$t) TO '$CFILE' (FORMAT binary);" 2>>/tmp/aidh-merge.log \
     || { echo "    ✗ $t: staging COPY 실패"; return 1; }
+  if [ -n "$follow" ]; then
+    apptainer exec "instance://$INST" rm -f "$_rf" 2>/dev/null
+    STAGE_SQL -v ON_ERROR_STOP=1 -q -c "COPY (SELECT id, updated_at FROM public.records) TO '$_rf' (FORMAT binary);" 2>>/tmp/aidh-merge.log \
+      || { echo "    ✗ $t: staging 레코드 시각 COPY 실패"; apptainer exec "instance://$INST" rm -f "$CFILE" 2>/dev/null; return 1; }
+  fi
   # ② 운영 단일 세션: TEMP → COPY FROM 파일 → upsert
   # aidh.keep_updated_at — 운영 updated_at 을 병합 시각으로 올리지 않는다(트리거가 이 설정을 본다, 이행 0032). 세션 단위라 이 psql 하나에만 든다.
   # 표준출력으로는 위 셈 한 줄만 온다(-q 라 명령 꼬리표는 찍히지 않는다) — 오류는 예전처럼 로그로 간다.
   if out="$(PSQL -d "$DB" -v ON_ERROR_STOP=1 -qtA 2>>/tmp/aidh-merge.log <<SQL
 SET aidh.keep_updated_at = 'on';
 CREATE TEMP TABLE _mg (LIKE public.$t INCLUDING DEFAULTS);
-COPY _mg ($cols) FROM '$CFILE' (FORMAT binary);$newer$keep_before
+COPY _mg ($cols) FROM '$CFILE' (FORMAT binary);$follow_sql$newer$keep_before
 INSERT INTO public.$t ($cols) SELECT $cols FROM _mg ON CONFLICT ($pk) $action;$fill
 DROP TABLE _mg;
 SQL
 )"
-  then after="$(PSQL -d "$DB" -tA -c "SELECT count(*) FROM $t;")"; echo "    ✓ $t: +$((after-before)) (총 $after)"
+  then after="$(PSQL -d "$DB" -tA -c "SELECT count(*) FROM $t;")"
+    local _fl _fn _fk; _fl="$(printf '%s\n' "$out" | grep '^follow|' || true)"; out="$(printf '%s\n' "$out" | grep -v '^follow|' || true)"
+    IFS='|' read -r _ _fn _fk <<<"${_fl:-follow|0|0}"
+    echo "    ✓ $t: +$((after-before)) (총 $after)$( [ "${_fn:-0}" != 0 ] && echo " · 이 박스 판이 이긴 레코드 ${_fk}건의 줄 ${_fn}개는 그대로")"
     if [ -n "$keep_before" ]; then
       apptainer exec "instance://$INST" cat "$_bf" | gzip -c > "$BEFORE_DIR/$t.before.bin.gz" \
         && apptainer exec "instance://$INST" cat "$_nk" | gzip -c > "$BEFORE_DIR/$t.new.csv.gz" \
@@ -238,8 +260,8 @@ SQL
       case "$_n" in ''|*[!0-9]*) out="세지 못함" ;; *) out="${_n}건${_v:+(그중 조회로 올라간 것 ${_v}건)}" ;; esac
       NEWER_DIFF="${NEWER_DIFF:-}${NEWER_DIFF:+ · }$t $out"
     fi
-  else echo "    ✗ $t: merge 실패 — /tmp/aidh-merge.log 확인"; apptainer exec "instance://$INST" rm -f "$CFILE" 2>/dev/null; return 1; fi
-  apptainer exec "instance://$INST" rm -f "$CFILE" 2>/dev/null
+  else echo "    ✗ $t: merge 실패 — /tmp/aidh-merge.log 확인"; apptainer exec "instance://$INST" rm -f "$CFILE" "$_rf" 2>/dev/null; return 1; fi
+  apptainer exec "instance://$INST" rm -f "$CFILE" "$_rf" 2>/dev/null
 }
 
 # 에이전트 표본 임베딩(agent_sample_embeddings)은 agents.sample_queries 의 파생 표다 — 저장할 때마다 그 agent 의 행을 통째로
@@ -337,10 +359,11 @@ try_merge agents                 "agent_type"           "updated_at"
 # 그 행을 '운영이 더 새롭다' 로 건너뛰게 해 통계가 남았고, 여기서 조회되지 않은 행은 예전에도 dev 값이 들었다(HWAX 10-31 사용자
 # 결정의 검토 후속).
 try_merge records                "id"                   "updated_at" ""         "title,content_hash" "read_count,last_accessed_at"
-try_merge agent_records          "agent_type,record_id" ""
+# ↓ 레코드에 딸린 표 — 이 박스가 더 새로운 레코드의 줄은 dev 판으로 덮지도 넣지도 않는다(맨 끝 인자 record_id — merge_table $7).
+try_merge agent_records          "agent_type,record_id" ""          ""         ""                   ""                                  "record_id"
 # ↓ id 가 대리키(nextval)라 자연키로 충돌 판정하고 id 는 운영 시퀀스에 맡긴다.
-try_merge record_sections        "record_id,section_id" ""          "id"
-try_merge record_attachments     "id"                   ""
+try_merge record_sections        "record_id,section_id" ""          "id"       ""                   ""                                  "record_id"
+try_merge record_attachments     "id"                   ""          ""         ""                   ""                                  "record_id"
 # ↓ 파생 표 — 행의 id 가 아니라 agent 단위로(agents 다음이어야 한다 — 병합된 sample_queries 를 본다).
 if [ -z "$PARTS_TABLES" ] || [[ "$PARTS_TABLES" == *" agent_sample_embeddings "* ]]; then
   merge_samples || FAILED="$FAILED agent_sample_embeddings"

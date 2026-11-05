@@ -281,3 +281,21 @@ def test_내용_해시가_한쪽에만_있으면_세지_않고_요약도_없다(
     assert r.returncode == 3, r.stdout + r.stderr       # dev 에만 있는 열(content_hash) — 그대로 알린다
     assert _NEWER_COUNT not in sessions["records"], sessions["records"]
     assert "content_hash 가 덤프와 다른" not in r.stdout, r.stdout
+
+
+
+def test_레코드에_딸린_표는_이_박스가_이긴_레코드의_줄을_빼고_덮는다(merge):
+    """레코드는 '이 박스가 더 새로우면 이 박스 판' 인데 절 · 첨부 · 전문가 연결은 값이 다르면 dev 판이었다 — cae00 에서 고친 카드의 절이 dev 의 옛
+    절로 덮였다(HWAXPortal docs/aidh-parts-sync AP-16). 자식 표는 COPY 뒤 · 앞 모습과 upsert 앞에서 그 레코드의 dev 줄을 뺀다. 동작은 실 PG 시험이 본다."""
+    rec = ["id", "title", "content_hash", "updated_at"]
+    tables = {"records": rec, "agent_records": ["agent_type", "record_id", "priority"], "record_sections": _SECTIONS,
+              "record_attachments": ["id", "record_id", "caption"], "org_teams": ["code", "name"]}
+    r, sessions = merge(tables, tables)
+    assert r.returncode == 0, r.stdout + r.stderr
+    for t in ("agent_records", "record_sections", "record_attachments"):
+        s = sessions[t]
+        i_copy, i_del, i_ins = s.index("COPY _mg"), s.index("DELETE FROM _mg m USING _devrec d, public.records r"), s.index(f"INSERT INTO public.{t}")
+        assert i_copy < i_del < i_ins, s
+        assert "WHERE m.record_id = d.id AND r.id = d.id AND r.updated_at > d.updated_at" in s, s
+    for t in ("records", "org_teams"):
+        assert "_devrec" not in sessions[t], sessions[t]
