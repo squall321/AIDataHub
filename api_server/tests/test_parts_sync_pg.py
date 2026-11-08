@@ -494,6 +494,29 @@ def test_내기는_한_시점이다(world, monkeypatch, tmp_path):
         assert seen == empty
 
 
+def test_내기는_트랜잭션_안_유휴_상한을_넘겨도_시점을_쥔다(world, monkeypatch, tmp_path):
+    """시점을 쥔 세션은 다른 세션이 조각을 뜨는 동안 트랜잭션 안에서 논다 — dev PG 의 idle_in_transaction_session_timeout(30min)이 그 세션을
+    끊어 30분을 넘긴 내기가 'invalid snapshot identifier' 로 멈췄다(11-08 — 11-05 첫 내기는 29분이라 비켜 갔다). 시점을 쥔 세션만 그 상한을
+    끈다 — 조각 세션 · 서버 설정은 그대로다(HWAXPortal docs/aidh-parts-sync AP-17)."""
+    pg = world.pg
+    spec = importlib.util.spec_from_file_location("aidh_parts_under_test", APPT / "aidh_parts.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    monkeypatch.setenv("AIDH_PSQL_CMD", json.dumps([str(pg["bin"] / "psql"), "-h", pg["sock"], "-p", _PORT, "-U", pg["user"],
+                                                    "-d", "aidh_dev"]))
+    out = tmp_path / "idle-parts"
+    out.mkdir()
+    world.sql("aidh_dev", "ALTER DATABASE aidh_dev SET idle_in_transaction_session_timeout = '1s';")   # 새 세션부터 1초
+    try:
+        with mod._Snapshot() as snap:
+            time.sleep(2.5)                                            # 시점을 쥔 세션이 상한을 넘겨 논다
+            _, sha, size = mod._write_part("SELECT id FROM public.records ORDER BY id", out, "a", snap)
+            assert size > 0 and sha
+            assert mod._psql_rows("SELECT count(*) FROM records", snap) == [["12"]]
+    finally:
+        world.sql("aidh_dev", "ALTER DATABASE aidh_dev RESET idle_in_transaction_session_timeout;")
+
+
 def test_Drive_목록을_못_읽으면_받기는_실패고_내기는_정리를_건너뛴다(world):
     """목록 읽기 실패(네트워크 · 인증)는 '목록 없음'(4)이 아니다 — update-all 이 원인을 잘못 말한다. 내기 쪽은 목록을 다 못 읽으면 지우지 않는다."""
     world.export()
