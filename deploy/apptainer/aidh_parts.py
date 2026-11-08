@@ -72,7 +72,10 @@ class _Snapshot:
         self.proc = subprocess.Popen([*_cmd("AIDH_PSQL_CMD"), "-v", "ON_ERROR_STOP=1", "-qtA"], stdin=subprocess.PIPE,
                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         assert self.proc.stdin is not None and self.proc.stdout is not None
-        self.proc.stdin.write("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;\nSELECT pg_export_snapshot();\n")
+        # 이 세션은 조각 세션들이 뜨는 동안 트랜잭션 안에서 논다 — 서버의 idle_in_transaction_session_timeout(dev 30min)이 끊으면 시점이
+        # 사라져 다음 조각이 'invalid snapshot identifier' 로 멈춘다(11-08). 이 세션만 그 상한을 끈다(HWAXPortal docs/aidh-parts-sync AP-17).
+        self.proc.stdin.write("SET idle_in_transaction_session_timeout = 0;\n"
+                              "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;\nSELECT pg_export_snapshot();\n")
         self.proc.stdin.flush()
         # psql 은 질의 결과마다 표준출력을 비운다(14 · 16 실측) — 트랜잭션을 연 채로 한 줄을 읽는다.
         ready, _, _ = select.select([self.proc.stdout], [], [], 120)
