@@ -126,3 +126,6 @@ api_server/mcp_uploads/_uploads
 
 # 한국어 검색 평가셋 — 지식카드에서 만든 질의 · 카드 id · 제목(사내 내용)이라 커밋하지 않는다. 다시 만드는 법은 docs/ko-search-baseline.md
 api_server/scripts/ko_search_eval/data/
+
+# 카드 온톨로지 규칙의 박스 덧씌우기(HWAXPortal docs/expert-ontology 6.2)
+api_server/config/onto_rules.local.json
