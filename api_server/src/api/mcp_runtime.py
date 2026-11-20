@@ -249,6 +249,7 @@ async def recommend_agents(
     top_k: int = 5,
     top_k_tools: int = 3,
     agent_type: str | None = None,
+    onto: str = "off",
 ) -> dict[str, Any]:
     """자연어 → ranked agents (+ Wave-7 P1: relevant_tools 동봉, P2: agent context 필터).
 
@@ -260,6 +261,8 @@ async def recommend_agents(
                     (restrict/require/exclude) 적용 후 relevant_tools 필터.
                     주의 — 추천 결과(agents 랭킹)를 이 값으로 필터하지 않는다.
                     범위 제한이 아니라 "누가 부르는가"의 도구 가시성 컨텍스트다.
+        onto: 온톨로지 신호 — "off"(기본 · 응답이 그대로) | "shadow"(줄마다 onto 칸만 · 순위 그대로) |
+              "rank"(질문의 객체에 카드가 이어진 전문가에게 덧점). 연결이 없는 박스에서는 어느 값이든 순위가 같다.
     """
     from sqlalchemy import select
 
@@ -268,8 +271,9 @@ async def recommend_agents(
 
     async with SessionLocal() as session:
         rank_stats: dict[str, Any] = {}
+        onto = onto if onto in ("shadow", "rank") else "off"
         agents = await recommend_svc.recommend_agents(
-            session, query=q, top_k=top_k, stats=rank_stats)
+            session, query=q, top_k=top_k, stats=rank_stats, onto=onto)
         ranked_total = int(rank_stats.get("ranked_total") or len(agents))
         # Wave-7 P1+P2 — 도구 검색 + 정책 필터 (별도 실패해도 agent 추천은 유지)
         relevant_tools: list[dict[str, Any]] = []
@@ -345,6 +349,7 @@ async def recommend_agents(
                 "relevant_tools": relevant_tools,
                 "coverage": coverage,
                 "fallback": False,
+                **({"onto": rank_stats.get("onto")} if onto != "off" else {}),
             }
 
         # 0건 폴백 — 전체 agent 의 메타 + sample_queries 상위 일부.

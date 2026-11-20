@@ -1,0 +1,18 @@
+{
+  "_doc": "카드에서 온톨로지 낱말을 뽑는 규칙(HWAXPortal docs/expert-ontology 6.2). 박스 덧씌우기는 같은 자리의 onto_rules.local.json(JSON merge patch — null 은 그 칸을 뺀다). version 을 올리면 다음 build 가 통째로 다시 짓는다. card_types: 문서 종류 → always(늘) · type(content.card.type 값) · tier(content.card.tier 값) → 코어 타입 슬러그 목록 — 뜻이 분명한 것만 둔다(나머지는 허브 타입을 본 박스가 덧씌운다). 타입 줄은 전문가 ↔ 타입 셈에만 쓰고 연결을 막지 않는다. properties: 물성 줄(content.properties[] 의 name · key)을 낱말로 뽑을 문서 종류. keywords: subject_keywords 를 낱말로 뽑을지. stop: 뽑지도 맞추지도 않을 낱말(카드 꼴을 말하는 열쇠말 등).",
+  "version": 1,
+  "max_ngram": 8,
+  "min_hangul": 2,
+  "min_latin": 3,
+  "keywords": true,
+  "properties": ["material_card"],
+  "card_types": {
+    "expert_knowledge_card": {
+      "type": {"failure-case": ["failure_mode"]},
+      "tier": {"failure_mode": ["failure_mode"]}
+    },
+    "material_card": {"always": ["material_property"]}
+  },
+  "stop": ["faq", "checklist", "boundary", "standard", "data", "design-rule", "failure", "scope", "standard-summary",
+           "delegation", "failure-case", "rule", "concept", "open-observation", "tradeoff"]
+}

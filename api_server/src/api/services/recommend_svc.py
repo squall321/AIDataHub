@@ -201,8 +201,13 @@ async def recommend_agents(
     top_k: int = 5,
     candidate_sections: int | None = None,
     stats: dict[str, Any] | None = None,
+    onto: str = "off",
 ) -> list[dict[str, Any]]:
     """자연어 쿼리 → ranked agents.
+
+    ``onto`` — 온톨로지 신호(HWAXPortal docs/expert-ontology 6.4). ``off``(기본)는 아무것도 하지 않는다 — 응답이 글자 그대로다.
+    ``shadow`` 는 질문의 객체에 이어진 카드를 가진 전문가 줄에 ``onto`` 칸만 싣고 순위는 그대로 둔다. ``rank`` 는 그 덧점을
+    점수에 더해 선다(추천 점수식 위에 얹는 한 항 — 연결이 없는 박스에서는 신호가 0 이라 순위가 그대로다).
 
     의미검색 top-N sections 가져와서 각 section 의 record 에 등록된 agents
     별로 score 합산. agent 의 record_count / matched_sections / why 도 함께.
@@ -331,6 +336,26 @@ async def recommend_agents(
                 agent_desc_match[a.agent_type] = frac
                 agent_score[a.agent_type] += _DESC_WEIGHT * frac
 
+    # 3e) 온톨로지 신호 — 청한 때만. 질문에 나온 객체(이어진 객체의 이름과 낱말 단위로 맞춘다)에 카드가 이어진 전문가.
+    onto_sig: dict[str, dict[str, Any]] = {}
+    if onto in ("shadow", "rank"):
+        from . import onto_svc
+
+        onto_ents: list[dict[str, Any]] = []
+        try:
+            onto_sig, onto_ents = await onto_svc.seat_signal(session, query)
+        except Exception as exc:  # noqa: BLE001 — 신호가 없어도 추천은 그대로 낸다
+            log.warning("온톨로지 신호를 못 냈다(추천은 그대로): %r", exc)
+            onto_sig = {}
+        if onto == "rank":
+            for at, sg in onto_sig.items():
+                if at in meta_by_type and sg["bonus"] > 0:
+                    agent_score[at] += sg["bonus"]
+                    weak_only.discard(at)        # 이어진 카드가 근거다 — 어휘만 약하게 겹친 전문가가 아니다
+        if stats is not None:
+            stats["onto"] = {"mode": onto, "entities": len(onto_ents), "agents": len(onto_sig),
+                             "applied": onto == "rank" and bool(onto_sig)}
+
     if not agent_score:
         return []
 
@@ -363,6 +388,9 @@ async def recommend_agents(
             why_parts.append(f"역할/설명 어휘 매칭 {agent_desc_match[at] * 100:.0f}%")
         if at in weak_only:
             why_parts.append("기록 · 표본 근거 없이 어휘만 약하게 겹쳐 근거 있는 전문가 뒤")
+        if onto == "rank" and at in onto_sig:
+            why_parts.append(f"질문의 객체 {onto_sig[at]['objects']}개에 이어진 카드 "
+                             f"{onto_sig[at]['strong'] + onto_sig[at]['weak']}장")
         ranked.append(
             {
                 "agent_type": at,
@@ -378,6 +406,8 @@ async def recommend_agents(
                 "desc_match": round(agent_desc_match.get(at, 0.0), 4),
             }
         )
+        if at in onto_sig:
+            ranked[-1]["onto"] = dict(onto_sig[at])
 
     # 상위 항목에 붙여 호출자가 '풀에 맞는 사람이 없다'를 판정할 수 있게 한다.
     # ⚠ 점수(score)로는 판정할 수 없다. record/sample 항은 e5 코사인 절대값인데 이

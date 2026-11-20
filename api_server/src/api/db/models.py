@@ -1163,6 +1163,87 @@ class MCPProxyCall(Base):
     request_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+# ---------------------------------------------------------------------------
+# 카드 ↔ 온톨로지 객체 연결(Migration 0033) — 레코드에서 다시 지을 수 있는 파생 표
+# ---------------------------------------------------------------------------
+class RecordMention(Base):
+    """카드가 스스로 가진 구조에서 뽑은 줄 — 허브 없이 어느 박스에서나 같은 줄이 나온다.
+
+    ``source`` 가 ``card`` 인 줄은 카드 종류 · 티어가 말하는 코어 타입(``type_slug``)이고 낱말이 없다(``norm`` 빈 글).
+    그 밖(``keyword`` · ``property``)은 낱말 줄이고 타입이 없다 — 연결은 이름으로 맞추고 타입은 허브가 준다.
+    짓는 곳은 ``services.onto_svc.build_mentions`` 하나다(HWAXPortal docs/expert-ontology 6절).
+    """
+
+    __tablename__ = "record_mentions"
+    __table_args__ = (
+        UniqueConstraint("record_id", "source", "type_slug", "norm", name="uq_record_mentions"),
+        Index("idx_record_mentions_record", "record_id"),
+        Index("idx_record_mentions_norm", "norm"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    record_id: Mapped[str] = mapped_column(
+        String(80), ForeignKey("records.id", ondelete="CASCADE"), nullable=False
+    )
+    source: Mapped[str] = mapped_column(String(12), nullable=False)
+    type_slug: Mapped[str] = mapped_column(String(60), nullable=False, server_default="")
+    norm: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    term: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+
+
+class RecordEntity(Base):
+    """카드 ↔ 허브 객체 ``(hub, type_slug, key)`` — 허브가 exact 로 확인한 이름이 맞은 것만.
+
+    ``found_in`` 은 가장 굵게 맞은 자리(keyword · property · title 이 굵은 연결, summary · section 이 본문 연결),
+    ``hits`` 는 맞은 횟수다. 잇는 일(``onto_svc.bind_entities``)이 허브마다 통째로 다시 쓴다.
+    """
+
+    __tablename__ = "record_entities"
+    __table_args__ = (
+        UniqueConstraint("record_id", "hub", "type_slug", "key", name="uq_record_entities"),
+        Index("idx_record_entities_record", "record_id"),
+        Index("idx_record_entities_object", "hub", "type_slug", "key"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    record_id: Mapped[str] = mapped_column(
+        String(80), ForeignKey("records.id", ondelete="CASCADE"), nullable=False
+    )
+    hub: Mapped[str] = mapped_column(String(80), nullable=False)
+    type_slug: Mapped[str] = mapped_column(String(60), nullable=False)
+    key: Mapped[str] = mapped_column(Text, nullable=False)
+    found_in: Mapped[str] = mapped_column(String(12), nullable=False)
+    strong: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    hits: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+
+
+class OntoTerm(Base):
+    """이어진 객체의 이름들 — 질문을 낱말 단위로 맞출 때 쓴다(허브를 다시 부르지 않는다).
+
+    잇는 일이 카드가 하나라도 이어진 객체의 exact 이름 · 별칭 · 식별자만 남긴다. ``norm`` 은 토큰을 빈칸으로 이은 꼴이다.
+    """
+
+    __tablename__ = "onto_terms"
+    __table_args__ = (Index("idx_onto_terms_object", "hub", "type_slug", "key"),)
+
+    hub: Mapped[str] = mapped_column(String(80), primary_key=True)
+    type_slug: Mapped[str] = mapped_column(String(60), primary_key=True)
+    norm: Mapped[str] = mapped_column(Text, primary_key=True)
+    key: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class OntoState(Base):
+    """짓기 · 잇기의 마지막 상태(이름마다 한 줄) — ``mentions`` 의 지문과 ``bind:<허브>`` 의 사전 판 · 셈."""
+
+    __tablename__ = "onto_state"
+
+    name: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
 __all__ = [
     "Agent",
     "AgentRecord",
@@ -1174,10 +1255,14 @@ __all__ = [
     "MCPUpload",
     "MCPUploadHistory",
     "MCPUpstream",
+    "OntoState",
+    "OntoTerm",
     "OrgGroup",
     "OrgTeam",
     "Record",
     "RecordAttachment",
+    "RecordEntity",
+    "RecordMention",
     "RecordSection",
     "SyncRun",
     "SyncSource",
