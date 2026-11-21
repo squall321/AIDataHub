@@ -359,6 +359,27 @@ async def test_recommend_onto_off_is_unchanged_shadow_annotates_rank_reorders(_r
     assert ranked["onto"] == {"mode": "rank", "entities": 0, "agents": 0, "applied": False, "verdict": None}
 
 
+@pytest.mark.asyncio
+async def test_맡은_사람은_이번_추천의_후보_안에서_센다(_rt, test_session_maker):
+    """객체에 이어진 카드의 전문가가 전부 후보 밖(전문가 표에 없다)이면 이 추천에서는 맡은 사람이 없다 — 덧점도 후보에게만 간다."""
+    from sqlalchemy import delete
+
+    from api.db.models import Agent
+
+    await _seed(test_session_maker)
+    await _bind(test_session_maker)
+    q = "솔더 크랙 원인"
+    assert (await _rt.recommend_agents(q=q, top_k=10, top_k_tools=0, onto="shadow"))["onto"]["verdict"] is None
+    async with test_session_maker() as s:
+        await s.execute(delete(Agent).where(Agent.agent_type == "rel-solder"))
+        s.add(Agent(agent_type="rel-other", name="솔더 크랙 원인", description="솔더 크랙 원인", common_tags=[], data_types=["DOC"]))
+        await s.commit()
+    got = await _rt.recommend_agents(q=q, top_k=10, top_k_tools=0, onto="shadow")
+    assert "rel-solder" not in [a["agent_type"] for a in got["agents"]]
+    assert got["onto"]["entities"] == 1 and got["onto"]["agents"] == 1, "신호 자체는 그대로 센다(이어진 전문가 수)"
+    assert got["onto"]["verdict"] == "no_owner"
+
+
 # ── 명령 ─────────────────────────────────────────────────────────────────
 def test_cli_bind_reads_dictionary_file_and_reports_counts_only(monkeypatch, test_session_maker, tmp_path, capsys):
     import asyncio

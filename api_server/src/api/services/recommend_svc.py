@@ -353,10 +353,11 @@ async def recommend_agents(
                     agent_score[at] += sg["bonus"]
                     weak_only.discard(at)        # 이어진 카드가 근거다 — 어휘만 약하게 겹친 전문가가 아니다
         if stats is not None:
-            # verdict — '코어 데이터 질문' · '맡은 사람 없음' 후보(알리기만 한다 — 순위 · 좌석은 그대로, onto_svc.verdict)
+            # verdict — '코어 데이터 질문' · '맡은 사람 없음' 후보(알리기만 한다 — 순위 · 좌석은 그대로, onto_svc.verdict).
+            # 맡은 사람은 **이번 추천의 후보 안**에서 센다 — 덧점도 후보에게만 준다(위). 후보 밖 전문가만 이어져 있으면 이 추천에서는 맡은 사람이 없다.
             stats["onto"] = {"mode": onto, "entities": len(onto_ents), "agents": len(onto_sig),
                              "applied": onto == "rank" and bool(onto_sig),
-                             "verdict": onto_svc.verdict(onto_ents, onto_sig)}
+                             "verdict": onto_svc.verdict(onto_ents, {a: s for a, s in onto_sig.items() if a in meta_by_type})}
 
     if not agent_score:
         return []
