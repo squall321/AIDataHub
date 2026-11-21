@@ -533,6 +533,27 @@ async def question_entities(session: AsyncSession, q: str) -> list[dict]:
     return [{"hub": hub_of.get(obj, ""), "type_slug": obj[0], "key": obj[1]} for obj in found]
 
 
+# 코어 데이터 타입 — 과제 · 모델 · 프로젝트(정본 허브의 기준정보). 질문에서 이것만 풀리면 전문가의 지식이 아니라 기준정보를 묻는 질문이다.
+CORE_DATA_TYPES = frozenset({"plm_task", "plm_model", "plm_project"})
+
+
+def verdict(ents: list[dict], sig: dict) -> str | None:
+    """질문의 객체와 전문가 신호에서 읽는 판정 **후보**(HWAXPortal docs/expert-ontology PLAN 2.4 · EO-12) — 알리기만 하고 순위 · 좌석은 바꾸지 않는다.
+
+      ``core_question`` 풀린 객체가 전부 코어 데이터 타입(과제 · 모델 · 프로젝트)이다 — 기준정보를 묻는 질문일 수 있다(좌석은 그대로 부른다, D-E5-6).
+      ``no_owner``      도메인 객체(고장모드 · 시험 항목 · 물성 …)가 풀렸는데 그 객체에 카드가 이어진 전문가가 아무도 없다 — 맡은 사람이 없을 수 있다.
+      ``None``          객체가 하나도 안 풀렸거나(말할 것이 없다) 이어진 전문가가 있다.
+
+    정밀도를 재기 전의 후보다 — 켠 박스의 그림자 기록으로 재고, 사람에게 보이는 것은 그 뒤에 정한다."""
+    types = {str(e.get("type_slug") or "") for e in (ents or []) if isinstance(e, dict)}
+    types.discard("")
+    if not types:
+        return None
+    if types <= CORE_DATA_TYPES:
+        return "core_question"
+    return None if sig else "no_owner"
+
+
 async def seat_signal(session: AsyncSession, q: str) -> tuple[dict[str, dict], list[dict]]:
     """질문의 객체에 이어진 카드를 가진 전문가 → ``{전문가: {objects, strong, weak, bonus}}`` 와 맞은 객체 목록.
 

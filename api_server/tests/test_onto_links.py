@@ -345,7 +345,7 @@ async def test_recommend_onto_off_is_unchanged_shadow_annotates_rank_reorders(_r
     assert [a["score"] for a in shadow["agents"]] == [a["score"] for a in base["agents"]]
     by = {a["agent_type"]: a for a in shadow["agents"]}
     assert by["rel-solder"]["onto"]["objects"] == 1 and "onto" not in by["rel-crack-theory"]
-    assert shadow["onto"] == {"mode": "shadow", "entities": 1, "agents": 1, "applied": False}
+    assert shadow["onto"] == {"mode": "shadow", "entities": 1, "agents": 1, "applied": False, "verdict": None}
 
     rank = await _rt.recommend_agents(q=q, top_k=10, top_k_tools=0, onto="rank")
     rby = {a["agent_type"]: a for a in rank["agents"]}
@@ -356,7 +356,7 @@ async def test_recommend_onto_off_is_unchanged_shadow_annotates_rank_reorders(_r
     plain = await _rt.recommend_agents(q="낙하 충격", top_k=10, top_k_tools=0)
     ranked = await _rt.recommend_agents(q="낙하 충격", top_k=10, top_k_tools=0, onto="rank")
     assert [(a["agent_type"], a["score"]) for a in ranked["agents"]] == [(a["agent_type"], a["score"]) for a in plain["agents"]]
-    assert ranked["onto"] == {"mode": "rank", "entities": 0, "agents": 0, "applied": False}
+    assert ranked["onto"] == {"mode": "rank", "entities": 0, "agents": 0, "applied": False, "verdict": None}
 
 
 # ── 명령 ─────────────────────────────────────────────────────────────────
@@ -388,3 +388,18 @@ def test_cli_bind_reads_dictionary_file_and_reports_counts_only(monkeypatch, tes
     f.write_text(json.dumps({"entries": "목록이 아니다"}), encoding="utf-8")
     assert cli.main(["bind", "--dict", str(f)]) == 2
     assert cli.main(["bind", "--dict", str(tmp_path / "없는파일.json")]) == 2
+
+
+# ── 판정 후보(HWAXPortal docs/expert-ontology PLAN 2.4 · EO-12 — 알리기만 한다) ─────────────────────────────
+def test_verdict_는_코어_데이터_질문과_맡은_사람_없음을_가르고_나머지는_말하지_않는다():
+    task = {"hub": "h", "type_slug": "plm_task", "key": "T-1"}
+    model = {"hub": "h", "type_slug": "plm_model", "key": "M-1"}
+    fm = {"hub": "h", "type_slug": "failure_mode", "key": "FM-1"}
+    sig = {"rel-solder": {"objects": 1, "strong": 1, "weak": 0, "bonus": 0.3}}
+    assert onto_svc.verdict([], {}) is None, "객체가 안 풀렸으면 말할 것이 없다"
+    assert onto_svc.verdict([task, model], {}) == "core_question"
+    assert onto_svc.verdict([task], sig) == "core_question", "과제만 풀렸으면 이어진 전문가가 있어도 기준정보 질문 후보다"
+    assert onto_svc.verdict([fm], {}) == "no_owner"
+    assert onto_svc.verdict([task, fm], {}) == "no_owner", "도메인 객체가 하나라도 있으면 코어 데이터 질문이 아니다"
+    assert onto_svc.verdict([fm], sig) is None and onto_svc.verdict([task, fm], sig) is None
+    assert onto_svc.verdict([{"type_slug": ""}, "글", None], {}) is None, "꼴이 틀린 항목은 세지 않는다"

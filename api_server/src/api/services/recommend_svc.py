@@ -353,8 +353,10 @@ async def recommend_agents(
                     agent_score[at] += sg["bonus"]
                     weak_only.discard(at)        # 이어진 카드가 근거다 — 어휘만 약하게 겹친 전문가가 아니다
         if stats is not None:
+            # verdict — '코어 데이터 질문' · '맡은 사람 없음' 후보(알리기만 한다 — 순위 · 좌석은 그대로, onto_svc.verdict)
             stats["onto"] = {"mode": onto, "entities": len(onto_ents), "agents": len(onto_sig),
-                             "applied": onto == "rank" and bool(onto_sig)}
+                             "applied": onto == "rank" and bool(onto_sig),
+                             "verdict": onto_svc.verdict(onto_ents, onto_sig)}
 
     if not agent_score:
         return []
