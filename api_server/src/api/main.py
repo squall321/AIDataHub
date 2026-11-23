@@ -280,7 +280,9 @@ async def _run_due_syncs(last_attempt: dict[int, float], log) -> None:
                     continue
             last_attempt[src_id] = mono
             try:
-                result = await sync_svc.run_sync(session, src_id, trigger="cron")
+                # 페이지 한도는 스케줄러 몫(기본 500) — run_sync 기본 50 이면 페이지가 더 많은 원천의 끝쪽이 영영 안 받아진다(sync_svc 주석)
+                result = await sync_svc.run_sync(session, src_id, trigger="cron",
+                                                 max_pages=sync_svc.scheduled_max_pages())
                 log.info(
                     "scheduled sync %s: status=%s fetched=%s imported=%s skipped=%s failed=%s",
                     src_name,

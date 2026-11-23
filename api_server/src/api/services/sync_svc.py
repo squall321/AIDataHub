@@ -45,6 +45,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import time
 from datetime import datetime, timezone
@@ -58,6 +59,26 @@ from ..db.models import ExternalIdMap, SyncRun, SyncSource
 from .url_safety import validate_external_url
 
 logger = logging.getLogger(__name__)
+
+# 인앱 스케줄러(cron) 한 회차의 페이지 한도 — 수동 실행 창구의 상한(500)과 같다. run_sync 의 기본 50 은 수동 · 시험용으로 남긴다.
+# 왜 — 한도에 걸린 회차는 커서를 저장하지 않아(offset 어긋남 방지) 다음 회차도 처음부터 돈다. 그래서 페이지가 한도보다 많은 원천은
+# 끝쪽 페이지가 영영 안 받아진다(2026-11-23 dev — materialtwin 57쪽 · 50쪽에서 매번 멈춰 51 ~ 57쪽 재료 카드가 옛 본문 그대로).
+SCHED_MAX_PAGES_DEFAULT = 500
+
+
+def scheduled_max_pages() -> int:
+    """스케줄러 회차의 페이지 한도 — 환경 ``AIDH_SYNC_MAX_PAGES``(1 ~ 5000), 비었거나 꼴이 틀리면 기본 500."""
+    raw = os.environ.get("AIDH_SYNC_MAX_PAGES", "").strip()
+    if not raw:
+        return SCHED_MAX_PAGES_DEFAULT
+    try:
+        n = int(raw)
+    except ValueError:
+        n = 0
+    if 1 <= n <= 5000:
+        return n
+    logger.warning("AIDH_SYNC_MAX_PAGES=%r 는 1 ~ 5000 정수가 아니라 기본 %s 를 쓴다", raw, SCHED_MAX_PAGES_DEFAULT)
+    return SCHED_MAX_PAGES_DEFAULT
 
 
 # ===========================================================================
