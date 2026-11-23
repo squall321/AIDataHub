@@ -290,6 +290,6 @@ placeholder 패턴으로 환원해야 portable 함.**
 | G. idempotency | `restart.sh` |
 | H. 18 스크립트 | bootstrap-host / desudo / restart / clean / fresh / recover / status / diag / backup-db / restore-db / reset-db / quickstart / update / install / bundle 등 14개 구현 |
 | I. 3단 진단 | `diag.sh` [A] instance / [B] port / [C] HTTP |
-| J. 사내망 | `BUILD_PROXY_HTTPS` 3단 폴오버 + `DEFAULT_FALLBACK_PROXY` 하드코딩 |
+| J. 사내망 | `HTTPS_PROXY` → `BUILD_PROXY_HTTPS`(박스 `.env`) → 없으면 직결([INFO] 알림) |
 | K. PR 체크리스트 | 본 문서 + cross-host-deployment.md 참조 |
 | L. 포트 인벤토리 | `INST_PREFIX` (APP_NAME-based) — multi-app 공존 지원 |

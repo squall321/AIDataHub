@@ -37,9 +37,10 @@
 #    sudo -E bash bootstrap.sh                          # HTTP(S)_PROXY env 상속
 #    sudo bash bootstrap.sh --proxy http://proxy:8080   # 명시
 #  Fallback proxy (첫 다운로드 실패 시 자동 재시도):
-#    기본 http://168.219.61.252:8080 (= _common.sh DEFAULT_FALLBACK_PROXY).
-#    AIDH_FALLBACK_PROXY=http://x:8080 sudo -E bash bootstrap.sh   # 변경
-#    AIDH_FALLBACK_PROXY= sudo bash bootstrap.sh                   # 비활성
+#    공개 리포라 사내 프록시 주소를 두지 않는다(2026-11-24) — 박스 값에서 받는다.
+#    AIDH_FALLBACK_PROXY 환경변수, 없으면 deploy/apptainer/.env 의 BUILD_PROXY_HTTPS(off 제외).
+#    둘 다 없으면 재시도 없이 직결만 본다(그렇다고 알린다).
+#    AIDH_FALLBACK_PROXY=http://<사내 프록시>:8080 sudo -E bash bootstrap.sh   # 지정
 #
 #  완료 후:  일반 계정에서  bash quickstart.sh   (또는 bash setup.sh)
 # ─────────────────────────────────────────────────────────────────────
@@ -110,8 +111,12 @@ EOF
 }
 configure_apt_proxy
 
-# 사내 표준 fallback (= _common.sh DEFAULT_FALLBACK_PROXY 와 일치).
-FALLBACK_PROXY="${AIDH_FALLBACK_PROXY:-http://168.219.61.252:8080}"
+# 사내 프록시 fallback — 환경변수 AIDH_FALLBACK_PROXY, 없으면 박스 .env 의 BUILD_PROXY_HTTPS(_common.sh 와 같은 값).
+#   root 로 도는 스크립트라 .env 를 source 하지 않고 그 한 줄만 글자로 읽는다(따옴표 · 뒤 주석 · 빈칸은 뗀다).
+_env_fb="$(sed -n -E 's/^[[:space:]]*(export[[:space:]]+)?BUILD_PROXY_HTTPS=//p' "$REPO_ROOT/deploy/apptainer/.env" 2>/dev/null | tail -1 || true)"
+_env_fb="${_env_fb%%[[:space:]]*}"; _env_fb="${_env_fb//[\"\']/}"
+if [ "$_env_fb" = off ]; then _env_fb=""; fi
+FALLBACK_PROXY="${AIDH_FALLBACK_PROXY:-$_env_fb}"
 curl_with_proxy_fallback() {
   local out="$1" url="$2"; shift 2
   local common=(-fL --retry 10 --retry-delay 5 --retry-all-errors
@@ -123,6 +128,8 @@ curl_with_proxy_fallback() {
     if curl "${common[@]}" --proxy "$FALLBACK_PROXY" "$url" -o "$out"; then
       ok "fallback 프록시로 다운로드 성공"; return 0
     fi
+  else
+    warn "첫 curl 실패; fallback 프록시 미설정(AIDH_FALLBACK_PROXY · deploy/apptainer/.env BUILD_PROXY_HTTPS) — 재시도 없음"
   fi
   return 1
 }
