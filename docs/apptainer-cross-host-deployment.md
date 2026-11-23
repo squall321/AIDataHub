@@ -439,8 +439,8 @@ EMBEDDING_PROVIDER=e5_base          # 운영 권장 (한국어, dim=768)
 
 # 프록시 (3단 폴오버 — _common.sh 참고)
 HTTPS_PROXY=                        # 최우선 (있을 때)
-BUILD_PROXY_HTTPS=http://168.219.61.252:8080  # .env 명시
-# 둘 다 비어 있으면 DEFAULT_FALLBACK_PROXY (하드코딩) 적용
+BUILD_PROXY_HTTPS=http://<사내 프록시>:8080  # .env 명시(사내망 박스의 실제 주소 — 공개 리포에는 두지 않는다)
+# 둘 다 비어 있으면 직결([INFO] 한 줄로 알림 — 하드코딩 폴백은 2026-11-24 에 걷어 냈다)
 # opt-out: BUILD_PROXY_HTTPS=off
 
 # Apptainer host network (Issue #3)

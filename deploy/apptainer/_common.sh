@@ -110,20 +110,19 @@ load_env() {
   export APP_NAME INST_PREFIX INST_POSTGRES
 }
 
-# ── 사내 표준 프록시 (하드코딩 폴백) ─────────────────────────────────────
-# .env 의 HTTPS_PROXY / BUILD_PROXY 가 모두 비어 있을 때 이 값이 적용된다.
-# 외부 환경(사내망 밖)에서 셋업할 때는 .env 에 ``BUILD_PROXY_HTTPS=off`` 로
-# 명시적 opt-out 가능.
-DEFAULT_FALLBACK_PROXY="http://168.219.61.252:8080"
+# ── 사내 프록시 — 공개 리포에 주소를 두지 않는다(사용자 결정 2026-11-24) ─────────
+# 예전엔 여기 사내 표준 주소를 하드코딩해 3단 폴백으로 썼다. 이제 사내망 박스는 .env(gitignore)의
+# BUILD_PROXY_HTTPS / BUILD_PROXY_HTTP 에 적는다. 아무것도 없으면 프록시 없이 직결하고 [INFO] 로 알린다.
+# 외부 환경(사내망 밖)에서 셋업할 때는 .env 에 ``BUILD_PROXY_HTTPS=off`` 로 명시적 opt-out 가능.
 
 # ── 프록시 export (소문자/대문자 양쪽, no_proxy 에 localhost/127.0.0.1 자동 포함) ──
 # v0.13.0 — 우선순위 (위에서 아래로):
 #   1) HTTPS_PROXY/HTTP_PROXY    (사용자가 .env 에서 명시)
-#   2) BUILD_PROXY_HTTPS/HTTP    (사용자가 .env 에서 명시)
-#   3) DEFAULT_FALLBACK_PROXY    (위 사내 표준 — 둘 다 비어 있을 때)
+#   2) BUILD_PROXY_HTTPS/HTTP    (사용자가 .env 에서 명시 — 사내망 박스의 사내 프록시)
+#   3) 둘 다 비어 있으면 직결   ([INFO] 한 줄 — 하드코딩 폴백은 걷어 냈다)
 # 어떤 단계에서든 결과 프록시가 정해지면 pip / npm / huggingface / apptainer
 # 모두 동일 프록시 환경변수를 본다 (안쪽 도구에 자동 전파).
-# Opt-out: .env 에 ``BUILD_PROXY_HTTPS=off`` 설정 시 fallback 비활성.
+# Opt-out: .env 에 ``BUILD_PROXY_HTTPS=off`` 설정 시 프록시 비활성(알림 없이 직결).
 export_proxy() {
   local hp="${HTTPS_PROXY:-${https_proxy:-}}"
   local hpp="${HTTP_PROXY:-${http_proxy:-}}"
@@ -140,15 +139,9 @@ export_proxy() {
     fi
   fi
 
-  # 3) 하드코딩 사내 표준 폴백 — opt-out 은 BUILD_PROXY_HTTPS=off.
-  if [[ "${BUILD_PROXY_HTTPS:-}" != "off" ]]; then
-    if [[ -z "$hp" ]]; then
-      hp="$DEFAULT_FALLBACK_PROXY"
-      echo "[INFO] HTTPS_PROXY 미설정 — DEFAULT_FALLBACK_PROXY 적용 ($DEFAULT_FALLBACK_PROXY)"
-    fi
-    if [[ -z "$hpp" ]]; then
-      hpp="$DEFAULT_FALLBACK_PROXY"
-    fi
+  # 3) 둘 다 비었으면 직결 — 그렇다고 알린다(opt-out 은 BUILD_PROXY_HTTPS=off, 그때는 조용히).
+  if [[ -z "$hp" && "${BUILD_PROXY_HTTPS:-}" != "off" ]]; then
+    echo "[INFO] HTTPS_PROXY 미설정 — 프록시 없이 직결로 진행 (사내망이면 .env 에 BUILD_PROXY_HTTPS=http://<사내 프록시>:8080)"
   fi
 
   # localhost / 127.0.0.1 은 항상 프록시 우회

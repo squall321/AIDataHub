@@ -32,8 +32,8 @@ TimeoutStopSec=60
 # 시스템 모드일 때만 효과 (사용자 모드는 자동으로 본인)
 User=__USER__
 # 사내 SSL 인증서 등 환경변수가 필요하면 여기 추가:
-# Environment="HTTPS_PROXY=http://168.219.61.252:8080"
-# Environment="HTTP_PROXY=http://168.219.61.252:8080"
+# Environment="HTTPS_PROXY=http://<사내 프록시>:8080"
+# Environment="HTTP_PROXY=http://<사내 프록시>:8080"
 
 [Install]
 WantedBy=default.target
