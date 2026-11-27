@@ -1,23 +1,24 @@
 name: fetch_rerank_model
 title: "Cross-encoder rerank 모델 사전 캐시"
 description: |
-  BAAI/bge-reranker-v2-m3 (또는 지정 모델) 을 huggingface_hub 로 로컬 디렉토리에
-  미리 받는다. 외부망 가능 환경에서 1회 호출하면 이후 AIDH_RERANK_PROVIDER=bge_m3
-  설정 시 첫 호출 latency 폭증을 피할 수 있다. 이미 캐시되어 있으면 즉시 반환.
+  크로스인코더 리랭크 모델(기본 BAAI/bge-reranker-v2-m3)을 HuggingFace 에서 서버의 로컬 모델 폴더로 미리 받아 두는 운영 도구다.
+  외부망에 닿는 서버에서 한 번 부르면, 그 뒤 운영자가 리랭크를 켰을 때(AIDH_RERANK_PROVIDER=bge_m3) 첫 검색이 모델을 받느라 오래 멈추지 않는다. 검색 · 질문 답변에는 쓰지 않는다 — 검색은 agent_search · hybrid_search 다. 리랭크를 켜는 일은 이 도구가 아니라 서버 설정이다.
+  돌려주는 꼴 — {ok, exit_code, stdout, stderr, parsed?}. parsed 는 {status:'already_cached'|'downloaded', path, model_id?} 다. 이미 받아 둔 모델이면 force 없이 곧바로 already_cached 를 돌려준다.
+  쓰기 · 한도 — 서버 디스크의 dest_root/<모델 이름> 폴더에 모델 파일을 쓴다(force=true 면 다시 받아 덮는다). huggingface_hub 가 없으면 사용자 영역에 설치한다. 600초 안에 끝나지 않으면 끊는다.
 script: ./fetch_rerank_model.sh
 args:
   - name: model_id
     type: string
     default: "BAAI/bge-reranker-v2-m3"
-    description: "HuggingFace repo id (예: BAAI/bge-reranker-v2-m3)"
+    description: "받을 HuggingFace 저장소 id(예 BAAI/bge-reranker-v2-m3). 기본 BAAI/bge-reranker-v2-m3."
   - name: dest_root
     type: string
     default: "/opt/models"
-    description: "모델 캐시 루트. embedding.py 의 _local_or_repo 정책에 맞춰 basename 하위에 저장."
+    description: "모델 캐시 루트 폴더(서버 경로). 모델은 그 아래 저장소 이름의 마지막 조각 폴더에 저장된다 — 임베딩 로더가 찾는 자리와 같다. 기본 /opt/models."
   - name: force
     type: boolean
     default: false
-    description: "이미 캐시된 경우라도 재다운로드."
+    description: "true 면 이미 받아 둔 모델도 다시 받는다. 기본 false."
 timeout_sec: 600
 args_style: long_flags
 env_allowlist:
@@ -29,3 +30,8 @@ env_allowlist:
   - HUGGINGFACE_HUB_TOKEN
 return:
   format: json
+annotations:
+  read_only: false
+  destructive: false
+  idempotent: true
+  open_world: true

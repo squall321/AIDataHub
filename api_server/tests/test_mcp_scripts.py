@@ -191,6 +191,7 @@ def test_run_script_shell_metachar_safe(tmp_path: Path) -> None:
 def test_make_handler_signature(tmp_path: Path) -> None:
     """handler 의 합성 시그니처가 FastMCP introspect 호환."""
     import inspect
+    from typing import get_args
 
     from api.mcp_scripts import _make_handler, load_manifests
 
@@ -200,8 +201,10 @@ def test_make_handler_signature(tmp_path: Path) -> None:
     sig = inspect.signature(handler)
     names = list(sig.parameters.keys())
     assert names == ["msg", "count"]
-    assert sig.parameters["msg"].annotation is str
-    assert sig.parameters["count"].annotation is int
+    # 형은 Annotated[형, Field(description=…)] 로 싸여 있다 — 설명이 inputSchema 에 실리게(공통 계약
+    # C2).
+    assert get_args(sig.parameters["msg"].annotation)[0] is str
+    assert get_args(sig.parameters["count"].annotation)[0] is int
     assert sig.parameters["count"].default == 1
 
 

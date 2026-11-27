@@ -1,23 +1,24 @@
 name: echo_args
 title: "Echo arguments (mcp_scripts demo)"
 description: |
-  Sample MCP tool that echoes its arguments to stdout. Useful as a sanity
-  check that mcp_scripts dynamic registration works end-to-end. Returns
-  {ok, exit_code, stdout, stderr}.
+  받은 message 를 repeat 번 되풀이해 표준 출력으로 돌려주는 시험용 도구다 — 셸 스크립트 도구의 동적 등록이 끝까지 도는지 확인할 때만 쓴다.
+  업무 질문에는 쓰지 않는다. 데이터는 discover · recommend_agents · agent_search 로 찾는다.
+  돌려주는 꼴 — {ok, exit_code, stdout, stderr}. stdout 은 message 를 줄마다 한 번씩(upper=true 면 대문자로) 담는다. 실패하면 ok:false 와 exit_code(인자 오류는 2), 시간 초과면 timeout:true 다.
+  한도 — 5초 안에 끝나지 않으면 끊는다. 서버의 다른 셸 스크립트 도구와 동시에 도는 수에 상한이 있다. 아무것도 쓰지 않고 바깥에 닿지 않는다.
 script: ./echo_args.sh
 args:
   - name: message
     type: string
     required: true
-    description: "에코할 문자열."
+    description: "되풀이해 돌려줄 글. 비우면 오류다."
   - name: repeat
     type: integer
     default: 1
-    description: "반복 횟수 (1 이상)."
+    description: "되풀이 횟수(1 이상). 기본 1."
   - name: upper
     type: boolean
     default: false
-    description: "true 면 결과를 대문자로 변환."
+    description: "true 면 결과를 대문자로 바꾼다. 기본 false."
 timeout_sec: 5
 args_style: long_flags
 env_allowlist:
@@ -25,3 +26,7 @@ env_allowlist:
   - LC_ALL
 return:
   format: text
+annotations:
+  read_only: true
+  idempotent: true
+  open_world: false

@@ -36,7 +36,10 @@ import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
+
+from mcp.types import ToolAnnotations
+from pydantic import Field
 
 log = logging.getLogger(__name__)
 
@@ -1336,17 +1339,48 @@ def _render_persist_preview(
 # ---------------------------------------------------------------------------
 # FastMCP 동적 등록 — wave-4 mcp_scripts.register_all_scripts 패턴 모방.
 # ---------------------------------------------------------------------------
+def upload_tool_annotations(manifest: UploadManifest) -> ToolAnnotations:
+    """업로드 도구의 읽기 · 쓰기 표지(HWAXPortal docs/mcp-modernize 공통 계약 C6).
+
+    매니페스트와 실행 길에서 정한다. 도구는 apptainer 안에서 --containall · 작업 폴더
+    하나만 묶어(호스트의 다른 곳을 못 쓴다) 돌고, 작업 폴더는 산출물을 거둔 뒤 지운다.
+    그래서 허브에 남는 쓰기는 persist_output 하나다 — 켜져 있으면 호출마다 SIM 등
+    레코드를 새로 넣고(dedup_key 가 있으면 같은 키의 레코드를 고친다), 꺼져 있으면
+    아무것도 남지 않는다. 바깥망은 platform_capability.net 이 참일 때만 열린다
+    (apptainer_build_svc._capability_net — 같은 판정을 쓴다).
+    """
+    from .apptainer_build_svc import _capability_net
+
+    persist = bool(manifest.persist_output.enabled)
+    return ToolAnnotations(
+        readOnlyHint=not persist,
+        destructiveHint=False,          # 넣거나(같은 dedup 키면) 고칠 뿐 지우지 않는다
+        idempotentHint=(not persist) or bool(manifest.persist_output.dedup_key),
+        openWorldHint=_capability_net(manifest),
+    )
+
+
+def _arg_annotation(arg: UploadArg) -> Any:
+    """인자 형 + 설명(스키마에 싣는다).
+
+    매니페스트에 설명이 없으면 없다고 적는다 — 빈칸보다 낫고 짓지는 않는다.
+    """
+    desc = arg.description.strip() or f"{arg.type} 인자 — 매니페스트에 설명이 없다."
+    return Annotated[arg.py_type, Field(description=desc)]
+
+
 def _make_handler(manifest: UploadManifest):
     """매니페스트 → 합성 시그니처 async 함수 (FastMCP 가 introspect)."""
     params: list[inspect.Parameter] = []
     annotations: dict[str, Any] = {"return": dict}
     for arg in manifest.args:
+        ann = _arg_annotation(arg)   # 형 + 스키마 설명
         if arg.required:
             params.append(
                 inspect.Parameter(
                     arg.name,
                     kind=inspect.Parameter.KEYWORD_ONLY,
-                    annotation=arg.py_type,
+                    annotation=ann,
                 )
             )
         else:
@@ -1354,11 +1388,11 @@ def _make_handler(manifest: UploadManifest):
                 inspect.Parameter(
                     arg.name,
                     kind=inspect.Parameter.KEYWORD_ONLY,
-                    annotation=arg.py_type,
+                    annotation=ann,
                     default=arg.default,
                 )
             )
-        annotations[arg.name] = arg.py_type
+        annotations[arg.name] = ann
 
     sig = inspect.Signature(parameters=params, return_annotation=dict)
 
@@ -1432,6 +1466,7 @@ def register_all_uploads(mcp: Any) -> list[str]:
                 name=manifest.name,
                 title=manifest.title or manifest.name,
                 description=manifest.description,
+                annotations=upload_tool_annotations(manifest),
             )
             registered.append(manifest.name)
             log.info(
@@ -1507,5 +1542,6 @@ __all__ = [
     "process_upload",
     "register_all_uploads",
     "render_template",
+    "upload_tool_annotations",
     "validate_manifest",
 ]
