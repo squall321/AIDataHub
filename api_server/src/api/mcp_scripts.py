@@ -21,6 +21,14 @@
     env_allowlist: [LANG, LC_ALL]    # 자식 프로세스에 전달할 환경변수만
     return:
       format: text                   # text(default) | json
+    annotations:                     # 읽기 · 쓰기 표지(MCP ToolAnnotations) — 빠진 칸은 아래 기본값
+      read_only: false               # 기본 false — 호스트 셸 스크립트는 무엇이든 할 수 있다
+      destructive: true              # 기본 true(읽기가 아니면)
+      idempotent: false              # 기본 false
+      open_world: true               # 기본 true — 바깥(네트워크)에 닿는지 모른다
+
+인자 설명(args[].description)은 도구의 inputSchema 에 실린다
+(공통 계약 C2 — 설명 글 꼬리가 아니라 스키마에).
 
 보안 게이트 (6종 — 매 호출마다 적용):
     1) 스크립트 절대경로가 base_dir prefix 인지 검증 (디렉토리 탈출 차단)
@@ -41,7 +49,10 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
+
+from mcp.types import ToolAnnotations
+from pydantic import Field
 
 log = logging.getLogger(__name__)
 
@@ -87,6 +98,41 @@ class ScriptManifest:
     args_style: str = "long_flags"            # long_flags | positional
     env_allowlist: list[str] = field(default_factory=list)
     return_format: str = "text"               # text | json
+    # 표지 칸 — read_only · destructive · idempotent · open_world
+    annotations: dict[str, bool] = field(default_factory=dict)
+
+
+# 매니페스트 annotations 칸 → MCP 표지 이름. 빠진 칸의 기본값은 보수적으로 둔다 — 호스트에서 도는 셸
+# 스크립트는 컨테이너
+# 격리가 없어 무엇을 쓰고 어디에 닿는지 매니페스트가 말하지 않으면 모른다(모르는 도구를 읽기로
+# 표시하지 않는다).
+_ANNOTATION_KEYS = {
+    "read_only": ("readOnlyHint", False),
+    "destructive": ("destructiveHint", True),
+    "idempotent": ("idempotentHint", False),
+    "open_world": ("openWorldHint", True),
+}
+
+
+def script_tool_annotations(manifest: ScriptManifest) -> ToolAnnotations:
+    """매니페스트의 annotations 칸(빠지면 보수적 기본값) → ToolAnnotations.
+
+    읽기 도구면 destructive 는 늘 거짓이다.
+    """
+    vals = {hint: bool(manifest.annotations.get(key, default))
+            for key, (hint, default) in _ANNOTATION_KEYS.items()}
+    if vals["readOnlyHint"]:
+        vals["destructiveHint"] = False
+    return ToolAnnotations(**vals)
+
+
+def _arg_annotation(arg: ScriptArg) -> Any:
+    """인자 형 + 설명(스키마에 싣는다).
+
+    매니페스트에 설명이 없으면 없다고 적는다 — 빈칸보다 낫고 짓지는 않는다.
+    """
+    desc = arg.description.strip() or f"{arg.type} 인자 — 매니페스트에 설명이 없다."
+    return Annotated[arg.py_type, Field(description=desc)]
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +231,18 @@ def _parse_manifest(path: Path, base_dir: Path) -> ScriptManifest:
         if rf in ("text", "json"):
             return_format = rf
 
+    ann_raw = raw.get("annotations") or {}
+    if not isinstance(ann_raw, dict):
+        raise ValueError(f"manifest {name}: annotations must be a mapping")
+    unknown = sorted(set(ann_raw) - set(_ANNOTATION_KEYS))
+    if unknown:
+        raise ValueError(
+            f"manifest {name}: unknown annotations {unknown} "
+            f"(allowed: {sorted(_ANNOTATION_KEYS)})"
+        )
+    if any(not isinstance(v, bool) for v in ann_raw.values()):
+        raise ValueError(f"manifest {name}: annotations values must be true/false")
+
     return ScriptManifest(
         name=name,
         description=str(raw.get("description") or "").strip()
@@ -196,6 +254,7 @@ def _parse_manifest(path: Path, base_dir: Path) -> ScriptManifest:
         args_style=args_style,
         env_allowlist=env_allowlist,
         return_format=return_format,
+        annotations=dict(ann_raw),
     )
 
 
@@ -346,12 +405,13 @@ def _make_handler(manifest: ScriptManifest):
     params: list[inspect.Parameter] = []
     annotations: dict[str, Any] = {"return": dict}
     for arg in manifest.args:
+        ann = _arg_annotation(arg)   # 형 + 스키마 설명
         if arg.required:
             params.append(
                 inspect.Parameter(
                     arg.name,
                     kind=inspect.Parameter.KEYWORD_ONLY,
-                    annotation=arg.py_type,
+                    annotation=ann,
                 )
             )
         else:
@@ -359,11 +419,11 @@ def _make_handler(manifest: ScriptManifest):
                 inspect.Parameter(
                     arg.name,
                     kind=inspect.Parameter.KEYWORD_ONLY,
-                    annotation=arg.py_type,
+                    annotation=ann,
                     default=arg.default,
                 )
             )
-        annotations[arg.name] = arg.py_type
+        annotations[arg.name] = ann
 
     sig = inspect.Signature(parameters=params, return_annotation=dict)
 
@@ -405,6 +465,7 @@ def register_all_scripts(mcp: Any, base_dir: Path) -> list[str]:
                 name=m.name,
                 title=m.title or m.name,
                 description=m.description,
+                annotations=script_tool_annotations(m),
             )
             registered.append(m.name)
             log.info("mcp_scripts: registered %s (%s)", m.name, m.script_path)
@@ -421,4 +482,5 @@ __all__ = [
     "load_manifests",
     "register_all_scripts",
     "run_script",
+    "script_tool_annotations",
 ]

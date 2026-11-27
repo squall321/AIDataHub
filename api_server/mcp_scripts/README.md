@@ -22,7 +22,14 @@ env_allowlist:                         # 자식 프로세스에 통과시킬 env
   - LC_ALL
 return:
   format: text                         # text(default) | json (JSON 이면 stdout 을 parse)
+annotations:                           # 읽기 · 쓰기 표지(MCP ToolAnnotations) — 빠진 칸은 보수적 기본값
+  read_only: false                     # default false
+  destructive: true                    # default true (read_only 면 늘 false)
+  idempotent: false                    # default false
+  open_world: true                     # default true
 ```
+
+args 의 description 은 도구 inputSchema 의 인자 설명으로 실린다 — 단위 · 범위 · 기본값의 뜻을 여기에 적는다.
 
 ## 보안 게이트 (자동)
 
