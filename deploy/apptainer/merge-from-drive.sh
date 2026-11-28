@@ -502,7 +502,8 @@ if [ -n "$PARTS_PLAN" ]; then
   else echo "  ⚠ 앞 모습 자리를 못 만들었다($BEFORE_DIR) — 되돌릴 자료 없이 병합한다"; BEFORE_DIR=""; fi
   BK="$BEFORE_DIR"
 elif [ "${AIDH_MERGE_BEFORE:-dump}" = image ]; then
-  BEFORE_DIR="/data/backups/aidh/pre-merge-$(date +%Y%m%d-%H%M%S)"
+  # 이름은 조각 길의 앞 모습과 같은 머리(pre-parts-) — 포털 backup-local.sh 의 보관 일수 정리가 그 머리의 폴더를 지운다(pre-merge-* 는 .sql.gz 파일만 본다).
+  BEFORE_DIR="/data/backups/aidh/pre-parts-full-$(date +%Y%m%d-%H%M%S)"
   if mkdir -p "$BEFORE_DIR" 2>/dev/null; then echo "→ 덮을 줄의 앞 모습(전체 덤프 대신): $BEFORE_DIR (rollback-parts.sh 로 되돌린다)"
   else echo "  ⚠ 앞 모습 자리를 못 만들었다($BEFORE_DIR) — 되돌릴 자료 없이 병합한다"; BEFORE_DIR=""; fi
   BK="$BEFORE_DIR"

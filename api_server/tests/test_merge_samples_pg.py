@@ -513,7 +513,7 @@ def test_전체_길의_앞_모습은_바꿀_줄만_남기고_되돌리기로_병
     r = merge(dump, AIDH_MERGE_BEFORE="image")
     assert r.returncode == 0 and "되돌리기: rollback-parts.sh " in r.stdout, r.stdout + r.stderr
     bdir = Path(r.stdout.strip().splitlines()[-1].rsplit("rollback-parts.sh ", 1)[1].strip())
-    assert bdir.is_dir() and bdir.name.startswith("pre-merge-"), bdir
+    assert bdir.is_dir() and bdir.name.startswith("pre-parts-full-"), "포털 backup-local.sh 가 pre-parts-* 폴더를 보관 일수로 지운다"
     assert not list(bdir.parent.glob("pre-merge-*.sql.gz")), "전체 덤프는 뜨지 않는다"
     # 앞 모습은 바꿀 줄(b · c)뿐이다 — 그대로인 a · d 와 표 통째가 아니다
     assert "앞 모습을 옮기지 못했다" not in r.stdout, r.stdout
