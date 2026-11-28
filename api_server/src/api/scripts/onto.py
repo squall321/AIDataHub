@@ -2,7 +2,7 @@
 """카드 ↔ 온톨로지 객체 연결(HWAXPortal docs/expert-ontology 6절).
 
     bash deploy/apptainer/onto.sh build [--force]            # 카드 낱말을 다시 짓는다(지문이 같으면 건너뛴다 — 허브가 필요 없다)
-    bash deploy/apptainer/onto.sh bind --hub <허브> --dict <파일>   # 허브 사전으로 잇는다(그 허브의 연결을 통째로 다시 쓴다)
+    bash deploy/apptainer/onto.sh bind --hub <허브> --dict <파일>   # 허브 사전으로 잇는다(그 허브에서 사전에 든 타입의 연결만 다시 쓴다)
     bash deploy/apptainer/onto.sh status                     # 마지막 짓기 · 잇기와 줄 수(읽기만)
     bash deploy/apptainer/onto.sh profile [--domains]        # 전문가(또는 도메인)마다 타입별 셈(읽기만)
 

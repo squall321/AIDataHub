@@ -503,13 +503,21 @@ async def run_convert(
         return {"status": "error", "error": str(exc), "code": "unsupported_format",
                 "recoverable": True, "suggestion": "docx/xlsx/pdf/pptx/md 만 지원합니다."}
 
-    req = ConvertRequest(
-        team=(team or "TBD").upper(),
-        group=(group or "TBD").upper(),
-        year=int(year) if year else datetime.now(timezone.utc).year,
-    )
+    import tempfile
+
+    # 변환기가 그림 · 첨부를 꺼내 두는 폴더 — payload 를 다 만든 뒤 지운다. REST 변환(routes/convert)과 같다.
+    # output_dir 을 주지 않으면 converter_dispatch 가 mkdtemp 로 /tmp 에 기한 없이 남겼다 — 포털은 '어디에도
+    # 저장하지 않았습니다' 라고 말하는데 추출 그림이 박스 /tmp 에 쌓였다(HWAXPortal docs/request-1125 AD-02).
     try:
-        payload = await asyncio.to_thread(convert_file, path, fmt, req)
+        with tempfile.TemporaryDirectory(prefix="ai_data_convert_") as work:
+            req = ConvertRequest(
+                team=(team or "TBD").upper(),
+                group=(group or "TBD").upper(),
+                year=int(year) if year else datetime.now(timezone.utc).year,
+                output_dir=_Path(work) / "out",
+                read_figures=True,       # 박스에 AIDH_VLM_* 가 있으면 그림 판독(IR-31) — 이 길은 스레드에서 돈다
+            )
+            payload = await asyncio.to_thread(convert_file, path, fmt, req)
     except DrmProtectedError as exc:
         # 암호화 문서는 '손상' 이 아니다 — 따로 알리고 할 일을 준다(AD-03).
         # error 칸에 무엇이 + 할 일을 싣는다 — HWAX 포털은 status=error 면 error 칸만 화면에 낸다

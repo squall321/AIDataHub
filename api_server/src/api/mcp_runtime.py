@@ -17,6 +17,7 @@ Tool 목록:
     agent_search(agent_type, q, mode)   — retrieval_config 자동 적용 agent-scoped 검색
     semantic_search(q, top_k, ...)      — 전체 DB 시맨틱 검색 (agent_type 옵션)
     fts_search(q, top_k, agent_type)    — 키워드(FTS) 검색
+    cards_by_core(type_slug, key)       — 코어 개체 key 에 이어진 지식카드 + 근거(잇기 연결 표)
     tag_search(tags, agent_type)        — 태그 정확 매칭 검색
 
     # 레코드 상세
@@ -547,25 +548,18 @@ async def get_agent_session(
     description=(
         "고른 전문가(agent) 한 명의 지식카드 안에서 찾는 주 검색 도구다 — 그 전문가의 "
         "retrieval_config(top_k · score_threshold · data_type_filter · tag_boost · max_depth)와 "
-        "required_tags · excluded_tags 를 저절로 적용한다.\n"
-        "get_agent_session 다음에 질문마다 부른다. 전문가를 정하지 않고 허브 전체에서 찾을 때는 "
-        "hybrid_search · semantic_search · fts_search · tag_search 다. 찾은 레코드의 다른 절은 "
-        "get_record_sections 로 읽는다.\n"
-        "mode — 'semantic'(기본, 벡터 코사인) · 'fts'(키워드) · 'hybrid'(semantic + fts 를 RRF 로 "
-        "결합 — 가장 견고) · 'tag'(q 에 쉼표로 가른 정확 태그). tag 가 아니면 구어 질문에 현장 "
-        "용어를 덧붙여 찾는다(응답의 query 는 원문).\n"
+        "required_tags · excluded_tags 를 저절로 적용한다. get_agent_session 다음에 질문마다 "
+        "부른다. 필수 — agent_type · q. 함정 — 묶인 카드가 0건이면 전역으로 넓히지 않고 refused 다.\n"
+        "허브 전체에서 찾을 때는 hybrid_search · semantic_search · fts_search · tag_search, 찾은 "
+        "레코드의 다른 절은 get_record_sections 다. tag 가 아니면 구어 질문에 현장 용어를 덧붙여 "
+        "찾는다(응답의 query 는 원문).\n"
         "돌려주는 꼴 — {agent_type, query, mode, hits:[{record_id, section_id, title, snippet, "
         "score, tags, causal_status, …}], hit_count, refused, refusal_message, near_miss, "
-        "more_available, query_over_model_limit, applied_config}. snippet 은 절 본문 전문이다. "
-        "0건이거나 1위 점수가 전문가의 거절 문턱 아래면 refused:true 와 refusal_message 를 준다 — "
-        "near_miss 는 문턱 아래 참고 후보일 뿐 근거로 쓰지 않는다.\n"
-        "한도 — top_k 개에서 자르고 더 맞은 것이 있으면 more_available:true 다. "
-        "applied_config.agent_record_scope 는 찾은 범위의 레코드 수다. 전문가에게 묶인 레코드가 "
-        "0건이면 전역으로 넓히지 않고 refused 로 끝난다.\n"
-        "기준일 — as_of 를 주면 valid_from(유효 시작일)이 그 날 뒤인 카드를 빼고, 히트마다 "
-        "valid_from(null = 날짜 없음)을, applied_config 에 as_of · as_of_excluded_later · "
-        "as_of_undated_kept(또는 as_of_undated_excluded)를 싣는다. 날짜 없는 카드를 남길지 뺄지는 "
-        "as_of_undated 로 고른다."
+        "more_available, query_over_model_limit, applied_config}. snippet 은 절 본문 전문이다"
+        "(brief 면 앞부분). 1위 점수가 거절 문턱 아래면 refused:true — near_miss 는 참고 후보일 뿐 "
+        "근거가 아니다.\n"
+        "한도 — top_k 개에서 자르고 더 있으면 more_available:true 다. offset · brief · fields 를 "
+        "주면 응답에 offset · truncated · next(다음 쪽 offset)를 싣는다. 기준일 거름은 as_of · as_of_undated."
     ),
     annotations=_READ,
 )
@@ -592,6 +586,16 @@ async def agent_search(
     as_of_undated: Annotated[Literal["keep", "exclude"], Field(
         description="as_of 를 줄 때 valid_from 이 없는 카드 처리 — 'keep'(기본, 남기고 센다) · "
                     "'exclude'(함께 뺀다). as_of 가 비면 쓰지 않는다.")] = "keep",
+    offset: Annotated[int, Field(
+        ge=0, description="앞에서 건너뛸 히트 수(다음 쪽) — 앞 응답의 next.offset 을 그대로 넣는다. 0(기본)이면 "
+                          "첫 쪽. 0 보다 크면 빈 쪽은 거절이 아니라 빈 hits 다.")] = 0,
+    brief: Annotated[bool, Field(
+        description="참이면 히트의 snippet 을 앞 400자로 줄이고(줄인 히트에 snippet_chars — 원래 글자 수) 응답에 "
+                    "truncated 를 싣는다 — 전문은 get_record_sections(record_id, sections=[section_id]). "
+                    "거짓(기본)이면 절 본문 전문.")] = False,
+    fields: Annotated[list[str] | None, Field(
+        description="히트마다 남길 칸 이름(예 ['record_id','section_id','title','snippet','score']) — record_id 는 "
+                    "늘 남는다. 비우면(null, 기본) 모든 칸.")] = None,
 ) -> dict[str, Any]:
     """Agent retrieval_config 를 자동 적용하는 agent-scoped 검색.
 
@@ -632,6 +636,10 @@ async def agent_search(
         # 카드 수천 장 좌석도 질의 한 번에 10건이었다. 1백만 토큰 창에서 건수는 호출자가 정한다.
         top_k_source = "caller" if top_k is not None else "seat"
         top_k = max(1, int(top_k)) if top_k is not None else int(rc.get("top_k") or 10)
+        # 쪽 넘김(offset) — 앞 쪽까지 함께 찾아 뒤를 자른다. 순위는 같은 질의 · 같은 데이터면 같다.
+        offset = max(0, int(offset or 0))
+        page_k = top_k
+        top_k = top_k + offset
         # 자른 뒤에도 맞은 것이 더 남았나 — 모드마다 아래에서 정한다(hit_count 는 자른 뒤의 수다).
         more_available = False
         score_threshold: float | None = rc.get("score_threshold")
@@ -807,6 +815,8 @@ async def agent_search(
         if excluded_tags:
             exc_set = set(excluded_tags)
             hits = [h for h in hits if not exc_set.intersection(set(h.get("tags") or []))]
+        if offset:
+            hits = hits[offset:]
 
         # additive — 각 hit 에 causal_status 노출 (근거 3등급). tag 부재 시 validated.
         for h in hits:
@@ -839,9 +849,11 @@ async def agent_search(
             query_over_model_limit = await asyncio.to_thread(
                 input_overflow, embed_slots.embedder(embed_slots.active()), search_q, is_query=True)
 
-        # --- refuse_below_score 판단 ---
+        # --- refuse_below_score 판단 --- 둘째 쪽부터는 거절하지 않는다(첫 쪽에서 이미 판정했다)
         refused = False
-        if not hits:
+        if offset:
+            pass
+        elif not hits:
             refused = True
         elif refuse_below is not None:
             top_score = hits[0].get("score", 1.0) if hits else 0.0
@@ -874,6 +886,23 @@ async def agent_search(
             except Exception:  # pragma: no cover — defensive
                 near_miss = []
 
+        # 결과 줄이기(brief · fields)와 다음 쪽 — 셋 가운데 하나라도 주면 그때만 칸이 붙는다(기본 응답은 글자 그대로)
+        paging: dict[str, Any] = {}
+        if offset or brief or fields:
+            cut = False
+            if brief:
+                for h in hits:
+                    sn = h.get("snippet")
+                    if isinstance(sn, str) and len(sn) > _BRIEF_SNIPPET:
+                        h["snippet"] = sn[:_BRIEF_SNIPPET] + "…"
+                        h["snippet_chars"] = len(sn)
+                        cut = True
+            if fields:
+                keep = {"record_id", *[f for f in fields if isinstance(f, str)]}
+                hits = [{k: v for k, v in h.items() if k in keep} for h in hits]
+            paging = {"offset": offset, "truncated": cut,
+                      "next": {"offset": offset + len(hits)} if more_available else None}
+
         return {
             "agent_type": agent_type,
             "query": q,
@@ -885,8 +914,9 @@ async def agent_search(
             "near_miss": near_miss,
             "more_available": more_available,
             "query_over_model_limit": query_over_model_limit,
+            **paging,
             "applied_config": {
-                "top_k": top_k,
+                "top_k": page_k,
                 "top_k_source": top_k_source,
                 "score_threshold": score_threshold,
                 "threshold_basis": "semantic" if mode in ("semantic", "hybrid") else None,
@@ -899,6 +929,9 @@ async def agent_search(
                 **as_of_cfg,
             },
         }
+
+
+_BRIEF_SNIPPET = 400   # agent_search(brief=true) 의 snippet 앞부분 글자 수
 
 
 async def _agent_record_ids(session, agent_type: str) -> list[str]:
@@ -1101,7 +1134,9 @@ async def hybrid_search(
         "agent_search(mode='fts') 를 쓴다.\n"
         "돌려주는 꼴 — 히트 배열 [{record_id, section_id, section_title, title, snippet, "
         "data_type, tags, …}], 관련도 순. 절에서 맞으면 snippet 이 절 본문 전문이고, 제목 · "
-        "요약에서만 맞은 레코드는 section_id 가 null 이고 snippet 이 요약이다.\n"
+        "요약에서만 맞은 레코드는 section_id 가 null 이고 snippet 이 요약이다. 카드가 코어 개체에 "
+        "이어져 있으면 core:[{hub, type_slug, key, name, found_in, strong}](굵은 연결 순 상위 3 — "
+        "그 개체의 카드 전부는 cards_by_core)를 싣는다.\n"
         "한도 — top_k 개에서 자르고 더 있는지는 알려 주지 않는다(필요하면 top_k 를 올린다). 질의가 "
         "빈 글이면 빈 배열이다."
     ),
@@ -1124,7 +1159,7 @@ async def fts_search(
         #   search_svc 의 빈-범위 가드가 결과 없음으로 끝낸다(전역으로 넓히지 않는다).
         scope_ids = await _agent_record_ids(session, agent_type) if agent_type else None
         items, _ = await search_svc.fts_search(session, q, limit=top_k * 3, record_ids=scope_ids)
-        return items[:top_k]
+    return await _with_core(items[:top_k])
 
 
 @mcp.tool(
@@ -1172,6 +1207,66 @@ async def tag_search(
             }
             for r in rows
         ][:top_k]
+
+
+@mcp.tool(
+    title="코어 개체 key 로 이어진 지식카드 찾기",
+    description=(
+        "정본 허브의 코어 개체(고장모드 · 부품 · 시험 항목 · 재료 물성 · 관리 기준 …) key 하나에 "
+        "이어진 지식카드를 근거와 함께 돌려준다 — 이 허브가 카드 잇기 때 허브가 정확히 확인한 이름으로 "
+        "카드와 개체를 이어 둔 연결 표를 읽는다(허브를 다시 부르지 않는다).\n"
+        "개체의 key 를 이미 알 때 쓴다(정본 허브 object_resolve · ontology_lookup 의 exact 답). 이름 "
+        "글자로 찾으려면 fts_search · hybrid_search 다. 카드의 본문은 get_record_sections 로 읽는다.\n"
+        "돌려주는 꼴 — {type_slug, key, hub, total, count, offset, more_available, items:[{record_id, "
+        "title, doc_type, agents, hub, evidence:{found_in, strong, hits, terms, sections?}}], note?}. "
+        "found_in 은 가장 굵게 맞은 자리 — keyword · property · title 은 굵은 연결(카드가 그 개체를 "
+        "다룬다), summary · section 은 본문 연결(지나가며 말했다). terms 는 카드에서 맞은 그 개체의 "
+        "이름, sections 는 이름이 나온 절(앞의 몇 개). 굵은 연결 · 맞은 횟수 순이다.\n"
+        "한도 — 한 번에 limit(1 ~ 100)건, offset + count < total 이면 more_available:true 다. 이어진 "
+        "카드가 없거나 이 박스가 잇기를 돌리지 않았으면 total 0 과 note 로 까닭을 말한다. 읽기만 한다."
+    ),
+    annotations=_READ,
+)
+async def cards_by_core(
+    type_slug: Annotated[str, Field(
+        description="코어 개체의 타입 슬러그, 글자 그대로 일치(예 'failure_mode' · 'part' · "
+                    "'material_property').")],
+    key: Annotated[str, Field(
+        description="그 개체의 허브 key, 글자 그대로 일치(정본 허브가 돌려준 key 를 그대로 "
+                    "넣는다 — 이름이 아니다).")],
+    hub: Annotated[str, Field(
+        description="연결을 만든 허브 이름으로 한정(예 'rootdesigndatahub'). 빈 글(기본)이면 모든 "
+                    "허브의 연결을 본다.")] = "",
+    limit: Annotated[int, Field(ge=1, le=100, description="한 쪽의 카드 수, 1 ~ 100. 기본 20.")] = 20,
+    offset: Annotated[int, Field(ge=0, description="건너뛸 카드 수(쪽 넘김), 0 이상. 기본 0.")] = 0,
+) -> dict[str, Any]:
+    from .services import onto_svc
+
+    async with SessionLocal() as session:
+        try:
+            return await onto_svc.cards_by_core(session, type_slug=type_slug, key=key, hub=hub,
+                                                limit=limit, offset=offset)
+        except ValueError as exc:
+            return {"error": str(exc), "code": "bad_request", "recoverable": True}
+
+
+async def _with_core(items: list[dict[str, Any]], *, key: str = "record_id") -> list[dict[str, Any]]:
+    """검색 · 조회 응답의 카드마다 이어진 코어 개체 상위 몇 개를 ``core`` 칸으로 싣는다 — 이어진 것이 없는 카드에는 칸을 두지
+    않는다(잇기를 안 돈 박스의 응답은 글자 그대로). 연결 표가 없거나 읽지 못하면 그대로 둔다 — 검색을 막지 않는다."""
+    if not items:
+        return items
+    from .services import onto_svc
+
+    try:
+        async with SessionLocal() as session:
+            core = await onto_svc.core_of_records(session, [str(it.get(key) or "") for it in items])
+    except Exception:  # noqa: BLE001 — 이행 0033 전 박스 · 일시 오류
+        return items
+    for it in items:
+        got = core.get(str(it.get(key) or ""))
+        if got:
+            it["core"] = got
+    return items
 
 
 # ===========================================================================
@@ -1317,8 +1412,9 @@ async def data_aggregate(
         "전체. 긴 문서에서 몇 절만 필요하면 get_record_sections(sections=[…]) 가 싸고, 표의 "
         "통계만이면 data_aggregate, 여러 레코드의 메타데이터만이면 list_records 다.\n"
         "돌려주는 꼴 — {id, data_type, team, group, year, seq, title, summary, tags, agents, "
-        "doc_type, content}. content 의 꼴은 data_type 마다 다르다(DATA 는 headers · rows · units, "
-        "DOC 는 sections · blocks — describe_data_capability).\n"
+        "doc_type, content, core?}. content 의 꼴은 data_type 마다 다르다(DATA 는 headers · rows · "
+        "units, DOC 는 sections · blocks — describe_data_capability). core 는 이 카드에 이어진 코어 "
+        "개체 상위 3(fts_search 와 같은 꼴) — 이어진 것이 없으면 칸이 없다.\n"
         "한도 — 자르지 않는다(큰 표 · 긴 문서는 응답이 크다). 없는 id 면 'record not found' "
         "오류다. 읽기만 한다."
     ),
@@ -1338,7 +1434,7 @@ async def get_record(
         ).scalar_one_or_none()
         if rec is None:
             raise ValueError(f"record not found: {record_id}")
-        return {
+        out = {
             "id": rec.id,
             "data_type": rec.data_type,
             "team": rec.team,
@@ -1352,6 +1448,7 @@ async def get_record(
             "doc_type": rec.doc_type,
             "content": rec.content,
         }
+    return (await _with_core([out], key="id"))[0]
 
 
 @mcp.tool(
@@ -1863,9 +1960,11 @@ async def create_doc_type(
         "import_record(dry_run=true) 미리보기 import_preview 가 붙는다. 실패는 status='error' · "
         "code(missing_field · not_in_inbox · unsupported_format · drm_protected · convert_failed · "
         "auth_failed) · suggestion. 암호화(DRM) 문서는 변환기에 넣지 않고 drm_protected 로 "
-        "알린다.\n"
+        "알린다. 박스에 그림 판독기(VLM)가 설정돼 있으면 그림마다 판독해 캡션을 판독 요약으로 바꾸고 "
+        "판독 전문을 그 그림 뒤 글 블록에 싣는다(record.meta.figure_reading 에 셈) — 없으면 그림은 "
+        "파일로만 실린다.\n"
         "보안 — inbox 아래 파일만 읽는다('..' 나 절대경로로 벗어나면 not_in_inbox). 변환 중간 "
-        "파일은 서버 임시 폴더에만 쓴다."
+        "파일은 서버 임시 폴더에만 쓰고 결과를 만든 뒤 지운다."
     ),
     annotations=_READ,
 )

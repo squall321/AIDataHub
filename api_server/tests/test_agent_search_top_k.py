@@ -87,3 +87,51 @@ async def test_seat_without_config_defaults_to_ten(_env, test_session_maker):
     out = await _env.agent_search(agent_type=_AT, q="낙하", mode="semantic")
     assert out["applied_config"]["top_k"] == 10 and out["hit_count"] == _N
     assert out["more_available"] is False
+
+
+# ── 쪽 넘김 · 줄인 꼴(HWAXPortal docs/request-1125 2절 B-1) — 기본값이면 응답이 글자 그대로 ───────────────────────
+@pytest.mark.asyncio
+async def test_default_response_has_no_new_keys(_env, test_session_maker):
+    await _seed(test_session_maker, seat_top_k=2)
+    out = await _env.agent_search(agent_type=_AT, q="낙하 충격", mode="semantic")
+    assert not {"offset", "truncated", "next"} & set(out), out.keys()
+    assert all("snippet_chars" not in h for h in out["hits"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["semantic", "hybrid", "fts", "tag"])
+async def test_offset_pages_follow_one_ranking(_env, test_session_maker, mode):
+    await _seed(test_session_maker, seat_top_k=2)
+    q = "낙하,충격" if mode == "tag" else "낙하"
+    whole = await _env.agent_search(agent_type=_AT, q=q, mode=mode, top_k=_N)
+    p1 = await _env.agent_search(agent_type=_AT, q=q, mode=mode, top_k=2, offset=0, brief=True)
+    assert p1["next"] == {"offset": 2} and p1["offset"] == 0
+    p2 = await _env.agent_search(agent_type=_AT, q=q, mode=mode, top_k=2, offset=p1["next"]["offset"])
+    p3 = await _env.agent_search(agent_type=_AT, q=q, mode=mode, top_k=2, offset=p2["next"]["offset"])
+    ids = [h["record_id"] for page in (p1, p2, p3) for h in page["hits"]]
+    assert ids == [h["record_id"] for h in whole["hits"]], (mode, ids)
+    assert p3["more_available"] is False and p3["next"] is None
+    assert p2["applied_config"]["top_k"] == 2
+    empty = await _env.agent_search(agent_type=_AT, q=q, mode=mode, top_k=2, offset=50)
+    assert empty["hits"] == [] and empty["refused"] is False, "둘째 쪽부터 빈 쪽은 거절이 아니다"
+
+
+@pytest.mark.asyncio
+async def test_brief_cuts_snippet_and_fields_keep_only_asked(_env, test_session_maker):
+    from api.db.models import RecordSection
+
+    await _seed(test_session_maker, seat_top_k=2)
+    async with test_session_maker() as s:
+        from sqlalchemy import update
+
+        await s.execute(update(RecordSection).values(content_text="낙하 충격 " + "가" * 1000))
+        await s.commit()
+    full = await _env.agent_search(agent_type=_AT, q="낙하 충격", mode="fts", top_k=2)
+    brief = await _env.agent_search(agent_type=_AT, q="낙하 충격", mode="fts", top_k=2, brief=True)
+    assert len(full["hits"][0]["snippet"]) > 1000
+    h = brief["hits"][0]
+    assert len(h["snippet"]) == 401 and h["snippet"].endswith("…") and h["snippet_chars"] == len(full["hits"][0]["snippet"])
+    assert brief["truncated"] is True
+    slim = await _env.agent_search(agent_type=_AT, q="낙하 충격", mode="fts", top_k=2, fields=["title", "section_id"])
+    assert all(set(x) == {"record_id", "title", "section_id"} for x in slim["hits"]), slim["hits"]
+    assert slim["truncated"] is False

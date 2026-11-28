@@ -230,7 +230,9 @@ async def test_bind_is_repeatable_replaces_and_keeps_links_when_dictionary_is_em
     empty = await _bind(test_session_maker, entries=[{"type_slug": "part", "key": "PT-X", "term": "ab"}])
     assert empty["written"] is False and await _links(test_session_maker) == first      # 허브에 못 닿은 날 지우지 않는다
     await _bind(test_session_maker, entries=[{"type_slug": "material_property", "key": "MP-E", "term": "탄성계수"}])
-    assert set(await _links(test_session_maker)) == {("M-1", "material_property", "MP-E")}      # 통째로 다시 쓴다
+    assert await _links(test_session_maker) == first                 # 사전에 든 타입만 다시 쓴다 — 고장모드는 그대로
+    await _bind(test_session_maker, entries=[{"type_slug": "failure_mode", "key": "FM-CRACK", "term": "균열"}])
+    assert set(await _links(test_session_maker)) == {("M-1", "material_property", "MP-E")}      # 고장모드 타입을 다시 썼다
     # 다른 허브의 연결은 건드리지 않는다
     async with test_session_maker() as s:
         await onto_svc.bind_entities(s, hub="failuretrace", entries=[_DICT[0]], rules=_RULES)
@@ -243,6 +245,42 @@ async def test_bind_is_repeatable_replaces_and_keeps_links_when_dictionary_is_em
     with pytest.raises(ValueError):
         async with test_session_maker() as s:
             await onto_svc.bind_entities(s, hub=" ", entries=_DICT, rules=_RULES)
+
+
+@pytest.mark.asyncio
+async def test_bind_one_type_keeps_other_types_and_reports_before_after(test_session_maker):
+    """한 타입만 든 사전(포털 --types part)은 그 타입의 연결만 바꾼다 — 다른 타입 수는 그대로, 답에 타입별 전후 수."""
+    from sqlalchemy import select
+
+    from api.db.models import OntoTerm
+
+    await _seed(test_session_maker)
+    full = await _bind(test_session_maker)
+    first = await _links(test_session_maker)
+    assert full["type_counts"] == {"failure_mode": {"before": 0, "after": 3, "rewritten": True},
+                                   "material_property": {"before": 0, "after": 1, "rewritten": True},
+                                   "part": {"before": 0, "after": 0, "rewritten": True}}
+    # 부품 하나만 — 'BGA' 로 C-1(열쇠말) · P-1(요약)이 이어진다
+    part = await _bind(test_session_maker, entries=[{"type_slug": "part", "key": "PT-BGA", "term": "BGA"}])
+    links = await _links(test_session_maker)
+    assert {k: v for k, v in links.items() if k[1] != "part"} == first, "다른 타입 연결은 한 줄도 바뀌지 않는다"
+    assert {k for k in links if k[1] == "part"} == {("C-1", "part", "PT-BGA"), ("P-1", "part", "PT-BGA")}
+    assert part["types"] == ["part"]
+    assert part["type_counts"] == {"failure_mode": {"before": 3, "after": 3, "rewritten": False},
+                                   "material_property": {"before": 1, "after": 1, "rewritten": False},
+                                   "part": {"before": 0, "after": 2, "rewritten": True}}
+    assert part["links_hub_total"] == len(links) == 6 and part["links"] == 2
+    async with test_session_maker() as s:
+        terms = {(t, k) for t, k in (await s.execute(select(OntoTerm.type_slug, OntoTerm.key))).all()}
+    assert terms == {("failure_mode", "FM-SOLDER-CRACK"), ("material_property", "MP-E"), ("part", "PT-BGA")}, \
+        "질문 사전(onto_terms)도 다시 쓴 타입만 바뀐다"
+    # 낱말이 다 걸러진 타입은 다시 쓰지 않는다(허브에 못 닿은 날과 같다)
+    kept = await _bind(test_session_maker, entries=[{"type_slug": "part", "key": "PT-X", "term": "ab"},
+                                                    {"type_slug": "material_property", "key": "MP-E", "term": "탄성계수"}])
+    assert kept["types"] == ["material_property"] and kept["type_counts"]["part"] == {"before": 2, "after": 2, "rewritten": False}
+    assert await _links(test_session_maker) == links
+    # 답에는 셈만 — 객체 이름 · 카드 글이 없다
+    assert "PT-BGA" not in json.dumps(part) and "BGA" not in json.dumps(part, ensure_ascii=False)
 
 
 # ── 프로필 ───────────────────────────────────────────────────────────────
@@ -424,3 +462,69 @@ def test_verdict_는_코어_데이터_질문과_맡은_사람_없음을_가르�
     assert onto_svc.verdict([task, fm], {}) == "no_owner", "도메인 객체가 하나라도 있으면 코어 데이터 질문이 아니다"
     assert onto_svc.verdict([fm], sig) is None and onto_svc.verdict([task, fm], sig) is None
     assert onto_svc.verdict([{"type_slug": ""}, "글", None], {}) is None, "꼴이 틀린 항목은 세지 않는다"
+
+
+# ── 코어 key 로 카드 읽기 · 카드 응답의 core(HWAXPortal docs/request-1125 ADO-1 · ADO-2) ─────────────────────
+@pytest.mark.asyncio
+async def test_cards_by_core_returns_linked_cards_with_evidence(_rt, test_session_maker):
+    await _seed(test_session_maker)
+    none = await _rt.cards_by_core(type_slug="failure_mode", key="FM-SOLDER-CRACK")
+    assert none["total"] == 0 and none["items"] == [] and "잇기를 돌리지 않았다" in none["note"]
+    await _bind(test_session_maker)
+    got = await _rt.cards_by_core(type_slug="failure_mode", key="FM-SOLDER-CRACK")
+    assert got["total"] == 3 and got["count"] == 3 and got["more_available"] is False and "note" not in got
+    by = {it["record_id"]: it for it in got["items"]}
+    # 굵은 연결이 앞 — 제목 + 요약 두 번 맞은 논문(P-1) · 열쇠말 카드(C-1) · 절 본문 카드(C-2)
+    assert [it["record_id"] for it in got["items"]] == ["P-1", "C-1", "C-2"]
+    assert by["C-1"]["evidence"] == {"found_in": "keyword", "strong": True, "hits": 1, "terms": ["솔더 크랙"]}
+    assert by["C-1"]["agents"] == ["rel-solder"] and by["C-1"]["doc_type"] == "expert_knowledge_card"
+    assert by["P-1"]["evidence"]["found_in"] == "title" and by["P-1"]["evidence"]["terms"] == ["solder crack"]
+    sec = by["C-2"]["evidence"]
+    assert sec["found_in"] == "section" and sec["strong"] is False and sec["terms"] == ["솔더 크랙"]
+    assert sec["sections"] == [{"section_id": "1", "section_title": "규칙"}]
+    # 쪽 넘김 · 허브 한정 · 모르는 key
+    page = await _rt.cards_by_core(type_slug="failure_mode", key="FM-SOLDER-CRACK", limit=1, offset=1)
+    assert [it["record_id"] for it in page["items"]] == ["C-1"] and page["more_available"] is True
+    assert (await _rt.cards_by_core(type_slug="failure_mode", key="FM-SOLDER-CRACK", hub="다른허브"))["total"] == 0
+    miss = await _rt.cards_by_core(type_slug="failure_mode", key="FM-없음")
+    assert miss["total"] == 0 and "이어진 카드가 없다" in miss["note"]
+    assert (await _rt.cards_by_core(type_slug=" ", key="K"))["code"] == "bad_request"
+    # 지워진 카드는 나오지 않는다
+    from datetime import datetime, timezone
+
+    from api.db.models import Record
+
+    async with test_session_maker() as s:
+        (await s.get(Record, "C-1")).deleted_at = datetime.now(timezone.utc)
+        await s.commit()
+    after = await _rt.cards_by_core(type_slug="failure_mode", key="FM-SOLDER-CRACK")
+    assert after["total"] == 2 and "C-1" not in [it["record_id"] for it in after["items"]]
+
+
+@pytest.mark.asyncio
+async def test_fts_search_and_get_record_carry_core_only_when_linked(_rt, test_session_maker):
+    await _seed(test_session_maker)
+    before = await _rt.fts_search(q="언더필", top_k=5)
+    assert before and all("core" not in h for h in before), "잇기 전에는 칸이 없다(응답이 글자 그대로)"
+    assert "core" not in await _rt.get_record(record_id="C-1")
+    await _bind(test_session_maker)
+    hits = await _rt.fts_search(q="언더필", top_k=5)
+    by = {h["record_id"]: h for h in hits}
+    # 절 본문 연결이면 이름은 허브 이름의 정규화한 꼴(긴 것) — 카드 글자 그대로는 열쇠말 · 물성 줄일 때만
+    assert by["C-2"]["core"] == [{"hub": _HUB, "type_slug": "failure_mode", "key": "FM-SOLDER-CRACK", "name": "solder crack",
+                                 "found_in": "section", "strong": False}]
+    rec = await _rt.get_record(record_id="C-1")
+    assert rec["core"] == [{"hub": _HUB, "type_slug": "failure_mode", "key": "FM-SOLDER-CRACK", "name": "솔더 크랙",
+                            "found_in": "keyword", "strong": True}]
+    assert "core" not in await _rt.get_record(record_id="C-3"), "이어진 개체가 없는 카드에는 칸이 없다"
+
+
+@pytest.mark.asyncio
+async def test_core_of_records_orders_strong_first_and_caps(test_session_maker):
+    await _seed(test_session_maker)
+    await _bind(test_session_maker, entries=_DICT + [{"type_slug": "part", "key": "PT-BGA9", "term": "리플로"},
+                                                     {"type_slug": "criterion", "key": "CR-1", "term": "접합부"}])
+    async with test_session_maker() as s:
+        core = await onto_svc.core_of_records(s, ["C-1", "C-1", "없는카드"], per_record=2)
+    assert list(core) == ["C-1"]
+    assert [(e["type_slug"], e["found_in"]) for e in core["C-1"]] == [("failure_mode", "keyword"), ("criterion", "title")]

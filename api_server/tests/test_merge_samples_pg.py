@@ -56,6 +56,7 @@ shift 2
 prog="$1"; shift
 case "$prog" in
   rm) exec rm "$@" ;;
+  cat) exec cat "$@" ;;          # 앞 모습 파일을 컨테이너 밖으로 옮긴다(merge-from-drive.sh — 앞 모습 길)
   psql|pg_dump) ;;
   *) echo "fake apptainer: $prog" >&2; exit 2 ;;
 esac
@@ -183,7 +184,7 @@ def boxes(pg, tmp_path):
         dump.write_bytes(gzip.compress(r.stdout))
         return dump
 
-    def merge(dump: Path) -> subprocess.CompletedProcess:
+    def merge(dump: Path, **extra: str) -> subprocess.CompletedProcess:
         work = Path(tempfile.mkdtemp(dir=tmp_path, prefix="run-"))
         (work / "appt").mkdir()
         body = SCRIPT.read_text(encoding="utf-8")
@@ -201,7 +202,7 @@ def boxes(pg, tmp_path):
         (fakebin / "apptainer").write_text(_FAKE_APPTAINER, encoding="utf-8")
         (fakebin / "apptainer").chmod(0o755)
         env = {"PATH": f"{fakebin}:/usr/bin:/bin", "HOME": str(work), "AIDH_MERGE_DUMP": str(dump),
-               "FAKE_PG_BIN": str(pg["bin"]), "FAKE_PG_SOCK": pg["sock"]}
+               "FAKE_PG_BIN": str(pg["bin"]), "FAKE_PG_SOCK": pg["sock"], **extra}
         return subprocess.run(["bash", str(work / "appt" / "merge-from-drive.sh")], capture_output=True, text=True,
                               timeout=300, env=env, cwd=work)
 
@@ -238,10 +239,14 @@ def test_이_박스의_표본은_그대로고_색인이_어긋난_agent_만_덤�
     assert "he-e" not in s, s
     assert "덤프 판으로 다시 지은 agent 3 · 지우기만 0" in r.stdout and "⚠ agent_sample_embeddings" not in r.stdout, r.stdout
 
-    # 같은 덤프로 다시 — 바꿀 것이 없다(멱등).
+    # 같은 덤프로 다시 — 바꿀 것이 없다(멱등). 병합 전 셈이 0 이라 병합 전 덤프 · upsert 까지 건너뛴다(SE-4).
     r2 = merge(dump)
     assert r2.returncode == 0, r2.stdout + r2.stderr
-    assert "덤프 판으로 다시 지은 agent 0 · 지우기만 0" in r2.stdout, r2.stdout
+    assert "다시 지을 agent 0" in r2.stdout and "쓸 행 0" in r2.stdout, r2.stdout
+    assert _samples(pg) == s
+    # 셈을 끄면 예전처럼 병합까지 가고 그 병합도 바꿀 것이 없다.
+    r3 = merge(dump, AIDH_MERGE_PRECOUNT="0")
+    assert "덤프 판으로 다시 지은 agent 0 · 지우기만 0" in r3.stdout, r3.stdout
     assert _samples(pg) == s
 
     # 이 박스의 다음 저장이 겹친 id 로 거절되지 않는다(예전 병합 뒤에는 duplicate key 였다).
@@ -441,3 +446,86 @@ def test_dev_판으로_덮는_행도_이_박스의_조회_수와_조회_시각�
     assert after == {"k1": ("h-k1-dev", "3", "10-20", seen),                          # 덮였다 — 조회 수 · 조회 시각만 이 박스 것
                      "k2": ("h-k2-dev", "2", "10-20", "2026-10-22 00:00:00.000000"),  # 새 행은 dev 값
                      "k3": ("h-k3-dev", "0", "10-20", "")}, after                     # dev 의 조회는 오지 않는다
+
+
+# ── 절의 두 번째 슬롯 · 표마다 셈 · 앞 모습 길(HWAXPortal docs/request-1125 SE-3 · SE-6 · SE-4) ─────────────────────
+# 레코드는 양쪽이 같은 판이다(같은 시각 · 같은 해시) — 절이 레코드를 따라 빠지지 않게.
+_SEC_RECS = _records([("s1", 1, "h-1", "2026-10-10"), ("s2", 2, "h-2", "2026-10-10")])
+
+
+def _sections(rows: list[tuple[str, str, str, str | None]]) -> str:
+    """(record, section, 본문, m3 출처 — None 이면 비었다) → record_sections INSERT. 출처는 embedding_m3_model 에 적는다."""
+    def one(rid, sid, body, origin):
+        m3 = f"{_VEC}, now(), '{origin}'" if origin else "NULL, NULL, NULL"
+        return f"('{rid}', '{sid}', 1, '절 {sid}', '{body}', {m3})"
+    return ("INSERT INTO record_sections (record_id, section_id, level, title, content_text, embedding_m3, embedding_m3_at, "
+            "embedding_m3_model) VALUES " + ", ".join(one(*r) for r in rows) + ";")
+
+
+# 박스 — a 는 이 박스가 슬롯을 먼저 채웠다(dev 는 비었고 글이 같다), b 는 dev 가 글을 고쳤다(dev 슬롯은 비었다 — 낡은 벡터를 남기지 않는다),
+# c 는 dev 만 채웠다, d 는 양쪽이 같다, e 는 dev 에만 있다.
+_BOX_SECS = _SEC_RECS + _sections([("s1", "a", "같은 글", "box"), ("s1", "b", "옛 글", "box"), ("s2", "c", "같은 글 c", None),
+                                   ("s2", "d", "같은 글 d", None)])
+_DEV_SECS = _SEC_RECS + _sections([("s1", "a", "같은 글", None), ("s1", "b", "새 글", None), ("s2", "c", "같은 글 c", "dev"),
+                                   ("s2", "d", "같은 글 d", None), ("s2", "e", "새 절", "dev")])
+
+
+def _sec_rows(pg) -> dict[str, tuple[str, str]]:
+    out = _ok(_psql(pg, "aidh", "SELECT record_id || '/' || section_id, content_text, coalesce(embedding_m3_model, '-') "
+                                "FROM record_sections ORDER BY 1;"))
+    return {k: (body, origin) for k, body, origin in (line.split("|") for line in out.splitlines())}
+
+
+def _sec_state(pg) -> str:
+    return _ok(_psql(pg, "aidh", "SELECT record_id, section_id, content_text, coalesce(embedding_m3_model, '-'), "
+                                 "embedding_m3 IS NULL FROM record_sections ORDER BY 1, 2;"))
+
+
+def test_절의_두_번째_슬롯은_dev_가_비고_글이_같으면_이_박스_값을_둔다(pg, boxes):
+    build, merge = boxes
+    dump = build(_BOX_SECS, _DEV_SECS)
+    r = merge(dump)
+    assert r.returncode == 0 and "✓ merge 완료" in r.stdout, r.stdout + r.stderr
+    assert _sec_rows(pg) == {
+        "s1/a": ("같은 글", "box"),      # dev 의 빈 슬롯으로 지우지 않는다
+        "s1/b": ("새 글", "-"),          # 글이 바뀌었으면 dev 판(빈 슬롯) — 옛 글의 벡터를 남기지 않는다
+        "s2/c": ("같은 글 c", "dev"),    # 이 박스가 비었으면 dev 값으로 채운다
+        "s2/d": ("같은 글 d", "-"),
+        "s2/e": ("새 절", "dev"),
+    }
+    # 표마다 추가 · 갱신 · 그대로 · 시각(SE-6) — 절은 e 추가 · b · c 갱신 · a · d 그대로
+    line = next(x for x in r.stdout.splitlines() if "✓ record_sections:" in x)
+    assert "추가 1 · 갱신 2 · 그대로 2" in line and " → " in line and "초)" in line, line
+    rec = next(x for x in r.stdout.splitlines() if "✓ records:" in x)
+    assert "추가 0 · 갱신 0 · 그대로 2" in rec, rec
+    # 셈(4a)이 병합과 같은 수를 낸다
+    cnt = next(x for x in r.stdout.splitlines() if "· record_sections: 쓸 행" in x)
+    assert "추가 1 · 갱신 2" in cnt, cnt
+    # 같은 덤프로 다시 — a 를 다시 쓰지 않으니 쓸 행 0 이다(예전엔 a 가 매번 dev 의 빈 값과 '다르다' 로 덮였다)
+    r2 = merge(dump)
+    assert r2.returncode == 0 and "쓸 행 0" in r2.stdout, r2.stdout + r2.stderr
+
+
+def test_전체_길의_앞_모습은_바꿀_줄만_남기고_되돌리기로_병합_앞이_돌아온다(pg, boxes):
+    build, merge = boxes
+    dump = build(_BOX_SECS, _DEV_SECS)
+    before = _sec_state(pg)
+    r = merge(dump, AIDH_MERGE_BEFORE="image")
+    assert r.returncode == 0 and "되돌리기: rollback-parts.sh " in r.stdout, r.stdout + r.stderr
+    bdir = Path(r.stdout.strip().splitlines()[-1].rsplit("rollback-parts.sh ", 1)[1].strip())
+    assert bdir.is_dir() and bdir.name.startswith("pre-parts-full-"), "포털 backup-local.sh 가 pre-parts-* 폴더를 보관 일수로 지운다"
+    assert not list(bdir.parent.glob("pre-merge-*.sql.gz")), "전체 덤프는 뜨지 않는다"
+    # 앞 모습은 바꿀 줄(b · c)뿐이다 — 그대로인 a · d 와 표 통째가 아니다
+    assert "앞 모습을 옮기지 못했다" not in r.stdout, r.stdout
+    rows = gzip.decompress((bdir / "record_sections.before.bin.gz").read_bytes())
+    assert "옛 글".encode() in rows and "같은 글 c".encode() in rows and "같은 글 d".encode() not in rows, rows[:200]
+    assert gzip.decompress((bdir / "record_sections.new.csv.gz").read_bytes()).decode().strip() == "s2,e"
+    assert _sec_state(pg) != before
+    # 되돌리기 — 병합한 사본과 같은 자리에서 같은 대역으로
+    work = Path(r.args[1]).parent.parent
+    shutil.copy(SCRIPT.parent / "rollback-parts.sh", work / "appt" / "rollback-parts.sh")
+    env = {"PATH": f"{work / 'bin'}:/usr/bin:/bin", "HOME": str(work), "FAKE_PG_BIN": str(pg["bin"]), "FAKE_PG_SOCK": pg["sock"]}
+    rb = subprocess.run(["bash", str(work / "appt" / "rollback-parts.sh"), str(bdir)], capture_output=True, text=True,
+                        timeout=300, env=env, cwd=work)
+    assert rb.returncode == 0, rb.stdout + rb.stderr
+    assert _sec_state(pg) == before, "병합 앞의 절(슬롯째)이 돌아온다"

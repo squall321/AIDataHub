@@ -114,6 +114,9 @@ class ConvertRequest:
     classification: str = "internal"
     domain: str | None = None
     output_dir: Path | None = None  # None 이면 임시 폴더 사용
+    # 그림 판독(services.figure_reading — 박스 설정 AIDH_VLM_* 가 있을 때만). 판독은 그림마다 수십 초라 스레드에서 도는 길
+    # (MCP run_convert)만 켠다 — 이벤트 루프에서 변환기를 바로 부르는 REST 라우트는 켜지 않는다(HWAXPortal docs/request-1125 IR-31).
+    read_figures: bool = False
 
     def resolved_output_dir(self) -> Path:
         if self.output_dir is None:
@@ -231,7 +234,19 @@ def convert_file(
         raise DrmProtectedError(_drm_message(head, fmt), details={"header": head})
 
     output_dir = req.resolved_output_dir()
+    payload = _convert(file_path, fmt, req, output_dir)
+    if req.read_figures and fmt in (SourceFormat.DOCX, SourceFormat.PPTX, SourceFormat.PDF) and isinstance(payload, dict):
+        from . import figure_reading
 
+        try:
+            figure_reading.apply(payload, output_dir)
+        except Exception:  # noqa: BLE001 — 판독이 변환을 죽이지 않는다
+            logger.exception("그림 판독 단계 실패 — 판독 없이 변환 결과를 낸다")
+    return payload
+
+
+def _convert(file_path: Path, fmt: SourceFormat, req: ConvertRequest, output_dir: Path) -> dict[str, Any]:
+    """형식마다 변환기 하나 — dict payload."""
     try:
         if fmt == SourceFormat.DOCX:
             from converter.core import Converter, ConverterOptions

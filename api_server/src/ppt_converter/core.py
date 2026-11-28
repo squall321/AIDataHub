@@ -34,6 +34,7 @@ from .models import (
 )
 from .parser import (
     extract_chart_title,
+    extract_fill_picture_blob,
     extract_picture_alt_text,
     extract_picture_blob,
     extract_slide_title,
@@ -59,9 +60,10 @@ logger = logging.getLogger(__name__)
 
 def _default_agent_hints(
     *, data_type_name: str, tags: list[str], section_count: int,
-    table_count: int, figure_count: int,
+    table_count: int, figure_count: int, titles: list[str] | None = None,
 ) -> str:
-    topics = ", ".join(t for t in (tags or []) if t) or "N/A"
+    # 태그가 없으면 쪽 제목(앞의 다섯)이 주제다 — 'N/A' 로 비우지 않는다(HWAXPortal docs/request-1125 IR-33)
+    topics = ", ".join(t for t in (tags or []) if t) or ", ".join((titles or [])[:5]) or "N/A"
     return (
         f"이 record 는 {data_type_name} 입니다. 주요 토픽: {topics}. "
         f"본문은 총 {section_count} 섹션, {table_count} 표, "
@@ -92,6 +94,7 @@ def _apply_agent_discovery_defaults(
     section_count: int,
     table_count: int,
     figure_count: int,
+    titles: list[str] | None = None,
 ) -> None:
     overrides = overrides or {}
     if "agent_hints" in overrides and overrides["agent_hints"] is not None:
@@ -100,7 +103,7 @@ def _apply_agent_discovery_defaults(
         meta["agent_hints"] = _default_agent_hints(
             data_type_name=data_type_name, tags=tags,
             section_count=section_count, table_count=table_count,
-            figure_count=figure_count,
+            figure_count=figure_count, titles=titles,
         )
     if "related_record_ids" in overrides and overrides["related_record_ids"] is not None:
         meta["related_record_ids"] = list(overrides["related_record_ids"])
@@ -248,8 +251,13 @@ class PptxConverter:
                 self._handle_picture_shape(section, shape)
             elif is_chart_shape(shape):
                 self._handle_chart_shape(section, shape)
-            elif is_text_shape(shape):
-                self._handle_text_shape(section, shape)
+            else:
+                # 그림으로 채운 도형 — 그림을 그림 요소로 꺼내고(IR-32), 도형 안의 글은 그대로 글로
+                fill = extract_fill_picture_blob(shape) if self.opts.extract_images else (b"", "")
+                if fill[0]:
+                    self._handle_picture_shape(section, shape, blob_ext=fill)
+                if is_text_shape(shape):
+                    self._handle_text_shape(section, shape)
             # 그 외 (자동도형 안의 텍스트, 커넥터 등) — 텍스트 프레임이 있으면 위에서 잡힘.
 
         # 슬라이드 노트.
@@ -508,7 +516,8 @@ class PptxConverter:
         candidates.sort(key=lambda t: (t[0], t[1]))
         return candidates[0][2]
 
-    def _handle_picture_shape(self, section: Section, shape: Any) -> None:
+    def _handle_picture_shape(self, section: Section, shape: Any,
+                              blob_ext: tuple[bytes, str] | None = None) -> None:
         self.fig_counter += 1
         fig_id = _make_fig_id(self.doc_id, self.fig_counter)
         caption = f"Figure {self.fig_counter}: 슬라이드 {section.id} 이미지"
@@ -549,7 +558,7 @@ class PptxConverter:
 
         # 바이너리 추출.
         if self.opts.extract_images:
-            blob, ext = extract_picture_blob(shape)
+            blob, ext = blob_ext if blob_ext is not None else extract_picture_blob(shape)
             if blob:
                 self._save_image(fig, att, blob, ext)
             else:
@@ -561,6 +570,8 @@ class PptxConverter:
         self, fig: Figure, att: Attachment, blob: bytes, ext: str
     ) -> None:
         out_root = Path(self.opts.output_dir) / self.doc_id
+        if ext in ("tif", "tiff"):
+            blob, ext = self._tiff_to_png(fig, blob, ext)
         try:
             out_root.mkdir(parents=True, exist_ok=True)
         except OSError as e:
@@ -599,6 +610,24 @@ class PptxConverter:
         except OSError:
             pass
         att.hash_sha256 = _sha256_of_file(att_path)
+
+    def _tiff_to_png(self, fig: Figure, blob: bytes, ext: str) -> tuple[bytes, str]:
+        """TIFF 는 화면 · 모델이 못 여는 곳이 많아 PNG 로 바꿔 싣는다(IR-32). 못 바꾸면 TIFF 그대로 + 경고."""
+        try:
+            import io
+
+            from PIL import Image
+
+            with Image.open(io.BytesIO(blob)) as im:
+                im.seek(0)                                  # 여러 쪽 TIFF 는 첫 쪽
+                if im.mode not in ("RGB", "RGBA", "L", "LA", "P"):
+                    im = im.convert("RGBA" if "A" in im.getbands() else "RGB")
+                buf = io.BytesIO()
+                im.save(buf, format="PNG")
+            return buf.getvalue(), "png"
+        except Exception as e:  # noqa: BLE001 — Pillow 없음 · 깨진 TIFF
+            self.warnings.append(f"그림 {fig.number}: TIFF 를 PNG 로 바꾸지 못해 TIFF 그대로 싣는다({type(e).__name__})")
+            return blob, ext
 
     @staticmethod
     def _ext_to_mime(ext: str) -> str:
@@ -874,17 +903,25 @@ class PptxConverter:
         """meta.summary 후보 텍스트를 다단계 폴백으로 추출.
 
         1) core_properties.subject → 가장 권위 있는 신호.
-        2) 표지 다음 슬라이드(또는 1슬라이드뿐이면 슬라이드 1)의 paragraph/list_item
+        2) 쪽 제목들(표지 뒤, 같은 제목은 한 번) — 문서가 무엇을 다루는지를 쪽마다 한 마디로 말한다. 예전엔 본문 글을
+           이어 붙여 앞 몇 쪽의 글 조각이 요약이 됐다(HWAXPortal docs/request-1125 IR-33). 그림 판독이 켜져 있으면
+           판독 요약이 뒤에 붙는다(api.services.figure_reading).
+        3) 제목이 하나도 없으면 표지 다음 슬라이드(또는 1슬라이드뿐이면 슬라이드 1)의 paragraph/list_item
            텍스트를 모아 약 250자 이내로 자름.
 
-        둘 다 없으면 빈 문자열. 어떤 슬라이드 본문이라도 있으면 빈 summary 보다는
-        낫다 (RAG 검색 가중치 향상).
+        셋 다 없으면 빈 문자열.
         """
         # 1) core_properties.subject 우선.
         if core is not None:
             subject = (getattr(core, "subject", "") or "").strip()
             if subject and len(subject) >= 10:
                 return subject[:300]
+
+        # 2) 쪽 제목.
+        titles = self._slide_titles()
+        if titles:
+            joined = " · ".join(titles)
+            return joined[:300] + ("…" if len(joined) > 300 else "")
 
         # 2) 본문 슬라이드 텍스트 추출.
         if not self.section_root:
@@ -916,6 +953,16 @@ class PptxConverter:
             return ""
         joined = " · ".join(parts)
         return joined[:300] + ("…" if len(joined) > 300 else "")
+
+    def _slide_titles(self) -> list[str]:
+        """쪽 제목 — 표지(첫 쪽, 쪽이 둘 이상일 때) 뒤, 빈 것 · 같은 것은 한 번."""
+        secs = self.section_root[1:] if len(self.section_root) > 1 else self.section_root
+        out: list[str] = []
+        for sec in secs:
+            t = " ".join((getattr(sec, "title", "") or "").split())
+            if t and t not in out:
+                out.append(t)
+        return out
 
     # ---- meta --------------------------------------------------------
 
@@ -979,6 +1026,7 @@ class PptxConverter:
             section_count=len(self.section_root),
             table_count=len(self.tables),
             figure_count=len(self.figures),
+            titles=self._slide_titles(),
         )
 
         if not meta["tags"]:

@@ -341,10 +341,14 @@ def build_lexicon(entries: Iterable[Any], rules: dict) -> tuple[Lexicon, dict]:
 # ── 2) 잇기 ───────────────────────────────────────────────────────────────
 async def bind_entities(session: AsyncSession, *, hub: str, entries: Iterable[Any], dict_version: str = "",
                         rules: dict | None = None, progress=None) -> dict:
-    """사전으로 카드를 잇고 그 허브의 연결을 통째로 다시 쓴다. 호출자가 커밋한다.
+    """사전으로 카드를 잇고 그 허브의 연결 가운데 **사전에 든 타입의 것만** 다시 쓴다. 호출자가 커밋한다.
 
     맞추는 자리 — 카드 낱말(열쇠말 · 물성 줄 — 굵은 연결) · 제목(굵은 연결) · 요약 · 절(본문 연결). 한 카드가 한 객체에 여러 자리에서
     맞으면 가장 굵은 자리를 적고 횟수를 더한다. 사전이 비면(허브에 닿지 못했다) 그 허브의 연결을 지우지 않고 그대로 둔다.
+
+    다시 쓰는 타입 = 사전에서 맞출 낱말이 하나라도 남은 타입이다. 사전에 없는 타입 · 낱말이 다 걸러진 타입의 연결은 그대로 둔다
+    — 한 타입만 준 사전(포털 card-entity-bind.py --types part)이 다른 타입의 연결을 지우지 않는다(HWAXPortal docs/request-1125
+    AD-22). 답의 ``type_counts`` 에 그 허브의 타입마다 전후 연결 수와 다시 썼는지를 싣는다.
     """
     rules = rules or load_rules()
     hub = (hub or "").strip()
@@ -399,8 +403,12 @@ async def bind_entities(session: AsyncSession, *, hub: str, entries: Iterable[An
     linked_objects = {(r["type_slug"], r["key"]) for r in rows}
     term_rows = sorted({(type_slug, " ".join(toks), key) for toks, objs in lex.terms.items()
                         for type_slug, key in objs if (type_slug, key) in linked_objects})
-    await session.execute(delete(RecordEntity).where(RecordEntity.hub == hub))
-    await session.execute(delete(OntoTerm).where(OntoTerm.hub == hub))
+    scope = sorted({type_slug for objs in lex.terms.values() for type_slug, _ in objs})
+    before = {t: int(n) for t, n in (await session.execute(
+        select(RecordEntity.type_slug, func.count(RecordEntity.id)).where(RecordEntity.hub == hub)
+        .group_by(RecordEntity.type_slug))).all()}
+    await session.execute(delete(RecordEntity).where(RecordEntity.hub == hub, RecordEntity.type_slug.in_(scope)))
+    await session.execute(delete(OntoTerm).where(OntoTerm.hub == hub, OntoTerm.type_slug.in_(scope)))
     await _insert(session, RecordEntity, rows)
     await _insert(session, OntoTerm, [{"hub": hub, "type_slug": t, "norm": n, "key": k} for t, n, k in term_rows])
 
@@ -416,11 +424,17 @@ async def bind_entities(session: AsyncSession, *, hub: str, entries: Iterable[An
         rec_by_type[r["type_slug"]].add(r["record_id"])
         obj_by_type[r["type_slug"]].add(r["key"])
     doc_total = Counter(doc_of.values())
+    # 그 허브의 타입마다 전후 연결 수 — 다시 쓴 타입은 이번 줄 수, 아닌 타입은 그대로(셈만 — 객체 이름은 싣지 않는다).
+    type_counts = {t: {"before": before.get(t, 0), "after": by_type.get(t, 0) if t in scope else before.get(t, 0),
+                       "rewritten": t in scope}
+                   for t in sorted(set(before) | set(scope))}
     state = {
         # bind_id — 잇기마다 새로 뽑는다. 질문 사전의 캐시가 이것으로 낡았는지 본다(시각은 초 단위라 같은 초의 두 번을 못 가른다).
         "hub": hub, "written": True, "bind_id": uuid.uuid4().hex[:12], "dict_version": dict_version or "",
         "rules": rules_fingerprint(rules),
-        "dictionary": lex_counts, "links": len(rows), "sections_scanned": scanned,
+        "dictionary": lex_counts, "types": scope, "type_counts": type_counts,
+        "links_hub_total": sum(v["after"] for v in type_counts.values()),
+        "links": len(rows), "sections_scanned": scanned,
         "records": len(doc_of), "records_linked": len({r["record_id"] for r in rows}),
         "links_by_type": dict(sorted(by_type.items())), "links_by_where": dict(sorted(by_where.items())),
         "records_by_type": {t: len(v) for t, v in sorted(rec_by_type.items())},
@@ -606,3 +620,149 @@ async def seat_signal(session: AsyncSession, q: str) -> tuple[dict[str, dict], l
         out[a] = {"objects": objs[a], "strong": len(strong_ids[a]), "weak": len(weak_ids[a] - strong_ids[a]),
                   "bonus": round(SEAT_WEIGHT * score[a] / len(want), 4)}
     return out, ents
+
+
+# ── 5) 코어 key 로 카드 읽기 · 카드에 묶인 코어 개체 ─────────────────────────
+# 읽기만 한다 — 잇기(bind_entities)가 쓴 record_entities 를 읽는다. 허브를 부르지 않는다(HWAXPortal docs/request-1125 ADO-1 · ADO-2).
+_EVIDENCE_SECTIONS = 3            # 카드 하나에서 근거로 싣는 절 수 상한
+_PRIMARY = ("keyword", "property")
+
+
+def _object_lexicon(norms: Iterable[str]) -> Lexicon:
+    lex = Lexicon()
+    for norm in norms:
+        if norm:
+            lex.add(tuple(norm.split(" ")), "", "")
+    return lex
+
+
+async def _object_norms(session: AsyncSession, hubs_types_keys: set[tuple[str, str, str]]) -> dict[tuple[str, str, str], list[str]]:
+    """(hub, type, key) → 그 객체를 가리키는 이름(onto_terms 의 norm — 토큰을 빈칸으로 이은 꼴), 긴 것부터."""
+    out: dict[tuple[str, str, str], list[str]] = defaultdict(list)
+    keys = sorted({k for _, _, k in hubs_types_keys})
+    for i in range(0, len(keys), _CHUNK):
+        for hub, type_slug, norm, key in (await session.execute(
+                select(OntoTerm.hub, OntoTerm.type_slug, OntoTerm.norm, OntoTerm.key)
+                .where(OntoTerm.key.in_(keys[i:i + _CHUNK])))).all():
+            if (hub, type_slug, key) in hubs_types_keys:
+                out[(hub, type_slug, key)].append(norm)
+    return {k: sorted(set(v), key=lambda n: (-len(n), n)) for k, v in out.items()}
+
+
+async def _mention_terms(session: AsyncSession, record_ids: list[str]) -> dict[tuple[str, str], str]:
+    """(record, norm) → 카드에 적힌 글자 그대로(열쇠말 · 물성 줄)."""
+    out: dict[tuple[str, str], str] = {}
+    for i in range(0, len(record_ids), _CHUNK):
+        for rid, norm, term in (await session.execute(
+                select(RecordMention.record_id, RecordMention.norm, RecordMention.term)
+                .where(RecordMention.record_id.in_(record_ids[i:i + _CHUNK]), RecordMention.source.in_(_PRIMARY)))).all():
+            out.setdefault((rid, norm), term)
+    return out
+
+
+async def bound_hubs(session: AsyncSession) -> list[str]:
+    """잇기를 한 번이라도 돈 허브(onto_state 의 bind:<허브>)."""
+    return [name.split(":", 1)[1] for (name,) in (await session.execute(
+        select(OntoState.name).where(OntoState.name.like("bind:%")).order_by(OntoState.name))).all()]
+
+
+async def cards_by_core(session: AsyncSession, *, type_slug: str, key: str, hub: str = "", limit: int = 20,
+                        offset: int = 0) -> dict:
+    """코어 개체 ``(type_slug, key)`` 에 이어진 살아 있는 카드 — 굵은 연결 · 맞은 횟수 순, 카드마다 근거(자리 · 낱말 · 절).
+
+    근거 — ``found_in`` 은 잇기가 적은 가장 굵은 자리다. ``terms`` 는 그 객체의 이름 가운데 카드에서 맞은 것(열쇠말 · 물성 줄은
+    카드의 글자 그대로), ``sections`` 는 이름이 나온 절(``found_in`` 이 section 일 때 · 앞의 몇 개). 셈 · 근거는 잇기 때의 판이다.
+    """
+    type_slug, key, hub = (type_slug or "").strip(), (key or "").strip(), (hub or "").strip()
+    if not type_slug or not key:
+        raise ValueError("type_slug · key 가 비었다")
+    limit = max(1, min(int(limit), 100))
+    offset = max(0, int(offset))
+    conds = [RecordEntity.type_slug == type_slug, RecordEntity.key == key, Record.deleted_at.is_(None)]
+    if hub:
+        conds.append(RecordEntity.hub == hub)
+    base = select(RecordEntity.record_id, RecordEntity.hub, RecordEntity.found_in, RecordEntity.strong, RecordEntity.hits,
+                  Record.title, Record.summary, Record.doc_type, Record.agents) \
+        .join(Record, Record.id == RecordEntity.record_id).where(*conds)
+    total = int((await session.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0)
+    rows = (await session.execute(base.order_by(RecordEntity.strong.desc(), RecordEntity.hits.desc(),
+                                                RecordEntity.record_id, RecordEntity.hub)
+                                  .limit(limit).offset(offset))).all()
+    hubs = await bound_hubs(session)
+    out: dict[str, Any] = {"type_slug": type_slug, "key": key, "hub": hub or None, "total": total, "count": len(rows),
+                           "offset": offset, "more_available": offset + len(rows) < total, "items": []}
+    if not hubs:
+        out["note"] = "이 박스는 카드 잇기를 돌리지 않았다 — 연결이 없다(deploy/apptainer/onto.sh bind)."
+    elif not total:
+        out["note"] = "이 개체에 이어진 카드가 없다 — 카드에 그 이름이 없거나 key · type_slug 가 다르다(허브의 정확한 key 로 묻는다)."
+    if not rows:
+        return out
+    norms_of = await _object_norms(session, {(r.hub, type_slug, key) for r in rows})
+    rids = [r.record_id for r in rows]
+    mention = await _mention_terms(session, rids)
+    want_sections = [r.record_id for r in rows if r.found_in == "section"]
+    sec_rows: dict[str, list] = defaultdict(list)
+    for i in range(0, len(want_sections), _CHUNK):
+        for rid, sid, stitle, body in (await session.execute(
+                select(RecordSection.record_id, RecordSection.section_id, RecordSection.title, RecordSection.content_text)
+                .where(RecordSection.record_id.in_(want_sections[i:i + _CHUNK]))
+                .order_by(RecordSection.record_id, RecordSection.id))).all():
+            sec_rows[rid].append((sid, stitle, body))
+    for r in rows:
+        norms = norms_of.get((r.hub, type_slug, key), [])
+        lex = _object_lexicon(norms)
+        terms: list[str] = []
+        sections: list[dict] = []
+        if r.found_in in _PRIMARY:
+            terms = [mention[(r.record_id, n)] for n in norms if (r.record_id, n) in mention]
+        elif r.found_in in ("title", "summary"):
+            terms = [" ".join(t) for t in lex.match(r.title if r.found_in == "title" else (r.summary or ""))]
+        else:
+            seen: dict[str, None] = {}
+            for sid, stitle, body in sec_rows.get(r.record_id, ()):
+                got = lex.match(f"{stitle or ''}\n{body or ''}")
+                if got:
+                    for t in got:
+                        seen.setdefault(" ".join(t))
+                    if len(sections) < _EVIDENCE_SECTIONS:
+                        sections.append({"section_id": sid, "section_title": stitle or ""})
+            terms = list(seen)
+        item = {"record_id": r.record_id, "title": r.title, "doc_type": r.doc_type,
+                "agents": [a for a in (r.agents or []) if isinstance(a, str)], "hub": r.hub,
+                "evidence": {"found_in": r.found_in, "strong": bool(r.strong), "hits": int(r.hits), "terms": terms}}
+        if sections:
+            item["evidence"]["sections"] = sections
+        out["items"].append(item)
+    return out
+
+
+async def core_of_records(session: AsyncSession, record_ids: Iterable[str], *, per_record: int = 3) -> dict[str, list[dict]]:
+    """카드마다 이어진 코어 개체 상위 ``per_record`` 개 — 굵은 연결 · 맞은 횟수 순. 이어진 것이 없는 카드는 빠진다.
+
+    한 개체는 ``{hub, type_slug, key, name, found_in, strong}`` — ``name`` 은 그 개체를 가리키는 이름(열쇠말 · 물성 줄로 이어졌으면
+    카드의 글자 그대로, 아니면 허브 이름의 정규화한 꼴).
+    """
+    ids = list(dict.fromkeys(r for r in record_ids if r))
+    if not ids:
+        return {}
+    per: dict[str, list] = defaultdict(list)
+    for i in range(0, len(ids), _CHUNK):
+        for rid, hub, type_slug, key, found_in, strong, hits in (await session.execute(
+                select(RecordEntity.record_id, RecordEntity.hub, RecordEntity.type_slug, RecordEntity.key,
+                       RecordEntity.found_in, RecordEntity.strong, RecordEntity.hits)
+                .where(RecordEntity.record_id.in_(ids[i:i + _CHUNK])))).all():
+            per[rid].append((not strong, -int(hits), _RANK.get(found_in, 9), type_slug, key, hub, found_in, bool(strong)))
+    if not per:
+        return {}
+    top = {rid: sorted(v)[:max(1, per_record)] for rid, v in per.items()}
+    norms_of = await _object_norms(session, {(e[5], e[3], e[4]) for v in top.values() for e in v})
+    mention = await _mention_terms(session, list(top))
+    out: dict[str, list[dict]] = {}
+    for rid, ents in top.items():
+        lst = []
+        for _, _, _, type_slug, key, hub, found_in, strong in ents:
+            norms = norms_of.get((hub, type_slug, key), [])
+            name = next((mention[(rid, n)] for n in norms if (rid, n) in mention), norms[0] if norms else "")
+            lst.append({"hub": hub, "type_slug": type_slug, "key": key, "name": name, "found_in": found_in, "strong": strong})
+        out[rid] = lst
+    return out
