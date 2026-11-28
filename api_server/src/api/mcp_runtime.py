@@ -17,6 +17,7 @@ Tool 목록:
     agent_search(agent_type, q, mode)   — retrieval_config 자동 적용 agent-scoped 검색
     semantic_search(q, top_k, ...)      — 전체 DB 시맨틱 검색 (agent_type 옵션)
     fts_search(q, top_k, agent_type)    — 키워드(FTS) 검색
+    cards_by_core(type_slug, key)       — 코어 개체 key 에 이어진 지식카드 + 근거(잇기 연결 표)
     tag_search(tags, agent_type)        — 태그 정확 매칭 검색
 
     # 레코드 상세
@@ -1172,6 +1173,48 @@ async def tag_search(
             }
             for r in rows
         ][:top_k]
+
+
+@mcp.tool(
+    title="코어 개체 key 로 이어진 지식카드 찾기",
+    description=(
+        "정본 허브의 코어 개체(고장모드 · 부품 · 시험 항목 · 재료 물성 · 관리 기준 …) key 하나에 "
+        "이어진 지식카드를 근거와 함께 돌려준다 — 이 허브가 카드 잇기 때 허브가 정확히 확인한 이름으로 "
+        "카드와 개체를 이어 둔 연결 표를 읽는다(허브를 다시 부르지 않는다).\n"
+        "개체의 key 를 이미 알 때 쓴다(정본 허브 object_resolve · ontology_lookup 의 exact 답). 이름 "
+        "글자로 찾으려면 fts_search · hybrid_search 다. 카드의 본문은 get_record_sections 로 읽는다.\n"
+        "돌려주는 꼴 — {type_slug, key, hub, total, count, offset, more_available, items:[{record_id, "
+        "title, doc_type, agents, hub, evidence:{found_in, strong, hits, terms, sections?}}], note?}. "
+        "found_in 은 가장 굵게 맞은 자리 — keyword · property · title 은 굵은 연결(카드가 그 개체를 "
+        "다룬다), summary · section 은 본문 연결(지나가며 말했다). terms 는 카드에서 맞은 그 개체의 "
+        "이름, sections 는 이름이 나온 절(앞의 몇 개). 굵은 연결 · 맞은 횟수 순이다.\n"
+        "한도 — 한 번에 limit(1 ~ 100)건, offset + count < total 이면 more_available:true 다. 이어진 "
+        "카드가 없거나 이 박스가 잇기를 돌리지 않았으면 total 0 과 note 로 까닭을 말한다. 읽기만 한다."
+    ),
+    annotations=_READ,
+)
+async def cards_by_core(
+    type_slug: Annotated[str, Field(
+        description="코어 개체의 타입 슬러그, 글자 그대로 일치(예 'failure_mode' · 'part' · "
+                    "'material_property').")],
+    key: Annotated[str, Field(
+        description="그 개체의 허브 key, 글자 그대로 일치(정본 허브가 돌려준 key 를 그대로 "
+                    "넣는다 — 이름이 아니다).")],
+    hub: Annotated[str, Field(
+        description="연결을 만든 허브 이름으로 한정(예 'rootdesigndatahub'). 빈 글(기본)이면 모든 "
+                    "허브의 연결을 본다.")] = "",
+    limit: Annotated[int, Field(ge=1, le=100, description="한 쪽의 카드 수, 1 ~ 100. 기본 20.")] = 20,
+    offset: Annotated[int, Field(ge=0, description="건너뛸 카드 수(쪽 넘김), 0 이상. 기본 0.")] = 0,
+) -> dict[str, Any]:
+    from .services import onto_svc
+
+    async with SessionLocal() as session:
+        try:
+            return await onto_svc.cards_by_core(session, type_slug=type_slug, key=key, hub=hub,
+                                                limit=limit, offset=offset)
+        except ValueError as exc:
+            return {"error": str(exc), "code": "bad_request", "recoverable": True}
+
 
 
 # ===========================================================================

@@ -462,3 +462,41 @@ def test_verdict_는_코어_데이터_질문과_맡은_사람_없음을_가르�
     assert onto_svc.verdict([task, fm], {}) == "no_owner", "도메인 객체가 하나라도 있으면 코어 데이터 질문이 아니다"
     assert onto_svc.verdict([fm], sig) is None and onto_svc.verdict([task, fm], sig) is None
     assert onto_svc.verdict([{"type_slug": ""}, "글", None], {}) is None, "꼴이 틀린 항목은 세지 않는다"
+
+
+# ── 코어 key 로 카드 읽기 · 카드 응답의 core(HWAXPortal docs/request-1125 ADO-1 · ADO-2) ─────────────────────
+@pytest.mark.asyncio
+async def test_cards_by_core_returns_linked_cards_with_evidence(_rt, test_session_maker):
+    await _seed(test_session_maker)
+    none = await _rt.cards_by_core(type_slug="failure_mode", key="FM-SOLDER-CRACK")
+    assert none["total"] == 0 and none["items"] == [] and "잇기를 돌리지 않았다" in none["note"]
+    await _bind(test_session_maker)
+    got = await _rt.cards_by_core(type_slug="failure_mode", key="FM-SOLDER-CRACK")
+    assert got["total"] == 3 and got["count"] == 3 and got["more_available"] is False and "note" not in got
+    by = {it["record_id"]: it for it in got["items"]}
+    # 굵은 연결이 앞 — 제목 + 요약 두 번 맞은 논문(P-1) · 열쇠말 카드(C-1) · 절 본문 카드(C-2)
+    assert [it["record_id"] for it in got["items"]] == ["P-1", "C-1", "C-2"]
+    assert by["C-1"]["evidence"] == {"found_in": "keyword", "strong": True, "hits": 1, "terms": ["솔더 크랙"]}
+    assert by["C-1"]["agents"] == ["rel-solder"] and by["C-1"]["doc_type"] == "expert_knowledge_card"
+    assert by["P-1"]["evidence"]["found_in"] == "title" and by["P-1"]["evidence"]["terms"] == ["solder crack"]
+    sec = by["C-2"]["evidence"]
+    assert sec["found_in"] == "section" and sec["strong"] is False and sec["terms"] == ["솔더 크랙"]
+    assert sec["sections"] == [{"section_id": "1", "section_title": "규칙"}]
+    # 쪽 넘김 · 허브 한정 · 모르는 key
+    page = await _rt.cards_by_core(type_slug="failure_mode", key="FM-SOLDER-CRACK", limit=1, offset=1)
+    assert [it["record_id"] for it in page["items"]] == ["C-1"] and page["more_available"] is True
+    assert (await _rt.cards_by_core(type_slug="failure_mode", key="FM-SOLDER-CRACK", hub="다른허브"))["total"] == 0
+    miss = await _rt.cards_by_core(type_slug="failure_mode", key="FM-없음")
+    assert miss["total"] == 0 and "이어진 카드가 없다" in miss["note"]
+    assert (await _rt.cards_by_core(type_slug=" ", key="K"))["code"] == "bad_request"
+    # 지워진 카드는 나오지 않는다
+    from datetime import datetime, timezone
+
+    from api.db.models import Record
+
+    async with test_session_maker() as s:
+        (await s.get(Record, "C-1")).deleted_at = datetime.now(timezone.utc)
+        await s.commit()
+    after = await _rt.cards_by_core(type_slug="failure_mode", key="FM-SOLDER-CRACK")
+    assert after["total"] == 2 and "C-1" not in [it["record_id"] for it in after["items"]]
+

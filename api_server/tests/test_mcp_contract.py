@@ -53,6 +53,12 @@ _CONTRACT: dict[str, tuple[tuple, tuple, dict]] = {
         {"top_k": 10, "data_types": None, "agent_type": None},
     ),
     "fts_search": (("q", "top_k", "agent_type"), ("q",), {"top_k": 10, "agent_type": None}),
+    # 새 도구(HWAXPortal docs/request-1125) — 코어 개체 key 로 이어진 카드
+    "cards_by_core": (
+        ("type_slug", "key", "hub", "limit", "offset"),
+        ("key", "type_slug"),
+        {"hub": "", "limit": 20, "offset": 0},
+    ),
     "tag_search": (("tags", "agent_type", "top_k"), ("tags",), {"agent_type": None, "top_k": 20}),
     "list_records": (
         (
@@ -231,7 +237,7 @@ _UPLOADS = ("probe_persist", "probe_pure", "probe_dedup")
 
 
 def test_tool_names_unchanged(probe):
-    """C9 — 이름을 바꾸지 않는다(소비처가 이름으로 부른다). 저장소의 도구 30 + 가짜 업로드 셋."""
+    """C9 — 이름을 바꾸지 않는다(소비처가 이름으로 부른다). 저장소의 도구 31 + 가짜 업로드 셋."""
     assert set(probe["by_name"]) == set(_CONTRACT) | set(_UPLOADS)
     assert probe["checks"]["registered"] == list(_UPLOADS)
 
@@ -314,6 +320,8 @@ def test_closed_vocab_and_bounds(probe):
     assert p["agent_search"]["as_of_undated"]["enum"] == ["keep", "exclude"]
     lim = p["list_records"]["limit"]
     assert (lim["minimum"], lim["maximum"]) == (1, 100)    # list_records 의 min(limit, 100) 과 같다
+    cl = p["cards_by_core"]["limit"]
+    assert (cl["minimum"], cl["maximum"]) == (1, 100)      # onto_svc.cards_by_core 의 min(limit, 100) 과 같다
     tk = p["recommend_agents"]["top_k_tools"]
     assert (tk["minimum"], tk["maximum"]) == (0, 10)       # min(int(top_k_tools), 10) 과 같다
     # 대소문자를 가리지 않고 받는 칸은 닫지 않는다 — enum 이면 지금 되는 'Markdown' · 'doc' 를
