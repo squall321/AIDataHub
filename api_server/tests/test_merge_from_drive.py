@@ -90,7 +90,7 @@ else:
 
 _RECORDS = ["id", "title", "content_hash", "updated_at", "last_accessed_at", "signature_embedding", "embedded_at"]
 _RECORDS_M3 = ["signature_embedding_m3", "signature_embedding_m3_at", "signature_embedding_m3_model"]
-_SECTIONS = ["id", "record_id", "section_id", "content_text", "embedding"]
+_SECTIONS = ["id", "record_id", "section_id", "title", "content_text", "embedding"]
 _SECTIONS_M3 = ["embedding_m3", "embedding_m3_at", "embedding_m3_model"]
 
 
@@ -188,7 +188,13 @@ def test_updated_at_이_없는_표는_값이_같은_줄을_다시_쓰지_않는�
     set_cols = [c.split("=", 1)[0].strip() for c in set_part.split(",")]
     guard = s.split(" WHERE (", 1)[1].split(") IS DISTINCT FROM (", 1)
     assert guard[0].split(",") == [f"record_sections.{c}" for c in set_cols], (guard[0], set_cols)
-    assert guard[1].split(")", 1)[0].split(",") == [f"EXCLUDED.{c}" for c in set_cols], guard[1]
+    # 견주는 쪽은 덮을 새 값 그대로 — 두 번째 슬롯은 'dev 가 비었고 제목 · 본문이 같으면 이 박스 값'(SE-3), 나머지는 dev 값
+    keep = ("WHEN EXCLUDED.embedding_m3 IS NULL AND record_sections.title IS NOT DISTINCT FROM EXCLUDED.title"
+            " AND record_sections.content_text IS NOT DISTINCT FROM EXCLUDED.content_text")
+    want = [f"CASE {keep} THEN record_sections.{c} ELSE EXCLUDED.{c} END" if c in _SECTIONS_M3 else f"EXCLUDED.{c}"
+            for c in set_cols]
+    assert guard[1].split(")", 1)[0].split(",") == want, guard[1]
+    assert set_part.split(", ") == [f"{c}={w}" for c, w in zip(set_cols, want)], set_part
     assert not {"id", "record_id", "section_id"} & set(set_cols), set_cols
 
 
@@ -299,3 +305,4 @@ def test_레코드에_딸린_표는_이_박스가_이긴_레코드의_줄을_빼
         assert "WHERE m.record_id = d.id AND r.id = d.id AND r.updated_at > d.updated_at" in s, s
     for t in ("records", "org_teams"):
         assert "_devrec" not in sessions[t], sessions[t]
+

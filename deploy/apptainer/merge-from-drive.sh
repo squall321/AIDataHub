@@ -106,6 +106,7 @@ fi
 #    updated_at 있는 테이블은 '더 최신일 때만' 갱신(cae00 최신 편집 보호), 없으면 EXCLUDED.
 STAGE_SQL() { apptainer exec "instance://$INST" psql -h 127.0.0.1 -p "$PORT" -U "$USER" -d "$STAGE_DB" "$@"; }
 CFILE="/tmp/aidh_mg.bin"   # 컨테이너 내부 경로(서버 COPY 대상)
+_sub() { printf '%s' "$1" | sed "s/@T@/$2/g; s/@S@/$3/g"; }   # 새 값 식의 자리(@T@ 이 박스 행 · @S@ dev 행)를 바꾼다
 
 merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외컬럼(csv, 옵션) $5=m3 슬롯 채움 — 양쪽이 같아야 하는 열(csv, 옵션) $6=덮지 않는 열 — 새 행에만 dev 값(csv, 옵션) $7=레코드를 따르는 열(자식 표의 record_id, 옵션)
   # 충돌키는 **자연키**여야 한다. id 가 nextval() 대리키인 테이블(record_sections,
@@ -154,11 +155,29 @@ merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외�
   # 엄격히 더 새로울 때만 덮는다 — 아래 세션은 aidh.keep_updated_at 으로 운영 updated_at 을 dev 값 그대로 두므로(병합 시각으로 올리지 않는다),
   # >= 이면 바뀌지 않은 행도 매번 다시 써 m3 색인까지 갱신한다.
   local where=""; [ -n "$upd" ] && where="WHERE $t.$upd IS NULL OR EXCLUDED.$upd > $t.$upd"
-  # 바뀐 시각 칸이 없는 표는 값이 같은 줄을 다시 쓰지 않는다 — 예전엔 절 109만 줄을 조건 없이 다시 써 HNSW 색인까지 매번 갱신했다(docs/aidh-parts-sync).
-  # 비교 열은 덮는 열(SET 절) 그대로다 — 조회를 더 하지 않는다.
+  # 덮는 열마다 새 값 식 — @T@ 는 이 박스 행, @S@ 는 dev 행 자리다(upsert 는 $t · EXCLUDED, 셈은 r · m 으로 바꾼다 — _sub).
+  # m3 슬롯 열(<열>_m3 · _m3_at · _m3_model)은 $5 를 준 표에서 dev 값이 비었고 $5 의 열(그 벡터의 재료)이 양쪽에서 같으면 이 박스 값을
+  # 둔다 — 이 박스가 먼저 채운 두 번째 슬롯을 dev 의 빈 값으로 지우지 않는다(HWAXPortal docs/request-1125 SE-3). 재료가 다르면 dev 값
+  # (비었으면 빈 값 — 낡은 벡터를 남기지 않는다, 이 박스의 스윕이 새 글로 다시 채운다)이고 dev 가 찼으면 dev 값이다.
   local _setcols; _setcols="$(printf '%s' "$setclause" | sed 's/=EXCLUDED\.[^,]*//g' | tr -d ' ')"
+  local _keepcond="" _c _b _exprs=""
+  [ -n "$same" ] && _keepcond="$(printf '%s' "$same" | tr ',' '\n' | sed 's/.*/@T@.& IS NOT DISTINCT FROM @S@.&/' | paste -sd'&' - | sed 's/&/ AND /g')"
+  for _c in $(printf '%s' "$_setcols" | tr ',' ' '); do
+    _b=""
+    if [ -n "$_keepcond" ]; then
+      case "$_c" in *_m3) _b="$_c" ;; *_m3_at) _b="${_c%_at}" ;; *_m3_model) _b="${_c%_model}" ;; esac
+      if [ -n "$_b" ] && [[ ",$_setcols," != *",$_b,"* ]]; then _b=""; fi
+    fi
+    if [ -n "$_b" ]; then _exprs="$_exprs${_exprs:+,}CASE WHEN @S@.$_b IS NULL AND $_keepcond THEN @T@.$_c ELSE @S@.$_c END"
+    else _exprs="$_exprs${_exprs:+,}@S@.$_c"; fi
+  done
+  if [ -n "$_setcols" ]; then
+    setclause="$(paste -d'=' <(printf '%s\n' "$_setcols" | tr ',' '\n') <(_sub "$_exprs" "$t" EXCLUDED | tr ',' '\n') | paste -sd',' - | sed 's/,/, /g')"
+  fi
+  # 바뀐 시각 칸이 없는 표는 값이 같은 줄을 다시 쓰지 않는다 — 예전엔 절 109만 줄을 조건 없이 다시 써 HNSW 색인까지 매번 갱신했다(docs/aidh-parts-sync).
+  # 비교는 지금 값 대 덮을 새 값(위 식) 그대로다 — 조회를 더 하지 않는다.
   if [ -z "$upd" ] && [ -n "$_setcols" ]; then
-    where="WHERE ($(printf '%s' "$_setcols" | tr ',' '\n' | sed "s/.*/$t.&/" | paste -sd',' -)) IS DISTINCT FROM ($(printf '%s' "$_setcols" | tr ',' '\n' | sed 's/.*/EXCLUDED.&/' | paste -sd',' -))"
+    where="WHERE ($(printf '%s' "$_setcols" | tr ',' '\n' | sed "s/.*/$t.&/" | paste -sd',' -)) IS DISTINCT FROM ($(_sub "$_exprs" "$t" EXCLUDED))"
   fi
   local action="DO UPDATE SET $setclause $where"; [ -n "$setclause" ] || action="DO NOTHING"
 
@@ -362,7 +381,8 @@ try_merge records                "id"                   "updated_at" ""         
 # ↓ 레코드에 딸린 표 — 이 박스가 더 새로운 레코드의 줄은 dev 판으로 덮지도 넣지도 않는다(맨 끝 인자 record_id — merge_table $7).
 try_merge agent_records          "agent_type,record_id" ""          ""         ""                   ""                                  "record_id"
 # ↓ id 가 대리키(nextval)라 자연키로 충돌 판정하고 id 는 운영 시퀀스에 맡긴다.
-try_merge record_sections        "record_id,section_id" ""          "id"       ""                   ""                                  "record_id"
+# 두 번째 임베딩 슬롯(embedding_m3 …)은 dev 값이 비었고 제목 · 본문이 같으면 이 박스 값을 둔다($5 — SE-3, 벡터의 재료가 그 둘이다).
+try_merge record_sections        "record_id,section_id" ""          "id"       "title,content_text" ""                                  "record_id"
 try_merge record_attachments     "id"                   ""          ""         ""                   ""                                  "record_id"
 # ↓ 파생 표 — 행의 id 가 아니라 agent 단위로(agents 다음이어야 한다 — 병합된 sample_queries 를 본다).
 if [ -z "$PARTS_TABLES" ] || [[ "$PARTS_TABLES" == *" agent_sample_embeddings "* ]]; then

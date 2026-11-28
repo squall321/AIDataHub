@@ -441,3 +441,54 @@ def test_dev_판으로_덮는_행도_이_박스의_조회_수와_조회_시각�
     assert after == {"k1": ("h-k1-dev", "3", "10-20", seen),                          # 덮였다 — 조회 수 · 조회 시각만 이 박스 것
                      "k2": ("h-k2-dev", "2", "10-20", "2026-10-22 00:00:00.000000"),  # 새 행은 dev 값
                      "k3": ("h-k3-dev", "0", "10-20", "")}, after                     # dev 의 조회는 오지 않는다
+
+
+# ── 절의 두 번째 슬롯(HWAXPortal docs/request-1125 SE-3) ─────────────────────
+# 레코드는 양쪽이 같은 판이다(같은 시각 · 같은 해시) — 절이 레코드를 따라 빠지지 않게.
+_SEC_RECS = _records([("s1", 1, "h-1", "2026-10-10"), ("s2", 2, "h-2", "2026-10-10")])
+
+
+def _sections(rows: list[tuple[str, str, str, str | None]]) -> str:
+    """(record, section, 본문, m3 출처 — None 이면 비었다) → record_sections INSERT. 출처는 embedding_m3_model 에 적는다."""
+    def one(rid, sid, body, origin):
+        m3 = f"{_VEC}, now(), '{origin}'" if origin else "NULL, NULL, NULL"
+        return f"('{rid}', '{sid}', 1, '절 {sid}', '{body}', {m3})"
+    return ("INSERT INTO record_sections (record_id, section_id, level, title, content_text, embedding_m3, embedding_m3_at, "
+            "embedding_m3_model) VALUES " + ", ".join(one(*r) for r in rows) + ";")
+
+
+# 박스 — a 는 이 박스가 슬롯을 먼저 채웠다(dev 는 비었고 글이 같다), b 는 dev 가 글을 고쳤다(dev 슬롯은 비었다 — 낡은 벡터를 남기지 않는다),
+# c 는 dev 만 채웠다, d 는 양쪽이 같다, e 는 dev 에만 있다.
+_BOX_SECS = _SEC_RECS + _sections([("s1", "a", "같은 글", "box"), ("s1", "b", "옛 글", "box"), ("s2", "c", "같은 글 c", None),
+                                   ("s2", "d", "같은 글 d", None)])
+_DEV_SECS = _SEC_RECS + _sections([("s1", "a", "같은 글", None), ("s1", "b", "새 글", None), ("s2", "c", "같은 글 c", "dev"),
+                                   ("s2", "d", "같은 글 d", None), ("s2", "e", "새 절", "dev")])
+
+
+def _sec_rows(pg) -> dict[str, tuple[str, str]]:
+    out = _ok(_psql(pg, "aidh", "SELECT record_id || '/' || section_id, content_text, coalesce(embedding_m3_model, '-') "
+                                "FROM record_sections ORDER BY 1;"))
+    return {k: (body, origin) for k, body, origin in (line.split("|") for line in out.splitlines())}
+
+
+def _sec_state(pg) -> str:
+    return _ok(_psql(pg, "aidh", "SELECT record_id, section_id, content_text, coalesce(embedding_m3_model, '-'), "
+                                 "embedding_m3 IS NULL FROM record_sections ORDER BY 1, 2;"))
+
+
+def test_절의_두_번째_슬롯은_dev_가_비고_글이_같으면_이_박스_값을_둔다(pg, boxes):
+    build, merge = boxes
+    dump = build(_BOX_SECS, _DEV_SECS)
+    r = merge(dump)
+    assert r.returncode == 0 and "✓ merge 완료" in r.stdout, r.stdout + r.stderr
+    assert _sec_rows(pg) == {
+        "s1/a": ("같은 글", "box"),      # dev 의 빈 슬롯으로 지우지 않는다
+        "s1/b": ("새 글", "-"),          # 글이 바뀌었으면 dev 판(빈 슬롯) — 옛 글의 벡터를 남기지 않는다
+        "s2/c": ("같은 글 c", "dev"),    # 이 박스가 비었으면 dev 값으로 채운다
+        "s2/d": ("같은 글 d", "-"),
+        "s2/e": ("새 절", "dev"),
+    }
+    # 같은 덤프로 다시 — 결과가 그대로다
+    r2 = merge(dump)
+    assert r2.returncode == 0 and _sec_rows(pg)["s1/a"] == ("같은 글", "box"), r2.stdout + r2.stderr
+
