@@ -443,7 +443,7 @@ def test_dev_판으로_덮는_행도_이_박스의_조회_수와_조회_시각�
                      "k3": ("h-k3-dev", "0", "10-20", "")}, after                     # dev 의 조회는 오지 않는다
 
 
-# ── 절의 두 번째 슬롯(HWAXPortal docs/request-1125 SE-3) ─────────────────────
+# ── 절의 두 번째 슬롯 · 표마다 셈(HWAXPortal docs/request-1125 SE-3 · SE-6) ─────────────────────
 # 레코드는 양쪽이 같은 판이다(같은 시각 · 같은 해시) — 절이 레코드를 따라 빠지지 않게.
 _SEC_RECS = _records([("s1", 1, "h-1", "2026-10-10"), ("s2", 2, "h-2", "2026-10-10")])
 
@@ -488,7 +488,13 @@ def test_절의_두_번째_슬롯은_dev_가_비고_글이_같으면_이_박스_
         "s2/d": ("같은 글 d", "-"),
         "s2/e": ("새 절", "dev"),
     }
-    # 같은 덤프로 다시 — 결과가 그대로다
+    # 표마다 추가 · 갱신 · 그대로 · 시각(SE-6) — 절은 e 추가 · b · c 갱신 · a · d 그대로
+    line = next(x for x in r.stdout.splitlines() if "✓ record_sections:" in x)
+    assert "추가 1 · 갱신 2 · 그대로 2" in line and " → " in line and "초)" in line, line
+    rec = next(x for x in r.stdout.splitlines() if "✓ records:" in x)
+    assert "추가 0 · 갱신 0 · 그대로 2" in rec, rec
+    # 같은 덤프로 다시 — a 를 다시 쓰지 않는다(예전엔 a 가 매번 dev 의 빈 값과 '다르다' 로 덮였다)
     r2 = merge(dump)
-    assert r2.returncode == 0 and _sec_rows(pg)["s1/a"] == ("같은 글", "box"), r2.stdout + r2.stderr
+    line2 = next(x for x in r2.stdout.splitlines() if "✓ record_sections:" in x)
+    assert "추가 0 · 갱신 0 · 그대로 5" in line2, line2
 

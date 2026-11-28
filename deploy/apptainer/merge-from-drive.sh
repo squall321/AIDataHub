@@ -11,6 +11,8 @@
 #   AIDH_MERGE_PARTS=1 bash ... merge-from-drive.sh   # 조각 길 — fetch-parts.sh 가 받은 바뀐 조각만(캐시는 fetch-parts.sh 와 같은 자리)
 #   AIDH_MERGE_PARTS_PLAN=<캐시>/plan.json bash ... merge-from-drive.sh   # 조각 길 — 계획 파일을 직접
 #
+# 끝 줄 — 표마다 추가 · 갱신 · 그대로(값이 같아 덮지 않은 줄) · 슬롯 채움 수와 시작 → 끝 시각(걸린 초)을 찍는다.
+#
 # 조각 길(HWAXPortal docs/aidh-parts-sync) — 스테이징을 색인 · 제약 없는 스키마로 비워 만들고 계획의 조각만 싣는다. 병합 규칙은 같은
 # 함수다(merge_table · merge_samples) — 계획에 든 표만 돈다. 운영 전체 스냅숏 대신 덮을 줄의 앞 모습과 새로 든 키만 남긴다
 # (rollback-parts.sh 로 되돌린다).
@@ -191,9 +193,10 @@ merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외�
     _on="$_onpk$(printf '%s' "$same" | tr ',' '\n' | sed 's/.*/ AND r.& IS NOT DISTINCT FROM m.&/' | paste -sd'\0' -)"
     for _s in $(printf '%s\n' "$_pc" | grep -E '_m3$' || true); do
       printf '%s\n' "$_sc" | grep -qx "$_s" || continue
+      # 채운 줄 수를 센다(끝 줄 fill|n — SE-6).
       fill="$fill
-UPDATE public.$t AS r SET $_s = m.$_s, ${_s}_at = m.${_s}_at, ${_s}_model = m.${_s}_model FROM _mg m
- WHERE $_on AND r.$_s IS NULL AND m.$_s IS NOT NULL;"
+WITH f AS (UPDATE public.$t AS r SET $_s = m.$_s, ${_s}_at = m.${_s}_at, ${_s}_model = m.${_s}_model FROM _mg m
+ WHERE $_on AND r.$_s IS NULL AND m.$_s IS NOT NULL RETURNING 1) SELECT 'fill|' || count(*) FROM f;"
     done
   fi
 
@@ -241,7 +244,7 @@ WITH s AS (DELETE FROM _mg m USING _devrec d, public.records r WHERE m.$follow =
 SELECT 'follow|' || count(*) || '|' || count(DISTINCT k) FROM s;"
   fi
 
-  local before after
+  local before after _t0=$SECONDS _ts0; _ts0="$(date +%H:%M:%S)"
   before="$(PSQL -d "$DB" -tA -c "SELECT count(*) FROM $t;")"
   apptainer exec "instance://$INST" rm -f "$CFILE" 2>/dev/null
   # ① staging → 파일(서버 COPY)
@@ -259,14 +262,26 @@ SELECT 'follow|' || count(*) || '|' || count(DISTINCT k) FROM s;"
 SET aidh.keep_updated_at = 'on';
 CREATE TEMP TABLE _mg (LIKE public.$t INCLUDING DEFAULTS);
 COPY _mg ($cols) FROM '$CFILE' (FORMAT binary);$follow_sql$newer$keep_before
-INSERT INTO public.$t ($cols) SELECT $cols FROM _mg ON CONFLICT ($pk) $action;$fill
+WITH u AS (INSERT INTO public.$t ($cols) SELECT $cols FROM _mg ON CONFLICT ($pk) $action RETURNING (xmax = 0) AS ins)
+SELECT 'counts|' || count(*) FILTER (WHERE ins) || '|' || count(*) FILTER (WHERE NOT ins) || '|' || (SELECT count(*) FROM _mg) FROM u;$fill
 DROP TABLE _mg;
 SQL
 )"
   then after="$(PSQL -d "$DB" -tA -c "SELECT count(*) FROM $t;")"
-    local _fl _fn _fk; _fl="$(printf '%s\n' "$out" | grep '^follow|' || true)"; out="$(printf '%s\n' "$out" | grep -v '^follow|' || true)"
+    local _fl _fn _fk _cl _ins _updn _staged _fills _same _rows=""
+    _fl="$(printf '%s\n' "$out" | grep '^follow|' || true)"
+    _cl="$(printf '%s\n' "$out" | grep '^counts|' || true)"
+    _fills="$(printf '%s\n' "$out" | grep '^fill|' | cut -d'|' -f2 | paste -sd+ - || true)"
+    out="$(printf '%s\n' "$out" | grep -v '^follow|\|^counts|\|^fill|' || true)"
     IFS='|' read -r _ _fn _fk <<<"${_fl:-follow|0|0}"
-    echo "    ✓ $t: +$((after-before)) (총 $after)$( [ "${_fn:-0}" != 0 ] && echo " · 이 박스 판이 이긴 레코드 ${_fk}건의 줄 ${_fn}개는 그대로")"
+    # 표마다 추가 · 갱신 · 그대로(덮을 것이 없었던 dev 줄) · 슬롯 채움 · 걸린 시간(HWAXPortal docs/request-1125 SE-6 — 'RETURNING (xmax = 0)')
+    IFS='|' read -r _ _ins _updn _staged <<<"${_cl:-counts|||}"
+    if [[ "$_ins$_updn$_staged" =~ ^[0-9]+$ ]]; then
+      _same=$((_staged - _ins - _updn))
+      _rows=" · 추가 $_ins · 갱신 $_updn · 그대로 $_same"
+      [ -n "$_fills" ] && _rows="$_rows · 슬롯 채움 $(( _fills ))"
+    fi
+    echo "    ✓ $t: +$((after-before)) (총 $after)$_rows · $_ts0 → $(date +%H:%M:%S)($((SECONDS-_t0))초)$( [ "${_fn:-0}" != 0 ] && echo " · 이 박스 판이 이긴 레코드 ${_fk}건의 줄 ${_fn}개는 그대로")"
     if [ -n "$keep_before" ]; then
       apptainer exec "instance://$INST" cat "$_bf" | gzip -c > "$BEFORE_DIR/$t.before.bin.gz" \
         && apptainer exec "instance://$INST" cat "$_nk" | gzip -c > "$BEFORE_DIR/$t.new.csv.gz" \
@@ -299,7 +314,8 @@ SAMPLE_WANT_HAVE="want AS (
   have AS (SELECT agent_type, array_agg(sample_text ORDER BY sample_text) AS t FROM public.agent_sample_embeddings GROUP BY agent_type)"
 
 merge_samples() {
-  local t=agent_sample_embeddings _tex _sex _pc _sc _miss cols seq out n_take n_drop seqv stale
+  local t=agent_sample_embeddings _tex _sex _pc _sc _miss cols seq out n_take n_drop seqv stale _t0=$SECONDS _ts0
+  _ts0="$(date +%H:%M:%S)"
   _tex="$(PSQL -d "$DB" -tA -c "SELECT to_regclass('public.$t') IS NOT NULL;" 2>/dev/null)"
   case "$_tex" in t) : ;; f) echo "    · $t: 운영에 없음 — skip"; return 0 ;; *) echo "    ✗ $t: 운영 DB 조회 실패(접속·인증 확인)" >&2; return 1 ;; esac
   _sex="$(STAGE_SQL -tA -c "SELECT to_regclass('public.$t') IS NOT NULL;" 2>/dev/null)"
@@ -351,7 +367,7 @@ SQL
     apptainer exec "instance://$INST" rm -f "/tmp/aidh_bf_$t.bin" "/tmp/aidh_nk_$t.csv" 2>/dev/null
   fi
   IFS='|' read -r n_take n_drop seqv <<<"$out"
-  echo "    ✓ $t: 덤프 판으로 다시 지은 agent ${n_take} · 지우기만 ${n_drop}${seqv:+ · 순번을 $seqv 로 올림} (총 $(PSQL -d "$DB" -tA -c "SELECT count(*) FROM $t;")행)"
+  echo "    ✓ $t: 덤프 판으로 다시 지은 agent ${n_take} · 지우기만 ${n_drop}${seqv:+ · 순번을 $seqv 로 올림} (총 $(PSQL -d "$DB" -tA -c "SELECT count(*) FROM $t;")행) · $_ts0 → $(date +%H:%M:%S)($((SECONDS-_t0))초)"
   if ! stale="$(PSQL -d "$DB" -tA -c "WITH $SAMPLE_WANT_HAVE SELECT w.agent_type FROM want w LEFT JOIN have h USING (agent_type) WHERE COALESCE(h.t, '{}') IS DISTINCT FROM w.t ORDER BY 1;")"; then
     echo "    ⚠ $t: 색인이 sample_queries 와 다른 agent 를 세지 못했다"; return 0
   fi

@@ -148,11 +148,11 @@ def test_m3_슬롯은_운영이_비었으면_updated_at_과_상관없이_채운�
     s = sessions["records"]
     assert s.startswith("SET aidh.keep_updated_at = 'on';"), "병합이 운영 updated_at 을 병합 시각으로 올린다"
     assert "WHERE records.updated_at IS NULL OR EXCLUDED.updated_at > records.updated_at" in s, "같은 행을 매번 다시 쓴다"
-    fill = ("UPDATE public.records AS r SET signature_embedding_m3 = m.signature_embedding_m3, "
+    fill = ("WITH f AS (UPDATE public.records AS r SET signature_embedding_m3 = m.signature_embedding_m3, "
             "signature_embedding_m3_at = m.signature_embedding_m3_at, "
             "signature_embedding_m3_model = m.signature_embedding_m3_model FROM _mg m\n"
             " WHERE r.id = m.id AND r.title IS NOT DISTINCT FROM m.title AND r.content_hash IS NOT DISTINCT FROM m.content_hash"
-            " AND r.signature_embedding_m3 IS NULL AND m.signature_embedding_m3 IS NOT NULL;")
+            " AND r.signature_embedding_m3 IS NULL AND m.signature_embedding_m3 IS NOT NULL RETURNING 1) SELECT 'fill|' || count(*) FROM f;")
     assert fill in s, s
     assert s.index("INSERT INTO public.records") < s.index(fill) < s.index("DROP TABLE _mg;")
 
