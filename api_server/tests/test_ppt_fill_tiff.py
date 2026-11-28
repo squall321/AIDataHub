@@ -93,3 +93,36 @@ def test_broken_tiff_stays_tiff_with_warning(tmp_path):
     blob, ext = conv._tiff_to_png(Figure(id="F", number=1, caption="c", section_ref="1"), b"II*\x00broken", "tiff")
     assert (blob, ext) == (b"II*\x00broken", "tiff")
     assert any("TIFF 를 PNG 로 바꾸지 못해" in w for w in conv.warnings)
+
+
+# ── 요약 · agent_hints 는 쪽 제목으로(HWAXPortal docs/request-1125 IR-33) ─────────────────────
+def test_summary_and_hints_come_from_slide_titles(tmp_path):
+    prs = pptx.Presentation()
+    for title, body in (("표지 제목", "회사 이름"), ("낙하 시험 결과", "모서리 낙하에서 힌지부 균열이 났다."), ("응력 지도", "최대 응력 320 MPa"),
+                        ("낙하 시험 결과", "같은 제목의 둘째 쪽"), ("결론", "마지막 쪽 글 — 예전엔 이런 글 조각이 요약이 됐다")):
+        s = prs.slides.add_slide(prs.slide_layouts[1])
+        s.shapes.title.text = title
+        s.placeholders[1].text_frame.text = body
+    path = tmp_path / "t.pptx"
+    prs.save(path)
+    meta = PptxConverter(_opts(tmp_path)).convert(path).meta
+    assert meta["summary"] == "낙하 시험 결과 · 응력 지도 · 결론", meta["summary"]
+    assert "N/A" not in meta["agent_hints"] and "주요 토픽: 낙하 시험 결과, 응력 지도, 결론" in meta["agent_hints"]
+
+
+def test_figure_reading_summaries_join_document_summary(tmp_path):
+    from api.services import figure_reading as fr
+
+    payload = {"meta": {"summary": "낙하 시험 결과 · 응력 지도"},
+               "sections": [{"id": "1", "blocks": [{"type": "figure", "ref": "F1"}], "children": []}],
+               "figures": [{"id": "F1", "number": 1, "caption": "Figure 1: a.png", "section_ref": "1", "image_path": "a.png"}]}
+    (tmp_path / "a.png").write_bytes(_img("PNG"))
+
+    import httpx
+
+    def srv(request):
+        return httpx.Response(200, json={"choices": [{"message": {"content": "종류: 지도\n요약: 최대 응력 320 MPa(힌지)"}}]})
+
+    cfg = fr.VlmSettings(base_url="http://v/v1", model="m", key="", timeout_s=5, max_concurrency=1, max_figures=5, thinking_off=True)
+    fr.apply(payload, tmp_path, cfg=cfg, client=httpx.Client(transport=httpx.MockTransport(srv)))
+    assert payload["meta"]["summary"] == "낙하 시험 결과 · 응력 지도 / 그림 — 최대 응력 320 MPa(힌지)"

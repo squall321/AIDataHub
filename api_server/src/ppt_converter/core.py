@@ -60,9 +60,10 @@ logger = logging.getLogger(__name__)
 
 def _default_agent_hints(
     *, data_type_name: str, tags: list[str], section_count: int,
-    table_count: int, figure_count: int,
+    table_count: int, figure_count: int, titles: list[str] | None = None,
 ) -> str:
-    topics = ", ".join(t for t in (tags or []) if t) or "N/A"
+    # 태그가 없으면 쪽 제목(앞의 다섯)이 주제다 — 'N/A' 로 비우지 않는다(HWAXPortal docs/request-1125 IR-33)
+    topics = ", ".join(t for t in (tags or []) if t) or ", ".join((titles or [])[:5]) or "N/A"
     return (
         f"이 record 는 {data_type_name} 입니다. 주요 토픽: {topics}. "
         f"본문은 총 {section_count} 섹션, {table_count} 표, "
@@ -93,6 +94,7 @@ def _apply_agent_discovery_defaults(
     section_count: int,
     table_count: int,
     figure_count: int,
+    titles: list[str] | None = None,
 ) -> None:
     overrides = overrides or {}
     if "agent_hints" in overrides and overrides["agent_hints"] is not None:
@@ -101,7 +103,7 @@ def _apply_agent_discovery_defaults(
         meta["agent_hints"] = _default_agent_hints(
             data_type_name=data_type_name, tags=tags,
             section_count=section_count, table_count=table_count,
-            figure_count=figure_count,
+            figure_count=figure_count, titles=titles,
         )
     if "related_record_ids" in overrides and overrides["related_record_ids"] is not None:
         meta["related_record_ids"] = list(overrides["related_record_ids"])
@@ -901,17 +903,25 @@ class PptxConverter:
         """meta.summary 후보 텍스트를 다단계 폴백으로 추출.
 
         1) core_properties.subject → 가장 권위 있는 신호.
-        2) 표지 다음 슬라이드(또는 1슬라이드뿐이면 슬라이드 1)의 paragraph/list_item
+        2) 쪽 제목들(표지 뒤, 같은 제목은 한 번) — 문서가 무엇을 다루는지를 쪽마다 한 마디로 말한다. 예전엔 본문 글을
+           이어 붙여 앞 몇 쪽의 글 조각이 요약이 됐다(HWAXPortal docs/request-1125 IR-33). 그림 판독이 켜져 있으면
+           판독 요약이 뒤에 붙는다(api.services.figure_reading).
+        3) 제목이 하나도 없으면 표지 다음 슬라이드(또는 1슬라이드뿐이면 슬라이드 1)의 paragraph/list_item
            텍스트를 모아 약 250자 이내로 자름.
 
-        둘 다 없으면 빈 문자열. 어떤 슬라이드 본문이라도 있으면 빈 summary 보다는
-        낫다 (RAG 검색 가중치 향상).
+        셋 다 없으면 빈 문자열.
         """
         # 1) core_properties.subject 우선.
         if core is not None:
             subject = (getattr(core, "subject", "") or "").strip()
             if subject and len(subject) >= 10:
                 return subject[:300]
+
+        # 2) 쪽 제목.
+        titles = self._slide_titles()
+        if titles:
+            joined = " · ".join(titles)
+            return joined[:300] + ("…" if len(joined) > 300 else "")
 
         # 2) 본문 슬라이드 텍스트 추출.
         if not self.section_root:
@@ -943,6 +953,16 @@ class PptxConverter:
             return ""
         joined = " · ".join(parts)
         return joined[:300] + ("…" if len(joined) > 300 else "")
+
+    def _slide_titles(self) -> list[str]:
+        """쪽 제목 — 표지(첫 쪽, 쪽이 둘 이상일 때) 뒤, 빈 것 · 같은 것은 한 번."""
+        secs = self.section_root[1:] if len(self.section_root) > 1 else self.section_root
+        out: list[str] = []
+        for sec in secs:
+            t = " ".join((getattr(sec, "title", "") or "").split())
+            if t and t not in out:
+                out.append(t)
+        return out
 
     # ---- meta --------------------------------------------------------
 
@@ -1006,6 +1026,7 @@ class PptxConverter:
             section_count=len(self.section_root),
             table_count=len(self.tables),
             figure_count=len(self.figures),
+            titles=self._slide_titles(),
         )
 
         if not meta["tags"]:

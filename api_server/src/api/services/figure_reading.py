@@ -313,6 +313,12 @@ def apply(payload: dict[str, Any], output_dir: Path, *, cfg: VlmSettings | None 
     if not isinstance(payload.get("meta"), dict):
         payload["meta"] = {}
     payload["meta"]["figure_reading"] = stats
+    # 문서 요약 뒤에 판독 요약(앞의 다섯)을 붙인다 — 요약이 글 조각이 아니라 쪽 제목 · 그림이 말하는 값이 되게(IR-33)
+    sums = list(dict.fromkeys((f.get("reading") or {}).get("summary") for f in figures if (f.get("reading") or {}).get("summary")))
+    if sums:
+        base = str(payload["meta"].get("summary") or "").strip()
+        add = "그림 — " + "; ".join(sums[:5])
+        payload["meta"]["summary"] = (f"{base} / {add}" if base else add)[:600]
     if stats["failed"]:
         log.warning("그림 판독 — %d/%d 개 실패(%s)", stats["failed"], stats["figures"], stats["reasons"])
     return payload
