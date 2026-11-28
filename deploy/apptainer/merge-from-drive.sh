@@ -10,6 +10,8 @@
 #   AIDH_MERGE_DUMP=/path/to.sql.gz bash ... merge-from-drive.sh   # 로컬 덤프 지정
 #   AIDH_MERGE_PARTS=1 bash ... merge-from-drive.sh   # 조각 길 — fetch-parts.sh 가 받은 바뀐 조각만(캐시는 fetch-parts.sh 와 같은 자리)
 #   AIDH_MERGE_PARTS_PLAN=<캐시>/plan.json bash ... merge-from-drive.sh   # 조각 길 — 계획 파일을 직접
+#   AIDH_MERGE_BEFORE=image bash ... merge-from-drive.sh   # 전체 길 — 병합 전 전체 덤프 대신 덮을 줄의 앞 모습만(rollback-parts.sh)
+#   AIDH_MERGE_PRECOUNT=0 bash ... merge-from-drive.sh     # 전체 길 — 병합 전 '쓸 행 세기'(0 이면 덤프 · upsert 를 건너뛴다)를 끈다
 #
 # 끝 줄 — 표마다 추가 · 갱신 · 그대로(값이 같아 덮지 않은 줄) · 슬롯 채움 수와 시작 → 끝 시각(걸린 초)을 찍는다.
 #
@@ -88,20 +90,6 @@ gunzip -c "$DUMP" | apptainer exec "instance://$INST" \
   || { echo "[ERROR] staging 로드 실패 — /tmp/aidh-merge-load.log"; tail -5 /tmp/aidh-merge-load.log; PSQL -d postgres -c "DROP DATABASE IF EXISTS $STAGE_DB WITH (FORCE);" >/dev/null; exit 1; }
 fi
 
-# 3) 운영 직전 스냅샷(롤백용, 로컬) — 조각 길은 전체 대신 덮을 줄의 앞 모습 · 새로 든 키만(merge_table · merge_samples 가 표마다 남긴다)
-BEFORE_DIR=""
-if [ -n "$PARTS_PLAN" ]; then
-  BEFORE_DIR="/data/backups/aidh/pre-parts-$(date +%Y%m%d-%H%M%S)"
-  if mkdir -p "$BEFORE_DIR" 2>/dev/null; then echo "→ 덮을 줄의 앞 모습: $BEFORE_DIR (rollback-parts.sh 로 되돌린다)"
-  else echo "  ⚠ 앞 모습 자리를 못 만들었다($BEFORE_DIR) — 되돌릴 자료 없이 병합한다"; BEFORE_DIR=""; fi
-  BK="$BEFORE_DIR"
-else
-BK="/data/backups/aidh/pre-merge-$(date +%Y%m%d-%H%M%S).sql.gz"
-mkdir -p "$(dirname "$BK")" 2>/dev/null && \
-  apptainer exec "instance://$INST" pg_dump -h 127.0.0.1 -p "$PORT" -U "$USER" -d "$DB" 2>/dev/null | gzip -c > "$BK" \
-  && echo "→ 운영 직전 스냅샷: $BK (롤백용)" || echo "  ⚠ 사전 스냅샷 생략(디스크/권한)"
-fi
-
 # 4) 테이블별 MERGE — dev 실증 완료 방식(vector/배열/jsonb 무손실, 38967행 검증):
 #    ① staging 서버 COPY → 컨테이너 내부 바이너리 파일(두 DB 가 같은 인스턴스라 /tmp 공유)
 #    ② 운영 단일 세션에서 TEMP(LIKE 원본, 타입 자동 보존) → COPY FROM 파일 → upsert
@@ -118,6 +106,8 @@ merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외�
   #  staging 정리까지 통째로 스킵됐다). 그런 테이블은 $4 로 id 를 제외해 운영 시퀀스가
   # 새 id 를 부여하게 하고, 자연키로 충돌 판정한다.
   local t="$1" pk="$2" upd="${3:-}" drop="${4:-}" same="${5:-}" keep="${6:-}" follow="${7:-}"
+  # MERGE_MODE=count — 쓰지 않고 쓸 행(추가 · 갱신 · 슬롯 채움)만 센다(전체 덤프 길의 병합 전 셈, 아래 4a). 판정 식은 병합과 같은 것을 쓴다.
+  local mode="${MERGE_MODE:-merge}"
   # psql 이 접속·인증 실패로 죽으면 stdout 이 빈 문자열이라 '테이블 없음'과 구별되지 않는다.
   # 그러면 전 테이블이 skip 되는데 FAILED 에도 안 잡혀 '✓ merge 완료' 로 끝난다 —
   # 한 행도 안 들어왔는데 성공으로 보고된다. 'f' 만 진짜 '없음'이고 빈 값은 조회 실패다.
@@ -142,7 +132,9 @@ merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외�
   _pc="$(PSQL -d "$DB" -tA -c "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='$t';" | sort)"
   _sc="$(STAGE_SQL -tA -c "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='$t';" | sort)"
   _miss="$(comm -13 <(printf '%s\n' "$_pc") <(printf '%s\n' "$_sc") | grep -v '^$' | paste -sd',' - || true)"
-  if [ -n "$_miss" ]; then
+  if [ -n "$_miss" ] && [ "$mode" = count ]; then
+    COUNT_COLS_MISSING="${COUNT_COLS_MISSING:-} $t"
+  elif [ -n "$_miss" ]; then
     echo "    ⚠ $t: dev 에만 있는 열 — $_miss — 운영 DB 이행이 늦어 이 병합에서 빠졌다(이행 뒤 merge-from-drive.sh 를 한 번 더)"
     COLS_MISSING="${COLS_MISSING:-} $t"
   fi
@@ -187,17 +179,27 @@ merge_table() {  # $1=table $2=충돌키(csv) $3=updated_col(옵션) $4=제외�
   # 움직이고(keep_updated_at), 예전 병합이 운영 updated_at 을 병합 시각으로 올려 둔 행이 많아 위 upsert 가 건너뛰었다(10-17 cae00 리뷰 H1-b
   # — 레코드 시그니처 59,032건 전부). 있는 값은 덮지 않는다. $5 의 열(시그니처의 재료)이 양쪽에서 같을 때만 채운다 — 운영에서 고친 레코드는
   # 시그니처를 비워 그 박스의 스윕이 새 내용으로 다시 계산하는데(db_writer), 그 사이 병합이 dev 의 옛 내용 벡터를 넣으면 스윕이 다시 하지 않는다.
-  local fill="" _s _on _onpk
+  local fill="" _s _on _onpk _fillcnt="0" _touch=""
   _onpk="$(printf '%s' "$pk" | tr ',' '\n' | sed 's/.*/r.& = m.&/' | paste -sd'&' - | sed 's/&/ AND /g')"
   if [ -n "$upd" ] && [ -n "$same" ]; then
     _on="$_onpk$(printf '%s' "$same" | tr ',' '\n' | sed 's/.*/ AND r.& IS NOT DISTINCT FROM m.&/' | paste -sd'\0' -)"
     for _s in $(printf '%s\n' "$_pc" | grep -E '_m3$' || true); do
       printf '%s\n' "$_sc" | grep -qx "$_s" || continue
-      # 채운 줄 수를 센다(끝 줄 fill|n — SE-6).
+      # 채운 줄 수를 센다(끝 줄 fill|n — SE-6). 셈(4a)은 같은 조건의 줄 수다.
       fill="$fill
 WITH f AS (UPDATE public.$t AS r SET $_s = m.$_s, ${_s}_at = m.${_s}_at, ${_s}_model = m.${_s}_model FROM _mg m
  WHERE $_on AND r.$_s IS NULL AND m.$_s IS NOT NULL RETURNING 1) SELECT 'fill|' || count(*) FROM f;"
+      _fillcnt="$_fillcnt + (SELECT count(*) FROM _mg m JOIN public.$t r ON $_on WHERE r.$_s IS NULL AND m.$_s IS NOT NULL)"
+      _touch="$_touch${_touch:+ OR }EXISTS (SELECT 1 FROM _mg m WHERE $_on AND r.$_s IS NULL AND m.$_s IS NOT NULL)"
     done
+  fi
+  # upsert 가 실제로 덮을 줄의 조건(r 이 이 박스 행, m 이 dev 행) — 셈(4a)과 앞 모습이 쓴다. 병합의 WHERE 와 같은 식이다.
+  local _cupd="0" _ccond=""
+  if [ -n "$setclause" ]; then
+    if [ -n "$upd" ]; then _ccond="r.$upd IS NULL OR m.$upd > r.$upd"
+    else _ccond="($(printf '%s' "$_setcols" | tr ',' '\n' | sed 's/.*/r.&/' | paste -sd',' -)) IS DISTINCT FROM ($(_sub "$_exprs" r m))"; fi
+    _cupd="(SELECT count(*) FROM _mg m JOIN public.$t r ON $_onpk WHERE $_ccond)"
+    _touch="EXISTS (SELECT 1 FROM _mg m WHERE $_onpk AND ($_ccond))${_touch:+ OR }$_touch"
   fi
 
   # 읽기만 — upsert 가 '운영이 더 새롭다' 로 건너뛸 행 가운데 content_hash 가 덤프와 다른 것을 upsert 앞에서 센다(병합 판단은 그대로다).
@@ -223,11 +225,13 @@ WITH f AS (UPDATE public.$t AS r SET $_s = m.$_s, ${_s}_at = m.${_s}_at, ${_s}_m
 SELECT count(*)$viewed FROM _mg m JOIN public.$t r ON $_onpk WHERE r.$upd > m.$upd AND r.content_hash IS DISTINCT FROM m.content_hash;"
   fi
 
-  # 조각 길 — 덮을 줄의 앞 모습(이 박스 행 전체 — 대리 id 째)과 새로 들 키를 upsert 앞에서 남긴다(rollback-parts.sh).
+  # 앞 모습 — 덮을 줄의 앞 모습(이 박스 행 전체 — 대리 id 째)과 새로 들 키를 upsert 앞에서 남긴다(rollback-parts.sh). 조각 길과
+  # AIDH_MERGE_BEFORE=image 인 전체 길이다. 앞 모습은 병합이 실제로 바꿀 줄(위 _touch — 덮을 줄 · 슬롯을 채울 줄)만이다 — 값이 같아
+  # 건드리지 않을 줄까지 남기면 전체 길에서는 표 통째가 된다(SE-4).
   local keep_before="" _bf="/tmp/aidh_bf_$t.bin" _nk="/tmp/aidh_nk_$t.csv"
   if [ -n "${BEFORE_DIR:-}" ]; then
     keep_before="
-COPY (SELECT r.* FROM public.$t r WHERE EXISTS (SELECT 1 FROM _mg m WHERE $_onpk)) TO '$_bf' (FORMAT binary);
+COPY (SELECT r.* FROM public.$t r WHERE ${_touch:-false}) TO '$_bf' (FORMAT binary);
 COPY (SELECT $(printf '%s' "$pk" | tr ',' '\n' | sed 's/.*/m.&/' | paste -sd',' -) FROM _mg m WHERE NOT EXISTS (SELECT 1 FROM public.$t r WHERE $_onpk)) TO '$_nk' (FORMAT csv);"
   fi
 
@@ -245,6 +249,38 @@ SELECT 'follow|' || count(*) || '|' || count(DISTINCT k) FROM s;"
   fi
 
   local before after _t0=$SECONDS _ts0; _ts0="$(date +%H:%M:%S)"
+  if [ "$mode" = count ]; then
+    # 쓰지 않고 센다 — 추가(충돌 키가 이 박스에 없다) · 갱신(병합의 WHERE 와 같은 식) · 슬롯 채움. 레코드를 따르는 표는 병합처럼 이 박스 판이
+    # 이긴 레코드의 줄을 먼저 뺀다. _mg 는 기본값 없이(대리 id 의 순번을 쓰지 않는다) 만든다. 순번 · 이 박스의 행은 건드리지 않는다.
+    local _cout _ci _cu _cf
+    apptainer exec "instance://$INST" rm -f "$CFILE" "$_rf" 2>/dev/null
+    STAGE_SQL -v ON_ERROR_STOP=1 -q -c "COPY (SELECT $cols FROM public.$t) TO '$CFILE' (FORMAT binary);" 2>>/tmp/aidh-merge.log \
+      || { echo "    ✗ $t: staging COPY 실패(셈)"; return 1; }
+    if [ -n "$follow" ]; then
+      STAGE_SQL -v ON_ERROR_STOP=1 -q -c "COPY (SELECT id, updated_at FROM public.records) TO '$_rf' (FORMAT binary);" 2>>/tmp/aidh-merge.log \
+        || { echo "    ✗ $t: staging 레코드 시각 COPY 실패(셈)"; apptainer exec "instance://$INST" rm -f "$CFILE" 2>/dev/null; return 1; }
+    fi
+    if ! _cout="$(PSQL -d "$DB" -v ON_ERROR_STOP=1 -qtA 2>>/tmp/aidh-merge.log <<SQL
+CREATE TEMP TABLE _mg AS SELECT $cols FROM public.$t WITH NO DATA;
+COPY _mg ($cols) FROM '$CFILE' (FORMAT binary);$follow_sql$newer
+SELECT 'cnt|' || (SELECT count(*) FROM _mg m WHERE NOT EXISTS (SELECT 1 FROM public.$t r WHERE $_onpk)) || '|' || $_cupd || '|' || ($_fillcnt);
+SQL
+)"; then
+      echo "    ✗ $t: 쓸 행을 세지 못했다 — /tmp/aidh-merge.log"; apptainer exec "instance://$INST" rm -f "$CFILE" "$_rf" 2>/dev/null; return 1
+    fi
+    apptainer exec "instance://$INST" rm -f "$CFILE" "$_rf" 2>/dev/null
+    IFS='|' read -r _ _ci _cu _cf <<<"$(printf '%s\n' "$_cout" | grep '^cnt|' || echo 'cnt|?|?|?')"
+    case "$_ci$_cu$_cf" in ''|*[!0-9]*) echo "    ✗ $t: 셈을 읽지 못했다($_cout)"; return 1 ;; esac
+    if [ -n "$newer" ]; then     # '운영이 더 새롭다' 셈 — 건너뛰는 날에도 끝 요약에 싣는다(병합하면 병합이 다시 센다)
+      local _n _v; IFS='|' read -r _n _v <<<"$(printf '%s\n' "$_cout" | grep -v '^cnt|\|^follow|' || true)"
+      case "$_v" in *[!0-9]*) _v="" ;; esac
+      case "$_n" in ''|*[!0-9]*) _n="세지 못함" ;; *) _n="${_n}건${_v:+(그중 조회로 올라간 것 ${_v}건)}" ;; esac
+      NEWER_DIFF="${NEWER_DIFF:-}${NEWER_DIFF:+ · }$t $_n"
+    fi
+    WRITE_TOTAL=$((WRITE_TOTAL + _ci + _cu + _cf))
+    echo "    · $t: 쓸 행 — 추가 $_ci · 갱신 $_cu$( [ "$_cf" != 0 ] && echo " · 슬롯 채움 $_cf") ($((SECONDS-_t0))초)"
+    return 0
+  fi
   before="$(PSQL -d "$DB" -tA -c "SELECT count(*) FROM $t;")"
   apptainer exec "instance://$INST" rm -f "$CFILE" 2>/dev/null
   # ① staging → 파일(서버 COPY)
@@ -314,7 +350,7 @@ SAMPLE_WANT_HAVE="want AS (
   have AS (SELECT agent_type, array_agg(sample_text ORDER BY sample_text) AS t FROM public.agent_sample_embeddings GROUP BY agent_type)"
 
 merge_samples() {
-  local t=agent_sample_embeddings _tex _sex _pc _sc _miss cols seq out n_take n_drop seqv stale _t0=$SECONDS _ts0
+  local t=agent_sample_embeddings _tex _sex _pc _sc _miss cols seq out n_take n_drop seqv stale mode="${MERGE_MODE:-merge}" _t0=$SECONDS _ts0
   _ts0="$(date +%H:%M:%S)"
   _tex="$(PSQL -d "$DB" -tA -c "SELECT to_regclass('public.$t') IS NOT NULL;" 2>/dev/null)"
   case "$_tex" in t) : ;; f) echo "    · $t: 운영에 없음 — skip"; return 0 ;; *) echo "    ✗ $t: 운영 DB 조회 실패(접속·인증 확인)" >&2; return 1 ;; esac
@@ -323,7 +359,9 @@ merge_samples() {
   _pc="$(PSQL -d "$DB" -tA -c "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='$t';" | sort)"
   _sc="$(STAGE_SQL -tA -c "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='$t';" | sort)"
   _miss="$(comm -13 <(printf '%s\n' "$_pc") <(printf '%s\n' "$_sc") | grep -v '^$' | paste -sd',' - || true)"
-  if [ -n "$_miss" ]; then
+  if [ -n "$_miss" ] && [ "$mode" = count ]; then
+    COUNT_COLS_MISSING="${COUNT_COLS_MISSING:-} $t"
+  elif [ -n "$_miss" ]; then
     echo "    ⚠ $t: dev 에만 있는 열 — $_miss — 운영 DB 이행이 늦어 이 병합에서 빠졌다(이행 뒤 merge-from-drive.sh 를 한 번 더)"
     COLS_MISSING="${COLS_MISSING:-} $t"
   fi
@@ -334,6 +372,26 @@ merge_samples() {
   apptainer exec "instance://$INST" rm -f "$CFILE" 2>/dev/null
   STAGE_SQL -v ON_ERROR_STOP=1 -q -c "COPY (SELECT $cols FROM public.$t) TO '$CFILE' (FORMAT binary);" 2>>/tmp/aidh-merge.log \
     || { echo "    ✗ $t: staging COPY 실패"; return 1; }
+  if [ "$mode" = count ]; then
+    # 병합의 _fix 와 같은 식으로 다시 지을 agent 수만 센다 — 잠금 · 순번 · 지우기 없음.
+    if ! out="$(PSQL -d "$DB" -v ON_ERROR_STOP=1 -qtA 2>>/tmp/aidh-merge.log <<SQL
+CREATE TEMP TABLE _mg AS SELECT $cols FROM public.$t WITH NO DATA;
+COPY _mg ($cols) FROM '$CFILE' (FORMAT binary);
+WITH $SAMPLE_WANT_HAVE,
+  dev AS (SELECT agent_type, array_agg(sample_text ORDER BY sample_text) AS t FROM _mg GROUP BY agent_type)
+SELECT 'cnt|' || count(*) FROM want w LEFT JOIN have h USING (agent_type) LEFT JOIN dev d USING (agent_type)
+ WHERE COALESCE(h.t, '{}') IS DISTINCT FROM w.t AND (w.t = '{}' OR d.t = w.t);
+SQL
+)"; then
+      echo "    ✗ $t: 쓸 행을 세지 못했다 — /tmp/aidh-merge.log"; apptainer exec "instance://$INST" rm -f "$CFILE" 2>/dev/null; return 1
+    fi
+    apptainer exec "instance://$INST" rm -f "$CFILE" 2>/dev/null
+    out="$(printf '%s\n' "$out" | grep '^cnt|' | cut -d'|' -f2)"
+    case "$out" in ''|*[!0-9]*) echo "    ✗ $t: 셈을 읽지 못했다"; return 1 ;; esac
+    WRITE_TOTAL=$((WRITE_TOTAL + out))
+    echo "    · $t: 다시 지을 agent $out ($((SECONDS-_t0))초)"
+    return 0
+  fi
   # 잠금은 쓰기만 막는다(API 의 표본 저장 · 백필이 이 짧은 트랜잭션을 기다린다). 오래 쥔 트랜잭션이 있으면 줄 뒤의 쓰기까지 세우지 않게 10초만 기다린다.
   if ! out="$(PSQL -d "$DB" -v ON_ERROR_STOP=1 -qtA 2>>/tmp/aidh-merge.log <<SQL
 BEGIN;
@@ -374,44 +432,93 @@ SQL
   [ -z "$stale" ] || echo "    ⚠ $t: 색인된 표본 글이 sample_queries 와 다른 agent $(printf '%s\n' "$stale" | grep -c .)개 — 덤프에 맞는 행이 없어 이 박스의 임베더로 다시 지어야 한다: $(printf '%s\n' "$stale" | head -10 | paste -sd' ' -) — 끝난 뒤 이 박스에서: curl -fsS -X POST http://127.0.0.1:${API_PORT:-8001}/api/agents/resync-samples-all"
 }
 
-echo "→ 테이블 merge (부모→자식 순)"
-: > /tmp/aidh-merge.log
+# 읽기만 — merge_table 이 upsert 앞에서 센 수다. 크기를 보고 사람이 정한다(HWAXPortal followups-1017 FU-D7).
+newer_summary() {
+  [ -z "${NEWER_DIFF:-}" ] || echo "· 운영이 더 새롭다며 건너뛴 행 중 content_hash 가 덤프와 다른 것 — $NEWER_DIFF. 운영 updated_at 이 더 새로운 까닭은 이 박스의 편집 · 예전 병합이 올려 둔 시각 · 이 박스의 예전 조회다(AIDataHub 2026-10-31 고침 전의 조회 수 갱신은 updated_at 도 올렸다 — 고친 판의 조회는 올리지 않는다). 조회로 올라간 행은 updated_at 이 그 조회 시각이라 내용이 언제 바뀌었는지 알 수 없다. 병합은 이 박스 판을 그대로 두었다(셈만 한다)."
+}
+
 # 한 테이블 실패가 나머지와 staging 정리까지 막지 않게 실패를 모아 마지막에 판정한다.
 FAILED=""
+WRITE_TOTAL=0
 try_merge() {
   if [ -n "$PARTS_TABLES" ] && [[ "$PARTS_TABLES" != *" $1 "* ]]; then return 0; fi   # 조각 길 — 바뀐 조각이 없는 표
   merge_table "$@" || FAILED="$FAILED $1"
 }
 
-try_merge org_teams              "code"                 ""
-try_merge org_groups             "team_code,code"       ""
-try_merge doc_types              "code"                 ""
-try_merge agents                 "agent_type"           "updated_at"
-# 레코드 시그니처(m3)는 제목 · 본문이 양쪽에서 같을 때만 채운다(시그니처 = 제목 + 본문의 caption · headers · notes).
-# 조회 수 · 조회 시각(read_count · last_accessed_at)은 이 박스의 사용 통계라 dev 판이 행을 덮을 때도 그대로 둔다(새 행만 dev 값).
-# 2026-10-31 고침 뒤의 조회는 updated_at 을 올리지 않아 이 박스에서 조회된 행도 dev 가 더 새로우면 덮이는데, 열을 통째로 덮으면
-# 이 박스의 조회 수 · 조회 시각이 dev 값이 된다(/api/analytics/usage 의 조회 수 상위 목록이 운영 조회 기록을 잃는다). 예전 조회는
-# 그 행을 '운영이 더 새롭다' 로 건너뛰게 해 통계가 남았고, 여기서 조회되지 않은 행은 예전에도 dev 값이 들었다(HWAX 10-31 사용자
-# 결정의 검토 후속).
-try_merge records                "id"                   "updated_at" ""         "title,content_hash" "read_count,last_accessed_at"
-# ↓ 레코드에 딸린 표 — 이 박스가 더 새로운 레코드의 줄은 dev 판으로 덮지도 넣지도 않는다(맨 끝 인자 record_id — merge_table $7).
-try_merge agent_records          "agent_type,record_id" ""          ""         ""                   ""                                  "record_id"
-# ↓ id 가 대리키(nextval)라 자연키로 충돌 판정하고 id 는 운영 시퀀스에 맡긴다.
-# 두 번째 임베딩 슬롯(embedding_m3 …)은 dev 값이 비었고 제목 · 본문이 같으면 이 박스 값을 둔다($5 — SE-3, 벡터의 재료가 그 둘이다).
-try_merge record_sections        "record_id,section_id" ""          "id"       "title,content_text" ""                                  "record_id"
-try_merge record_attachments     "id"                   ""          ""         ""                   ""                                  "record_id"
-# ↓ 파생 표 — 행의 id 가 아니라 agent 단위로(agents 다음이어야 한다 — 병합된 sample_queries 를 본다).
-if [ -z "$PARTS_TABLES" ] || [[ "$PARTS_TABLES" == *" agent_sample_embeddings "* ]]; then
-  merge_samples || FAILED="$FAILED agent_sample_embeddings"
+# 표 차례(부모 → 자식) — 4a 의 셈과 4b 의 병합이 같은 목록 · 같은 인자를 쓴다.
+run_tables() {
+  try_merge org_teams              "code"                 ""
+  try_merge org_groups             "team_code,code"       ""
+  try_merge doc_types              "code"                 ""
+  try_merge agents                 "agent_type"           "updated_at"
+  # 레코드 시그니처(m3)는 제목 · 본문이 양쪽에서 같을 때만 채운다(시그니처 = 제목 + 본문의 caption · headers · notes).
+  # 조회 수 · 조회 시각(read_count · last_accessed_at)은 이 박스의 사용 통계라 dev 판이 행을 덮을 때도 그대로 둔다(새 행만 dev 값).
+  # 2026-10-31 고침 뒤의 조회는 updated_at 을 올리지 않아 이 박스에서 조회된 행도 dev 가 더 새로우면 덮이는데, 열을 통째로 덮으면
+  # 이 박스의 조회 수 · 조회 시각이 dev 값이 된다(/api/analytics/usage 의 조회 수 상위 목록이 운영 조회 기록을 잃는다). 예전 조회는
+  # 그 행을 '운영이 더 새롭다' 로 건너뛰게 해 통계가 남았고, 여기서 조회되지 않은 행은 예전에도 dev 값이 들었다(HWAX 10-31 사용자
+  # 결정의 검토 후속).
+  try_merge records                "id"                   "updated_at" ""         "title,content_hash" "read_count,last_accessed_at"
+  # ↓ 레코드에 딸린 표 — 이 박스가 더 새로운 레코드의 줄은 dev 판으로 덮지도 넣지도 않는다(맨 끝 인자 record_id — merge_table $7).
+  try_merge agent_records          "agent_type,record_id" ""          ""         ""                   ""                                  "record_id"
+  # ↓ id 가 대리키(nextval)라 자연키로 충돌 판정하고 id 는 운영 시퀀스에 맡긴다.
+  # 두 번째 임베딩 슬롯(embedding_m3 …)은 dev 값이 비었고 제목 · 본문이 같으면 이 박스 값을 둔다($5 — SE-3, 벡터의 재료가 그 둘이다).
+  try_merge record_sections        "record_id,section_id" ""          "id"       "title,content_text" ""                                  "record_id"
+  try_merge record_attachments     "id"                   ""          ""         ""                   ""                                  "record_id"
+  # ↓ 파생 표 — 행의 id 가 아니라 agent 단위로(agents 다음이어야 한다 — 병합된 sample_queries 를 본다).
+  if [ -z "$PARTS_TABLES" ] || [[ "$PARTS_TABLES" == *" agent_sample_embeddings "* ]]; then
+    merge_samples || FAILED="$FAILED agent_sample_embeddings"
+  fi
+  try_merge external_id_map        "source,external_id"   ""          "id"
+  # 상류 상태 점검 칸(last_health_*)은 이 박스가 점검한 값이다 — 덮지 않는다(새 행만 dev 값). 조각에는 아예 내지 않는다(aidh_parts.py).
+  try_merge mcp_upstreams          "alias"                ""          ""         ""                   "last_health_check_at,last_health_status,last_tool_count"
+}
+
+: > /tmp/aidh-merge.log
+# 4a) 전체 덤프 길 — 병합 전에 쓸 행을 센다(HWAXPortal docs/request-1125 SE-4). 모두 0 이면 병합 전 전체 덤프(약 11 GB · 27분)와 upsert 를
+#     건너뛴다. 셈은 병합과 같은 판정 식(덮을 새 값 대 지금 값 · updated_at · 슬롯 채움 · 레코드를 따르는 줄 빼기 · 표본 _fix)이라 0 이면 병합이
+#     쓸 줄도 0 이다. 셈이 하나라도 실패하거나 dev 에만 있는 열이 있으면(그 열은 셈에 들지 않는다) 건너뛰지 않는다. 끄기: AIDH_MERGE_PRECOUNT=0.
+if [ -z "$PARTS_PLAN" ] && [ "${AIDH_MERGE_PRECOUNT:-1}" != 0 ]; then
+  echo "→ 쓸 행 세기(병합 전 — 쓰지 않는다)"
+  MERGE_MODE=count run_tables
+  if [ -z "$FAILED" ] && [ -z "${COUNT_COLS_MISSING:-}" ] && [ "$WRITE_TOTAL" = 0 ]; then
+    PSQL -d postgres -c "DROP DATABASE IF EXISTS $STAGE_DB WITH (FORCE);" >/dev/null
+    newer_summary
+    echo "✓ merge 완료 — 쓸 행 0(덤프가 이 박스와 같다) — 병합 전 덤프 · upsert 를 건너뛰었다"
+    exit 0
+  fi
+  NEWER_DIFF=""   # 병합이 다시 센다
+  [ -z "$FAILED" ] || echo "  ⚠ 셈 실패:$FAILED — 세지 못해 평소처럼 병합한다"
+  [ -z "${COUNT_COLS_MISSING:-}" ] || echo "  ⚠ dev 에만 있는 열이 있는 표:$COUNT_COLS_MISSING — 셈에 들지 않아 평소처럼 병합한다"
+  FAILED=""
+  echo "  쓸 행 $WRITE_TOTAL — 병합한다"
 fi
-try_merge external_id_map        "source,external_id"   ""          "id"
-# 상류 상태 점검 칸(last_health_*)은 이 박스가 점검한 값이다 — 덮지 않는다(새 행만 dev 값). 조각에는 아예 내지 않는다(aidh_parts.py).
-try_merge mcp_upstreams          "alias"                ""          ""         ""                   "last_health_check_at,last_health_status,last_tool_count"
+
+# 3) 운영 직전 스냅샷(롤백용, 로컬) — 조각 길은 전체 대신 덮을 줄의 앞 모습 · 새로 든 키만(merge_table · merge_samples 가 표마다 남긴다).
+#    전체 길도 AIDH_MERGE_BEFORE=image 면 전체 덤프 대신 같은 앞 모습을 남긴다(SE-4 — rollback-parts.sh 로 되돌린다, 기본은 전체 덤프).
+BEFORE_DIR=""
+if [ -n "$PARTS_PLAN" ]; then
+  BEFORE_DIR="/data/backups/aidh/pre-parts-$(date +%Y%m%d-%H%M%S)"
+  if mkdir -p "$BEFORE_DIR" 2>/dev/null; then echo "→ 덮을 줄의 앞 모습: $BEFORE_DIR (rollback-parts.sh 로 되돌린다)"
+  else echo "  ⚠ 앞 모습 자리를 못 만들었다($BEFORE_DIR) — 되돌릴 자료 없이 병합한다"; BEFORE_DIR=""; fi
+  BK="$BEFORE_DIR"
+elif [ "${AIDH_MERGE_BEFORE:-dump}" = image ]; then
+  BEFORE_DIR="/data/backups/aidh/pre-merge-$(date +%Y%m%d-%H%M%S)"
+  if mkdir -p "$BEFORE_DIR" 2>/dev/null; then echo "→ 덮을 줄의 앞 모습(전체 덤프 대신): $BEFORE_DIR (rollback-parts.sh 로 되돌린다)"
+  else echo "  ⚠ 앞 모습 자리를 못 만들었다($BEFORE_DIR) — 되돌릴 자료 없이 병합한다"; BEFORE_DIR=""; fi
+  BK="$BEFORE_DIR"
+else
+BK="/data/backups/aidh/pre-merge-$(date +%Y%m%d-%H%M%S).sql.gz"
+mkdir -p "$(dirname "$BK")" 2>/dev/null && \
+  apptainer exec "instance://$INST" pg_dump -h 127.0.0.1 -p "$PORT" -U "$USER" -d "$DB" 2>/dev/null | gzip -c > "$BK" \
+  && echo "→ 운영 직전 스냅샷: $BK (롤백용)" || echo "  ⚠ 사전 스냅샷 생략(디스크/권한)"
+fi
+
+echo "→ 테이블 merge (부모→자식 순)"
+run_tables
 
 # 5) staging 정리 (실패해도 반드시 수행 — 남으면 다음 실행이 이름 충돌로 막힌다)
 PSQL -d postgres -c "DROP DATABASE IF EXISTS $STAGE_DB WITH (FORCE);" >/dev/null
-# 읽기만 — merge_table 이 upsert 앞에서 센 수다. 크기를 보고 사람이 정한다(HWAXPortal followups-1017 FU-D7).
-[ -z "${NEWER_DIFF:-}" ] || echo "· 운영이 더 새롭다며 건너뛴 행 중 content_hash 가 덤프와 다른 것 — $NEWER_DIFF. 운영 updated_at 이 더 새로운 까닭은 이 박스의 편집 · 예전 병합이 올려 둔 시각 · 이 박스의 예전 조회다(AIDataHub 2026-10-31 고침 전의 조회 수 갱신은 updated_at 도 올렸다 — 고친 판의 조회는 올리지 않는다). 조회로 올라간 행은 updated_at 이 그 조회 시각이라 내용이 언제 바뀌었는지 알 수 없다. 병합은 이 박스 판을 그대로 두었다(셈만 한다)."
+newer_summary
 if [ -n "$FAILED" ]; then
   echo "✗ merge 일부 실패:$FAILED — /tmp/aidh-merge.log 확인 (나머지 테이블은 반영됨)"
   exit 1
@@ -422,6 +529,8 @@ if [ -n "${COLS_MISSING:-}" ]; then
 fi
 if [ -n "$PARTS_PLAN" ]; then
   echo "✓ merge 완료(조각 길) — 운영 DB 유지 + dev 바뀐 조각 반영. 되돌리기: rollback-parts.sh $BK"
+elif [ "${AIDH_MERGE_BEFORE:-dump}" = image ]; then
+  echo "✓ merge 완료 — 운영 DB 유지 + dev 신규 반영. 되돌리기: rollback-parts.sh $BK"
 else
   echo "✓ merge 완료 — 운영 DB 유지 + dev 신규 반영. 롤백: restore-db.sh $BK"
 fi

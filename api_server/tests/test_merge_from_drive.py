@@ -47,6 +47,9 @@ with open(os.environ["FAKE_LOG"], "a") as log:
     if sql is None:
         body = sys.stdin.read()
         log.write(json.dumps({"db": db, "stdin": body}) + "\n")
+        if "SELECT 'cnt|'" in body:          # 병합 전 셈(4a) — 기본은 '쓸 행 있음' 이라 예전처럼 병합까지 간다
+            print(os.environ.get("FAKE_CNT", "cnt|1|0|0"))
+            sys.exit(0)
         if "FROM _mg m JOIN public." in body:
             print(os.environ.get("FAKE_NEWER_DIFF", "0"))
         m = re.search(r"INSERT INTO public\.(\w+)", body)
@@ -306,3 +309,25 @@ def test_레코드에_딸린_표는_이_박스가_이긴_레코드의_줄을_빼
     for t in ("records", "org_teams"):
         assert "_devrec" not in sessions[t], sessions[t]
 
+
+def test_전체_덤프_길은_쓸_행이_0이면_병합_전_덤프와_upsert_를_건너뛴다(merge):
+    """병합 전 전체 덤프(약 11 GB · 27분)를 매번 떴다 — 바뀐 것이 없던 날도(HWAXPortal docs/request-1125 SE-4). 셈은 병합과 같은 판정 식이다
+    (값은 실 PostgreSQL 시험 test_merge_samples_pg 가 본다 — 여기서는 갈래를 지킨다)."""
+    agents = ["agent_type", "updated_at"]
+    r, sessions = merge({"agents": agents}, {"agents": agents}, FAKE_CNT="cnt|0|0|0")
+    assert r.returncode == 0 and "쓸 행 0" in r.stdout and "건너뛰었다" in r.stdout, r.stdout + r.stderr
+    assert sessions == {}, "upsert 세션이 없다"
+    backups = Path(r.args[1]).parent.parent / "backups"
+    assert not list(backups.glob("pre-merge-*")), "병합 전 덤프를 뜨지 않는다"
+    r2, sessions2 = merge({"agents": agents}, {"agents": agents}, FAKE_CNT="cnt|0|2|0")
+    assert r2.returncode == 0 and "쓸 행 2 — 병합한다" in r2.stdout and "agents" in sessions2, r2.stdout
+    assert list(backups.glob("pre-merge-*.sql.gz")), "쓸 행이 있으면 예전처럼 전체 덤프"
+    r3, sessions3 = merge({"agents": agents}, {"agents": agents}, FAKE_CNT="cnt|0|0|0", AIDH_MERGE_PRECOUNT="0")
+    assert "쓸 행 세기" not in r3.stdout and "agents" in sessions3, "끄면 예전처럼 곧바로 병합한다"
+
+
+def test_셈을_읽지_못하면_건너뛰지_않고_병합한다(merge):
+    agents = ["agent_type", "updated_at"]
+    r, sessions = merge({"agents": agents}, {"agents": agents}, FAKE_CNT="엉뚱한 답")
+    assert r.returncode == 0 and "셈 실패" in r.stdout and "agents" in sessions, r.stdout + r.stderr
+    assert "✓ merge 완료 — 운영 DB 유지" in r.stdout
