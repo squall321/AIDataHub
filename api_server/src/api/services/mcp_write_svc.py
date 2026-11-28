@@ -515,6 +515,7 @@ async def run_convert(
                 group=(group or "TBD").upper(),
                 year=int(year) if year else datetime.now(timezone.utc).year,
                 output_dir=_Path(work) / "out",
+                read_figures=True,       # 박스에 AIDH_VLM_* 가 있으면 그림 판독(IR-31) — 이 길은 스레드에서 돈다
             )
             payload = await asyncio.to_thread(convert_file, path, fmt, req)
     except DrmProtectedError as exc:

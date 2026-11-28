@@ -1928,9 +1928,11 @@ async def create_doc_type(
         "import_record(dry_run=true) 미리보기 import_preview 가 붙는다. 실패는 status='error' · "
         "code(missing_field · not_in_inbox · unsupported_format · drm_protected · convert_failed · "
         "auth_failed) · suggestion. 암호화(DRM) 문서는 변환기에 넣지 않고 drm_protected 로 "
-        "알린다.\n"
+        "알린다. 박스에 그림 판독기(VLM)가 설정돼 있으면 그림마다 판독해 캡션을 판독 요약으로 바꾸고 "
+        "판독 전문을 그 그림 뒤 글 블록에 싣는다(record.meta.figure_reading 에 셈) — 없으면 그림은 "
+        "파일로만 실린다.\n"
         "보안 — inbox 아래 파일만 읽는다('..' 나 절대경로로 벗어나면 not_in_inbox). 변환 중간 "
-        "파일은 서버 임시 폴더에만 쓴다."
+        "파일은 서버 임시 폴더에만 쓰고 결과를 만든 뒤 지운다."
     ),
     annotations=_READ,
 )
