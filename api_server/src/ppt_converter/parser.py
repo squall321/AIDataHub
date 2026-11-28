@@ -273,6 +273,34 @@ def extract_picture_blob(shape: Picture) -> tuple[bytes, str]:
     return blob, ext or "png"
 
 
+_NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
+_NS_R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+
+
+def extract_fill_picture_blob(shape: BaseShape) -> tuple[bytes, str]:
+    """그림으로 채운 도형(``p:sp`` 의 ``p:spPr/a:blipFill``)의 그림 바이너리와 확장자. 아니면 (b"", "").
+
+    그림 도형(``p:pic``)이 아니라 도형 채우기로 그림을 넣은 쪽은 python-pptx 가 그림으로 보지 않아 통째로 비었다
+    (HWAXPortal docs/request-1125 IR-32). 도형 채우기만 본다 — 글자 채우기 · 배경은 보지 않는다.
+    """
+    el = getattr(shape, "_element", None)
+    sp_pr = el.find(f"{{{_NS_P}}}spPr") if el is not None else None
+    fill = sp_pr.find(f"{{{_NS_A}}}blipFill") if sp_pr is not None else None
+    blip = fill.find(f"{{{_NS_A}}}blip") if fill is not None else None
+    rid = blip.get(f"{{{_NS_R}}}embed") if blip is not None else None
+    if not rid:
+        return b"", ""
+    try:
+        part = shape.part.related_part(rid)
+    except (KeyError, AttributeError):
+        return b"", ""
+    blob = getattr(part, "blob", b"") or b""
+    ext = str(getattr(getattr(part, "partname", None), "ext", "") or "").lstrip(".").lower()
+    if ext == "jpeg":
+        ext = "jpg"
+    return blob, ext or "png"
+
+
 def extract_chart_title(shape: Shape) -> str:
     """차트 제목 추출 — 없으면 빈 문자열. python-pptx 의 chart 객체 사용."""
     chart = getattr(shape, "chart", None)
@@ -339,6 +367,7 @@ __all__ = [
     "is_table_shape",
     "is_text_shape",
     "extract_picture_blob",
+    "extract_fill_picture_blob",
     "extract_picture_alt_text",
     "extract_chart_title",
     "infer_section_id_from_title",

@@ -34,6 +34,7 @@ from .models import (
 )
 from .parser import (
     extract_chart_title,
+    extract_fill_picture_blob,
     extract_picture_alt_text,
     extract_picture_blob,
     extract_slide_title,
@@ -248,8 +249,13 @@ class PptxConverter:
                 self._handle_picture_shape(section, shape)
             elif is_chart_shape(shape):
                 self._handle_chart_shape(section, shape)
-            elif is_text_shape(shape):
-                self._handle_text_shape(section, shape)
+            else:
+                # 그림으로 채운 도형 — 그림을 그림 요소로 꺼내고(IR-32), 도형 안의 글은 그대로 글로
+                fill = extract_fill_picture_blob(shape) if self.opts.extract_images else (b"", "")
+                if fill[0]:
+                    self._handle_picture_shape(section, shape, blob_ext=fill)
+                if is_text_shape(shape):
+                    self._handle_text_shape(section, shape)
             # 그 외 (자동도형 안의 텍스트, 커넥터 등) — 텍스트 프레임이 있으면 위에서 잡힘.
 
         # 슬라이드 노트.
@@ -508,7 +514,8 @@ class PptxConverter:
         candidates.sort(key=lambda t: (t[0], t[1]))
         return candidates[0][2]
 
-    def _handle_picture_shape(self, section: Section, shape: Any) -> None:
+    def _handle_picture_shape(self, section: Section, shape: Any,
+                              blob_ext: tuple[bytes, str] | None = None) -> None:
         self.fig_counter += 1
         fig_id = _make_fig_id(self.doc_id, self.fig_counter)
         caption = f"Figure {self.fig_counter}: 슬라이드 {section.id} 이미지"
@@ -549,7 +556,7 @@ class PptxConverter:
 
         # 바이너리 추출.
         if self.opts.extract_images:
-            blob, ext = extract_picture_blob(shape)
+            blob, ext = blob_ext if blob_ext is not None else extract_picture_blob(shape)
             if blob:
                 self._save_image(fig, att, blob, ext)
             else:
@@ -561,6 +568,8 @@ class PptxConverter:
         self, fig: Figure, att: Attachment, blob: bytes, ext: str
     ) -> None:
         out_root = Path(self.opts.output_dir) / self.doc_id
+        if ext in ("tif", "tiff"):
+            blob, ext = self._tiff_to_png(fig, blob, ext)
         try:
             out_root.mkdir(parents=True, exist_ok=True)
         except OSError as e:
@@ -599,6 +608,24 @@ class PptxConverter:
         except OSError:
             pass
         att.hash_sha256 = _sha256_of_file(att_path)
+
+    def _tiff_to_png(self, fig: Figure, blob: bytes, ext: str) -> tuple[bytes, str]:
+        """TIFF 는 화면 · 모델이 못 여는 곳이 많아 PNG 로 바꿔 싣는다(IR-32). 못 바꾸면 TIFF 그대로 + 경고."""
+        try:
+            import io
+
+            from PIL import Image
+
+            with Image.open(io.BytesIO(blob)) as im:
+                im.seek(0)                                  # 여러 쪽 TIFF 는 첫 쪽
+                if im.mode not in ("RGB", "RGBA", "L", "LA", "P"):
+                    im = im.convert("RGBA" if "A" in im.getbands() else "RGB")
+                buf = io.BytesIO()
+                im.save(buf, format="PNG")
+            return buf.getvalue(), "png"
+        except Exception as e:  # noqa: BLE001 — Pillow 없음 · 깨진 TIFF
+            self.warnings.append(f"그림 {fig.number}: TIFF 를 PNG 로 바꾸지 못해 TIFF 그대로 싣는다({type(e).__name__})")
+            return blob, ext
 
     @staticmethod
     def _ext_to_mime(ext: str) -> str:
