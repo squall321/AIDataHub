@@ -230,7 +230,9 @@ async def test_bind_is_repeatable_replaces_and_keeps_links_when_dictionary_is_em
     empty = await _bind(test_session_maker, entries=[{"type_slug": "part", "key": "PT-X", "term": "ab"}])
     assert empty["written"] is False and await _links(test_session_maker) == first      # 허브에 못 닿은 날 지우지 않는다
     await _bind(test_session_maker, entries=[{"type_slug": "material_property", "key": "MP-E", "term": "탄성계수"}])
-    assert set(await _links(test_session_maker)) == {("M-1", "material_property", "MP-E")}      # 통째로 다시 쓴다
+    assert await _links(test_session_maker) == first                 # 사전에 든 타입만 다시 쓴다 — 고장모드는 그대로
+    await _bind(test_session_maker, entries=[{"type_slug": "failure_mode", "key": "FM-CRACK", "term": "균열"}])
+    assert set(await _links(test_session_maker)) == {("M-1", "material_property", "MP-E")}      # 고장모드 타입을 다시 썼다
     # 다른 허브의 연결은 건드리지 않는다
     async with test_session_maker() as s:
         await onto_svc.bind_entities(s, hub="failuretrace", entries=[_DICT[0]], rules=_RULES)
@@ -243,6 +245,42 @@ async def test_bind_is_repeatable_replaces_and_keeps_links_when_dictionary_is_em
     with pytest.raises(ValueError):
         async with test_session_maker() as s:
             await onto_svc.bind_entities(s, hub=" ", entries=_DICT, rules=_RULES)
+
+
+@pytest.mark.asyncio
+async def test_bind_one_type_keeps_other_types_and_reports_before_after(test_session_maker):
+    """한 타입만 든 사전(포털 --types part)은 그 타입의 연결만 바꾼다 — 다른 타입 수는 그대로, 답에 타입별 전후 수."""
+    from sqlalchemy import select
+
+    from api.db.models import OntoTerm
+
+    await _seed(test_session_maker)
+    full = await _bind(test_session_maker)
+    first = await _links(test_session_maker)
+    assert full["type_counts"] == {"failure_mode": {"before": 0, "after": 3, "rewritten": True},
+                                   "material_property": {"before": 0, "after": 1, "rewritten": True},
+                                   "part": {"before": 0, "after": 0, "rewritten": True}}
+    # 부품 하나만 — 'BGA' 로 C-1(열쇠말) · P-1(요약)이 이어진다
+    part = await _bind(test_session_maker, entries=[{"type_slug": "part", "key": "PT-BGA", "term": "BGA"}])
+    links = await _links(test_session_maker)
+    assert {k: v for k, v in links.items() if k[1] != "part"} == first, "다른 타입 연결은 한 줄도 바뀌지 않는다"
+    assert {k for k in links if k[1] == "part"} == {("C-1", "part", "PT-BGA"), ("P-1", "part", "PT-BGA")}
+    assert part["types"] == ["part"]
+    assert part["type_counts"] == {"failure_mode": {"before": 3, "after": 3, "rewritten": False},
+                                   "material_property": {"before": 1, "after": 1, "rewritten": False},
+                                   "part": {"before": 0, "after": 2, "rewritten": True}}
+    assert part["links_hub_total"] == len(links) == 6 and part["links"] == 2
+    async with test_session_maker() as s:
+        terms = {(t, k) for t, k in (await s.execute(select(OntoTerm.type_slug, OntoTerm.key))).all()}
+    assert terms == {("failure_mode", "FM-SOLDER-CRACK"), ("material_property", "MP-E"), ("part", "PT-BGA")}, \
+        "질문 사전(onto_terms)도 다시 쓴 타입만 바뀐다"
+    # 낱말이 다 걸러진 타입은 다시 쓰지 않는다(허브에 못 닿은 날과 같다)
+    kept = await _bind(test_session_maker, entries=[{"type_slug": "part", "key": "PT-X", "term": "ab"},
+                                                    {"type_slug": "material_property", "key": "MP-E", "term": "탄성계수"}])
+    assert kept["types"] == ["material_property"] and kept["type_counts"]["part"] == {"before": 2, "after": 2, "rewritten": False}
+    assert await _links(test_session_maker) == links
+    # 답에는 셈만 — 객체 이름 · 카드 글이 없다
+    assert "PT-BGA" not in json.dumps(part) and "BGA" not in json.dumps(part, ensure_ascii=False)
 
 
 # ── 프로필 ───────────────────────────────────────────────────────────────

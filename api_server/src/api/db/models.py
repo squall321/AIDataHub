@@ -1195,7 +1195,7 @@ class RecordEntity(Base):
     """카드 ↔ 허브 객체 ``(hub, type_slug, key)`` — 허브가 exact 로 확인한 이름이 맞은 것만.
 
     ``found_in`` 은 가장 굵게 맞은 자리(keyword · property · title 이 굵은 연결, summary · section 이 본문 연결),
-    ``hits`` 는 맞은 횟수다. 잇는 일(``onto_svc.bind_entities``)이 허브마다 통째로 다시 쓴다.
+    ``hits`` 는 맞은 횟수다. 잇는 일(``onto_svc.bind_entities``)이 허브마다 사전에 든 타입의 줄만 다시 쓴다.
     """
 
     __tablename__ = "record_entities"

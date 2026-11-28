@@ -341,10 +341,14 @@ def build_lexicon(entries: Iterable[Any], rules: dict) -> tuple[Lexicon, dict]:
 # ── 2) 잇기 ───────────────────────────────────────────────────────────────
 async def bind_entities(session: AsyncSession, *, hub: str, entries: Iterable[Any], dict_version: str = "",
                         rules: dict | None = None, progress=None) -> dict:
-    """사전으로 카드를 잇고 그 허브의 연결을 통째로 다시 쓴다. 호출자가 커밋한다.
+    """사전으로 카드를 잇고 그 허브의 연결 가운데 **사전에 든 타입의 것만** 다시 쓴다. 호출자가 커밋한다.
 
     맞추는 자리 — 카드 낱말(열쇠말 · 물성 줄 — 굵은 연결) · 제목(굵은 연결) · 요약 · 절(본문 연결). 한 카드가 한 객체에 여러 자리에서
     맞으면 가장 굵은 자리를 적고 횟수를 더한다. 사전이 비면(허브에 닿지 못했다) 그 허브의 연결을 지우지 않고 그대로 둔다.
+
+    다시 쓰는 타입 = 사전에서 맞출 낱말이 하나라도 남은 타입이다. 사전에 없는 타입 · 낱말이 다 걸러진 타입의 연결은 그대로 둔다
+    — 한 타입만 준 사전(포털 card-entity-bind.py --types part)이 다른 타입의 연결을 지우지 않는다(HWAXPortal docs/request-1125
+    AD-22). 답의 ``type_counts`` 에 그 허브의 타입마다 전후 연결 수와 다시 썼는지를 싣는다.
     """
     rules = rules or load_rules()
     hub = (hub or "").strip()
@@ -399,8 +403,12 @@ async def bind_entities(session: AsyncSession, *, hub: str, entries: Iterable[An
     linked_objects = {(r["type_slug"], r["key"]) for r in rows}
     term_rows = sorted({(type_slug, " ".join(toks), key) for toks, objs in lex.terms.items()
                         for type_slug, key in objs if (type_slug, key) in linked_objects})
-    await session.execute(delete(RecordEntity).where(RecordEntity.hub == hub))
-    await session.execute(delete(OntoTerm).where(OntoTerm.hub == hub))
+    scope = sorted({type_slug for objs in lex.terms.values() for type_slug, _ in objs})
+    before = {t: int(n) for t, n in (await session.execute(
+        select(RecordEntity.type_slug, func.count(RecordEntity.id)).where(RecordEntity.hub == hub)
+        .group_by(RecordEntity.type_slug))).all()}
+    await session.execute(delete(RecordEntity).where(RecordEntity.hub == hub, RecordEntity.type_slug.in_(scope)))
+    await session.execute(delete(OntoTerm).where(OntoTerm.hub == hub, OntoTerm.type_slug.in_(scope)))
     await _insert(session, RecordEntity, rows)
     await _insert(session, OntoTerm, [{"hub": hub, "type_slug": t, "norm": n, "key": k} for t, n, k in term_rows])
 
@@ -416,11 +424,17 @@ async def bind_entities(session: AsyncSession, *, hub: str, entries: Iterable[An
         rec_by_type[r["type_slug"]].add(r["record_id"])
         obj_by_type[r["type_slug"]].add(r["key"])
     doc_total = Counter(doc_of.values())
+    # 그 허브의 타입마다 전후 연결 수 — 다시 쓴 타입은 이번 줄 수, 아닌 타입은 그대로(셈만 — 객체 이름은 싣지 않는다).
+    type_counts = {t: {"before": before.get(t, 0), "after": by_type.get(t, 0) if t in scope else before.get(t, 0),
+                       "rewritten": t in scope}
+                   for t in sorted(set(before) | set(scope))}
     state = {
         # bind_id — 잇기마다 새로 뽑는다. 질문 사전의 캐시가 이것으로 낡았는지 본다(시각은 초 단위라 같은 초의 두 번을 못 가른다).
         "hub": hub, "written": True, "bind_id": uuid.uuid4().hex[:12], "dict_version": dict_version or "",
         "rules": rules_fingerprint(rules),
-        "dictionary": lex_counts, "links": len(rows), "sections_scanned": scanned,
+        "dictionary": lex_counts, "types": scope, "type_counts": type_counts,
+        "links_hub_total": sum(v["after"] for v in type_counts.values()),
+        "links": len(rows), "sections_scanned": scanned,
         "records": len(doc_of), "records_linked": len({r["record_id"] for r in rows}),
         "links_by_type": dict(sorted(by_type.items())), "links_by_where": dict(sorted(by_where.items())),
         "records_by_type": {t: len(v) for t, v in sorted(rec_by_type.items())},
