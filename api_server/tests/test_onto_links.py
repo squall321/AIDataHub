@@ -500,3 +500,31 @@ async def test_cards_by_core_returns_linked_cards_with_evidence(_rt, test_sessio
     after = await _rt.cards_by_core(type_slug="failure_mode", key="FM-SOLDER-CRACK")
     assert after["total"] == 2 and "C-1" not in [it["record_id"] for it in after["items"]]
 
+
+@pytest.mark.asyncio
+async def test_fts_search_and_get_record_carry_core_only_when_linked(_rt, test_session_maker):
+    await _seed(test_session_maker)
+    before = await _rt.fts_search(q="언더필", top_k=5)
+    assert before and all("core" not in h for h in before), "잇기 전에는 칸이 없다(응답이 글자 그대로)"
+    assert "core" not in await _rt.get_record(record_id="C-1")
+    await _bind(test_session_maker)
+    hits = await _rt.fts_search(q="언더필", top_k=5)
+    by = {h["record_id"]: h for h in hits}
+    # 절 본문 연결이면 이름은 허브 이름의 정규화한 꼴(긴 것) — 카드 글자 그대로는 열쇠말 · 물성 줄일 때만
+    assert by["C-2"]["core"] == [{"hub": _HUB, "type_slug": "failure_mode", "key": "FM-SOLDER-CRACK", "name": "solder crack",
+                                 "found_in": "section", "strong": False}]
+    rec = await _rt.get_record(record_id="C-1")
+    assert rec["core"] == [{"hub": _HUB, "type_slug": "failure_mode", "key": "FM-SOLDER-CRACK", "name": "솔더 크랙",
+                            "found_in": "keyword", "strong": True}]
+    assert "core" not in await _rt.get_record(record_id="C-3"), "이어진 개체가 없는 카드에는 칸이 없다"
+
+
+@pytest.mark.asyncio
+async def test_core_of_records_orders_strong_first_and_caps(test_session_maker):
+    await _seed(test_session_maker)
+    await _bind(test_session_maker, entries=_DICT + [{"type_slug": "part", "key": "PT-BGA9", "term": "리플로"},
+                                                     {"type_slug": "criterion", "key": "CR-1", "term": "접합부"}])
+    async with test_session_maker() as s:
+        core = await onto_svc.core_of_records(s, ["C-1", "C-1", "없는카드"], per_record=2)
+    assert list(core) == ["C-1"]
+    assert [(e["type_slug"], e["found_in"]) for e in core["C-1"]] == [("failure_mode", "keyword"), ("criterion", "title")]

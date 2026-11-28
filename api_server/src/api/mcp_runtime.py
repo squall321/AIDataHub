@@ -1102,7 +1102,9 @@ async def hybrid_search(
         "agent_search(mode='fts') 를 쓴다.\n"
         "돌려주는 꼴 — 히트 배열 [{record_id, section_id, section_title, title, snippet, "
         "data_type, tags, …}], 관련도 순. 절에서 맞으면 snippet 이 절 본문 전문이고, 제목 · "
-        "요약에서만 맞은 레코드는 section_id 가 null 이고 snippet 이 요약이다.\n"
+        "요약에서만 맞은 레코드는 section_id 가 null 이고 snippet 이 요약이다. 카드가 코어 개체에 "
+        "이어져 있으면 core:[{hub, type_slug, key, name, found_in, strong}](굵은 연결 순 상위 3 — "
+        "그 개체의 카드 전부는 cards_by_core)를 싣는다.\n"
         "한도 — top_k 개에서 자르고 더 있는지는 알려 주지 않는다(필요하면 top_k 를 올린다). 질의가 "
         "빈 글이면 빈 배열이다."
     ),
@@ -1125,7 +1127,7 @@ async def fts_search(
         #   search_svc 의 빈-범위 가드가 결과 없음으로 끝낸다(전역으로 넓히지 않는다).
         scope_ids = await _agent_record_ids(session, agent_type) if agent_type else None
         items, _ = await search_svc.fts_search(session, q, limit=top_k * 3, record_ids=scope_ids)
-        return items[:top_k]
+    return await _with_core(items[:top_k])
 
 
 @mcp.tool(
@@ -1215,6 +1217,24 @@ async def cards_by_core(
         except ValueError as exc:
             return {"error": str(exc), "code": "bad_request", "recoverable": True}
 
+
+async def _with_core(items: list[dict[str, Any]], *, key: str = "record_id") -> list[dict[str, Any]]:
+    """검색 · 조회 응답의 카드마다 이어진 코어 개체 상위 몇 개를 ``core`` 칸으로 싣는다 — 이어진 것이 없는 카드에는 칸을 두지
+    않는다(잇기를 안 돈 박스의 응답은 글자 그대로). 연결 표가 없거나 읽지 못하면 그대로 둔다 — 검색을 막지 않는다."""
+    if not items:
+        return items
+    from .services import onto_svc
+
+    try:
+        async with SessionLocal() as session:
+            core = await onto_svc.core_of_records(session, [str(it.get(key) or "") for it in items])
+    except Exception:  # noqa: BLE001 — 이행 0033 전 박스 · 일시 오류
+        return items
+    for it in items:
+        got = core.get(str(it.get(key) or ""))
+        if got:
+            it["core"] = got
+    return items
 
 
 # ===========================================================================
@@ -1360,8 +1380,9 @@ async def data_aggregate(
         "전체. 긴 문서에서 몇 절만 필요하면 get_record_sections(sections=[…]) 가 싸고, 표의 "
         "통계만이면 data_aggregate, 여러 레코드의 메타데이터만이면 list_records 다.\n"
         "돌려주는 꼴 — {id, data_type, team, group, year, seq, title, summary, tags, agents, "
-        "doc_type, content}. content 의 꼴은 data_type 마다 다르다(DATA 는 headers · rows · units, "
-        "DOC 는 sections · blocks — describe_data_capability).\n"
+        "doc_type, content, core?}. content 의 꼴은 data_type 마다 다르다(DATA 는 headers · rows · "
+        "units, DOC 는 sections · blocks — describe_data_capability). core 는 이 카드에 이어진 코어 "
+        "개체 상위 3(fts_search 와 같은 꼴) — 이어진 것이 없으면 칸이 없다.\n"
         "한도 — 자르지 않는다(큰 표 · 긴 문서는 응답이 크다). 없는 id 면 'record not found' "
         "오류다. 읽기만 한다."
     ),
@@ -1381,7 +1402,7 @@ async def get_record(
         ).scalar_one_or_none()
         if rec is None:
             raise ValueError(f"record not found: {record_id}")
-        return {
+        out = {
             "id": rec.id,
             "data_type": rec.data_type,
             "team": rec.team,
@@ -1395,6 +1416,7 @@ async def get_record(
             "doc_type": rec.doc_type,
             "content": rec.content,
         }
+    return (await _with_core([out], key="id"))[0]
 
 
 @mcp.tool(

@@ -735,3 +735,34 @@ async def cards_by_core(session: AsyncSession, *, type_slug: str, key: str, hub:
         out["items"].append(item)
     return out
 
+
+async def core_of_records(session: AsyncSession, record_ids: Iterable[str], *, per_record: int = 3) -> dict[str, list[dict]]:
+    """카드마다 이어진 코어 개체 상위 ``per_record`` 개 — 굵은 연결 · 맞은 횟수 순. 이어진 것이 없는 카드는 빠진다.
+
+    한 개체는 ``{hub, type_slug, key, name, found_in, strong}`` — ``name`` 은 그 개체를 가리키는 이름(열쇠말 · 물성 줄로 이어졌으면
+    카드의 글자 그대로, 아니면 허브 이름의 정규화한 꼴).
+    """
+    ids = list(dict.fromkeys(r for r in record_ids if r))
+    if not ids:
+        return {}
+    per: dict[str, list] = defaultdict(list)
+    for i in range(0, len(ids), _CHUNK):
+        for rid, hub, type_slug, key, found_in, strong, hits in (await session.execute(
+                select(RecordEntity.record_id, RecordEntity.hub, RecordEntity.type_slug, RecordEntity.key,
+                       RecordEntity.found_in, RecordEntity.strong, RecordEntity.hits)
+                .where(RecordEntity.record_id.in_(ids[i:i + _CHUNK])))).all():
+            per[rid].append((not strong, -int(hits), _RANK.get(found_in, 9), type_slug, key, hub, found_in, bool(strong)))
+    if not per:
+        return {}
+    top = {rid: sorted(v)[:max(1, per_record)] for rid, v in per.items()}
+    norms_of = await _object_norms(session, {(e[5], e[3], e[4]) for v in top.values() for e in v})
+    mention = await _mention_terms(session, list(top))
+    out: dict[str, list[dict]] = {}
+    for rid, ents in top.items():
+        lst = []
+        for _, _, _, type_slug, key, hub, found_in, strong in ents:
+            norms = norms_of.get((hub, type_slug, key), [])
+            name = next((mention[(rid, n)] for n in norms if (rid, n) in mention), norms[0] if norms else "")
+            lst.append({"hub": hub, "type_slug": type_slug, "key": key, "name": name, "found_in": found_in, "strong": strong})
+        out[rid] = lst
+    return out
