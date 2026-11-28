@@ -8,6 +8,8 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.db.base import get_session
+from api.auth.dependencies import Principal, require_api_key
+from api.errors import AuthorizationError
 from api.services import (
     agent_draft_svc,
     agent_svc,
@@ -205,13 +207,25 @@ async def patch_agent(
     return _agent_out(agent, await agent_svc.fetch_sample_index_state(session, [agent]))
 
 
+def may_delete_agent(principal: Principal, agent_type: str) -> bool:
+    """전문가를 지울 수 있는 키인가 — 부트스트랩 · 관리자(스코프 '*') · 그 전문가 스코프를 가진 키(주인)만."""
+    scopes = set(principal.agent_scopes or [])
+    return bool(principal.is_bootstrap or "*" in scopes or agent_type in scopes)
+
+
 @router.delete("/{agent_type}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_agent(
     agent_type: str,
     session: AsyncSession = Depends(get_session),
+    principal: Principal = Depends(require_api_key),
     x_user_id: str | None = Header(None, alias="X-User-Id"),
 ) -> None:
-    ok = await agent_svc.delete_agent(session, agent_type, changed_by=x_user_id)
+    # 삭제는 설정(AUTH_REQUIRED)과 무관하게 키와 권한을 본다 — 로그인 없이 누구나 전문가를 지울 수 있던 빈틈(HWAXPortal docs/request-1125 R-01 · P0).
+    # 만들기 · 고치기(POST · PATCH)는 포털 운영자 동기화가 키 없이 부르므로 그쪽을 바꾼 뒤 따로 막는다.
+    if not may_delete_agent(principal, agent_type):
+        raise AuthorizationError(
+            f"이 키로는 전문가 {agent_type} 를 지울 수 없다 — 관리자(스코프 '*') 또는 그 전문가 스코프를 가진 키만 지운다")
+    ok = await agent_svc.delete_agent(session, agent_type, changed_by=x_user_id or principal.name)
     if not ok:
         raise HTTPException(status_code=404, detail=f"agent not found: {agent_type}")
 
