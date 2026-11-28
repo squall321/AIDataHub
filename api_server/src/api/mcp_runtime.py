@@ -548,25 +548,18 @@ async def get_agent_session(
     description=(
         "고른 전문가(agent) 한 명의 지식카드 안에서 찾는 주 검색 도구다 — 그 전문가의 "
         "retrieval_config(top_k · score_threshold · data_type_filter · tag_boost · max_depth)와 "
-        "required_tags · excluded_tags 를 저절로 적용한다.\n"
-        "get_agent_session 다음에 질문마다 부른다. 전문가를 정하지 않고 허브 전체에서 찾을 때는 "
-        "hybrid_search · semantic_search · fts_search · tag_search 다. 찾은 레코드의 다른 절은 "
-        "get_record_sections 로 읽는다.\n"
-        "mode — 'semantic'(기본, 벡터 코사인) · 'fts'(키워드) · 'hybrid'(semantic + fts 를 RRF 로 "
-        "결합 — 가장 견고) · 'tag'(q 에 쉼표로 가른 정확 태그). tag 가 아니면 구어 질문에 현장 "
-        "용어를 덧붙여 찾는다(응답의 query 는 원문).\n"
+        "required_tags · excluded_tags 를 저절로 적용한다. get_agent_session 다음에 질문마다 "
+        "부른다. 필수 — agent_type · q. 함정 — 묶인 카드가 0건이면 전역으로 넓히지 않고 refused 다.\n"
+        "허브 전체에서 찾을 때는 hybrid_search · semantic_search · fts_search · tag_search, 찾은 "
+        "레코드의 다른 절은 get_record_sections 다. tag 가 아니면 구어 질문에 현장 용어를 덧붙여 "
+        "찾는다(응답의 query 는 원문).\n"
         "돌려주는 꼴 — {agent_type, query, mode, hits:[{record_id, section_id, title, snippet, "
         "score, tags, causal_status, …}], hit_count, refused, refusal_message, near_miss, "
-        "more_available, query_over_model_limit, applied_config}. snippet 은 절 본문 전문이다. "
-        "0건이거나 1위 점수가 전문가의 거절 문턱 아래면 refused:true 와 refusal_message 를 준다 — "
-        "near_miss 는 문턱 아래 참고 후보일 뿐 근거로 쓰지 않는다.\n"
-        "한도 — top_k 개에서 자르고 더 맞은 것이 있으면 more_available:true 다. "
-        "applied_config.agent_record_scope 는 찾은 범위의 레코드 수다. 전문가에게 묶인 레코드가 "
-        "0건이면 전역으로 넓히지 않고 refused 로 끝난다.\n"
-        "기준일 — as_of 를 주면 valid_from(유효 시작일)이 그 날 뒤인 카드를 빼고, 히트마다 "
-        "valid_from(null = 날짜 없음)을, applied_config 에 as_of · as_of_excluded_later · "
-        "as_of_undated_kept(또는 as_of_undated_excluded)를 싣는다. 날짜 없는 카드를 남길지 뺄지는 "
-        "as_of_undated 로 고른다."
+        "more_available, query_over_model_limit, applied_config}. snippet 은 절 본문 전문이다"
+        "(brief 면 앞부분). 1위 점수가 거절 문턱 아래면 refused:true — near_miss 는 참고 후보일 뿐 "
+        "근거가 아니다.\n"
+        "한도 — top_k 개에서 자르고 더 있으면 more_available:true 다. offset · brief · fields 를 "
+        "주면 응답에 offset · truncated · next(다음 쪽 offset)를 싣는다. 기준일 거름은 as_of · as_of_undated."
     ),
     annotations=_READ,
 )
@@ -593,6 +586,16 @@ async def agent_search(
     as_of_undated: Annotated[Literal["keep", "exclude"], Field(
         description="as_of 를 줄 때 valid_from 이 없는 카드 처리 — 'keep'(기본, 남기고 센다) · "
                     "'exclude'(함께 뺀다). as_of 가 비면 쓰지 않는다.")] = "keep",
+    offset: Annotated[int, Field(
+        ge=0, description="앞에서 건너뛸 히트 수(다음 쪽) — 앞 응답의 next.offset 을 그대로 넣는다. 0(기본)이면 "
+                          "첫 쪽. 0 보다 크면 빈 쪽은 거절이 아니라 빈 hits 다.")] = 0,
+    brief: Annotated[bool, Field(
+        description="참이면 히트의 snippet 을 앞 400자로 줄이고(줄인 히트에 snippet_chars — 원래 글자 수) 응답에 "
+                    "truncated 를 싣는다 — 전문은 get_record_sections(record_id, sections=[section_id]). "
+                    "거짓(기본)이면 절 본문 전문.")] = False,
+    fields: Annotated[list[str] | None, Field(
+        description="히트마다 남길 칸 이름(예 ['record_id','section_id','title','snippet','score']) — record_id 는 "
+                    "늘 남는다. 비우면(null, 기본) 모든 칸.")] = None,
 ) -> dict[str, Any]:
     """Agent retrieval_config 를 자동 적용하는 agent-scoped 검색.
 
@@ -633,6 +636,10 @@ async def agent_search(
         # 카드 수천 장 좌석도 질의 한 번에 10건이었다. 1백만 토큰 창에서 건수는 호출자가 정한다.
         top_k_source = "caller" if top_k is not None else "seat"
         top_k = max(1, int(top_k)) if top_k is not None else int(rc.get("top_k") or 10)
+        # 쪽 넘김(offset) — 앞 쪽까지 함께 찾아 뒤를 자른다. 순위는 같은 질의 · 같은 데이터면 같다.
+        offset = max(0, int(offset or 0))
+        page_k = top_k
+        top_k = top_k + offset
         # 자른 뒤에도 맞은 것이 더 남았나 — 모드마다 아래에서 정한다(hit_count 는 자른 뒤의 수다).
         more_available = False
         score_threshold: float | None = rc.get("score_threshold")
@@ -808,6 +815,8 @@ async def agent_search(
         if excluded_tags:
             exc_set = set(excluded_tags)
             hits = [h for h in hits if not exc_set.intersection(set(h.get("tags") or []))]
+        if offset:
+            hits = hits[offset:]
 
         # additive — 각 hit 에 causal_status 노출 (근거 3등급). tag 부재 시 validated.
         for h in hits:
@@ -840,9 +849,11 @@ async def agent_search(
             query_over_model_limit = await asyncio.to_thread(
                 input_overflow, embed_slots.embedder(embed_slots.active()), search_q, is_query=True)
 
-        # --- refuse_below_score 판단 ---
+        # --- refuse_below_score 판단 --- 둘째 쪽부터는 거절하지 않는다(첫 쪽에서 이미 판정했다)
         refused = False
-        if not hits:
+        if offset:
+            pass
+        elif not hits:
             refused = True
         elif refuse_below is not None:
             top_score = hits[0].get("score", 1.0) if hits else 0.0
@@ -875,6 +886,23 @@ async def agent_search(
             except Exception:  # pragma: no cover — defensive
                 near_miss = []
 
+        # 결과 줄이기(brief · fields)와 다음 쪽 — 셋 가운데 하나라도 주면 그때만 칸이 붙는다(기본 응답은 글자 그대로)
+        paging: dict[str, Any] = {}
+        if offset or brief or fields:
+            cut = False
+            if brief:
+                for h in hits:
+                    sn = h.get("snippet")
+                    if isinstance(sn, str) and len(sn) > _BRIEF_SNIPPET:
+                        h["snippet"] = sn[:_BRIEF_SNIPPET] + "…"
+                        h["snippet_chars"] = len(sn)
+                        cut = True
+            if fields:
+                keep = {"record_id", *[f for f in fields if isinstance(f, str)]}
+                hits = [{k: v for k, v in h.items() if k in keep} for h in hits]
+            paging = {"offset": offset, "truncated": cut,
+                      "next": {"offset": offset + len(hits)} if more_available else None}
+
         return {
             "agent_type": agent_type,
             "query": q,
@@ -886,8 +914,9 @@ async def agent_search(
             "near_miss": near_miss,
             "more_available": more_available,
             "query_over_model_limit": query_over_model_limit,
+            **paging,
             "applied_config": {
-                "top_k": top_k,
+                "top_k": page_k,
                 "top_k_source": top_k_source,
                 "score_threshold": score_threshold,
                 "threshold_basis": "semantic" if mode in ("semantic", "hybrid") else None,
@@ -900,6 +929,9 @@ async def agent_search(
                 **as_of_cfg,
             },
         }
+
+
+_BRIEF_SNIPPET = 400   # agent_search(brief=true) 의 snippet 앞부분 글자 수
 
 
 async def _agent_record_ids(session, agent_type: str) -> list[str]:

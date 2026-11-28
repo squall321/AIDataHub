@@ -37,10 +37,12 @@ _CONTRACT: dict[str, tuple[tuple, tuple, dict]] = {
         {"top_k": 5, "top_k_tools": 3, "agent_type": None, "onto": "off"},
     ),
     "get_agent_session": (("agent_type",), ("agent_type",), {}),
+    # offset · brief · fields 는 뒤에 더한 선택 인자(HWAXPortal docs/request-1125 2절 B-1) — 기본값이면 응답이 예전 그대로다
     "agent_search": (
-        ("agent_type", "q", "mode", "top_k", "as_of", "as_of_undated"),
+        ("agent_type", "q", "mode", "top_k", "as_of", "as_of_undated", "offset", "brief", "fields"),
         ("agent_type", "q"),
-        {"mode": "semantic", "top_k": None, "as_of": "", "as_of_undated": "keep"},
+        {"mode": "semantic", "top_k": None, "as_of": "", "as_of_undated": "keep", "offset": 0, "brief": False,
+         "fields": None},
     ),
     "semantic_search": (
         ("q", "top_k", "data_types", "agent_type"),
